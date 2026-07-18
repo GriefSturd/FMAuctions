@@ -255,7 +255,7 @@ symbol_value:
   item-lore_buy_one_item:
     lore:
       - ""
-      - "&f&x&F&F&A&5&0&0╔ &fЦена: &e{price_one}"
+      - "&f&x&F&F&A&5&0&0╔ &fЦена: &e{total_price}"
       - "&f&x&F&F&A&5&0&0╠ &fПродавец: &#74F271{seller}"
       - "&f&x&F&F&A&5&0&0╚ &fКоличество: &7{amount}"
       - ""
