@@ -1,0 +1,19 @@
+name: FMAuction
+version: '1.0'
+main: ru.moscow.foxkiss.FMAuction
+api-version: '1.21'
+softdepend:
+  - PlaceholderAPI
+  - Vault
+  - PlayerPoints
+commands:
+  ah:
+    aliases: [auction]
+  dauc:
+    aliases: [dah]
+  fmauction:
+    description: Админ команда плагина FMAuction
+permissions:
+  fmauction.admin:
+    description: Право на выдачу админ права
+    default: op
