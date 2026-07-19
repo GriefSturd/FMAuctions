@@ -5,6 +5,7 @@ import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
@@ -90,30 +91,44 @@ public final class AuctionMenu {
                 auctionItem, 0, 0
         );
 
-        Inventory inventory = Bukkit.createInventory(holder, 27, TextUtils.component(values.guiConfig().titles().quantity()));
-        holder.setInventory(inventory);
+        Inventory inv = Bukkit.createInventory(holder, quantityMenu.sizeMenu(), TextUtils.component(values.guiConfig().titles().quantity()));
+        holder.setInventory(inv);
 
-        updateQuantityDisplay(inventory, holder, auctionItem);
+        fillGlass(inv, quantityMenu.glassPanes());
 
-        inventory.setItem(quantityMenu.slotDecrease10(), buildButton(quantityMenu.decrease10()));
-        inventory.setItem(quantityMenu.slotDecrease1(), buildButton(quantityMenu.decrease1()));
-        inventory.setItem(quantityMenu.slotIncrease1(), buildButton(quantityMenu.increase1()));
-        inventory.setItem(quantityMenu.slotIncrease10(), buildButton(quantityMenu.increase10()));
+        updateQuantityDisplay(inv, holder, auctionItem);
 
-        player.openInventory(inventory);
+        for (int slot : quantityMenu.decrease10().slots()) {
+            inv.setItem(slot, buildButton(quantityMenu.decrease10()));
+        }
+        for (int slot : quantityMenu.decrease1().slots()) {
+            inv.setItem(slot, buildButton(quantityMenu.decrease1()));
+        }
+        for (int slot : quantityMenu.increase1().slots()) {
+            inv.setItem(slot, buildButton(quantityMenu.increase1()));
+        }
+        for (int slot : quantityMenu.increase10().slots()) {
+            inv.setItem(slot, buildButton(quantityMenu.increase10()));
+        }
+
+        player.openInventory(inv);
     }
 
     public void openConfirm(Player player, AuctionCurrency currency, long lotId, int amount) {
+        ConfigValues.ConfirmMenuConfig config = configManager.getConfigValues().confirmMenu();
+        ConfigValues.TitlesConfig titlesConfig = configManager.getConfigValues().guiConfig().titles();
+        Map<String, String> messages = configManager.getConfigValues().messages();
+        String msg = messages.get("no-id");
+
         repository.findById(lotId).thenAccept(optItem -> {
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (optItem.isEmpty()) {
-                    player.sendMessage("§cТовар уже куплен или убран.");
+                    player.sendMessage(msg);
                     return;
                 }
                 AuctionItem item = optItem.get();
                 int finalAmount = (amount == Integer.MAX_VALUE) ? item.amount() : amount;
 
-                ConfigValues.ConfirmMenuConfig config = configManager.getConfigValues().confirmMenu();
 
                 AuctionMenuHolder holder = new AuctionMenuHolder(
                         AuctionViewType.CONFIRM, currency, player.getUniqueId(), 0,
@@ -122,16 +137,24 @@ public final class AuctionMenu {
                         item, finalAmount, lotId
                 );
 
-                Inventory inv = Bukkit.createInventory(holder, config.size(), TextUtils.component("§r&0Подтверждение покупки"));
+                Inventory inv = Bukkit.createInventory(holder, config.size(), TextUtils.component(titlesConfig.confirmBuy()));
                 holder.setInventory(inv);
 
                 fillGlass(inv, config.glassPanes());
 
                 ItemStack centerItem = buildBuyItem(item, finalAmount);
-                inv.setItem(13, centerItem);
+                inv.setItem(config.itemSlot(), centerItem);
 
-                inv.setItem(config.confirm().slot(), buildButton(config.confirm()));
-                inv.setItem(config.cancel().slot(), buildButton(config.cancel()));
+                for (int slot : config.confirm().slots()) {
+                    if (slot >= 0 && slot < inv.getSize()) {
+                        inv.setItem(slot, buildButton(config.confirm()));
+                    }
+                }
+                for (int slot : config.cancel().slots()) {
+                    if (slot >= 0 && slot < inv.getSize()) {
+                        inv.setItem(slot, buildButton(config.cancel()));
+                    }
+                }
 
                 player.openInventory(inv);
             });
@@ -189,6 +212,13 @@ public final class AuctionMenu {
         item.setAmount(Math.min(selectedAmount, item.getMaxStackSize()));
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return item;
+
+        meta.addItemFlags(
+                ItemFlag.HIDE_ATTRIBUTES,
+                ItemFlag.HIDE_UNBREAKABLE,
+                ItemFlag.HIDE_DESTROYS,
+                ItemFlag.HIDE_PLACED_ON
+        );
 
         List<Component> lore = new ArrayList<>();
         double totalPrice = auctionItem.pricePerItem() * selectedAmount;
@@ -379,8 +409,15 @@ public final class AuctionMenu {
         ConfigValues.ItemLoreConfig loreConfig = configManager.getConfigValues().guiConfig().itemLore();
         ItemStack item = auctionItem.itemStackClone();
         ItemMeta meta = item.getItemMeta();
+        meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
 
-        List<Component> lore = new ArrayList<>();
+        List<Component> originalLore = meta.lore();
+        if (originalLore == null) {
+            originalLore = new ArrayList<>();
+        }
+
+        List<Component> lore = new ArrayList<>(originalLore);
+
         String symbol = auctionItem.currency().symbol(configManager.getConfigValues());
         String price = PriceFormatter.format(auctionItem.price());
         String pricePerItem = PriceFormatter.format(auctionItem.pricePerItem());
@@ -400,6 +437,7 @@ public final class AuctionMenu {
                     .replace("{listedDate}", formatDate(auctionItem.createdAt()));
             lore.add(TextUtils.component(result));
         }
+
         meta.lore(lore);
         item.setItemMeta(meta);
         return item;

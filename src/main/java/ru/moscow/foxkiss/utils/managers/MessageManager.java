@@ -8,9 +8,7 @@ import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.utils.TextUtils;
 import ru.moscow.foxkiss.utils.managers.interfaces.IMessageManager;
 
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 public final class MessageManager implements IMessageManager {
@@ -22,7 +20,7 @@ public final class MessageManager implements IMessageManager {
     private String prefix;
 
     public MessageManager(ConfigValues config) {
-        this.rawMessages = new HashMap<>(config.messages());
+        this.rawMessages = new HashMap<>();
         this.placeholderApiEnabled = Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI");
         reload(config);
     }
@@ -45,11 +43,20 @@ public final class MessageManager implements IMessageManager {
     }
 
     private String format(CommandSender sender, String key, Map<String, String> replacements) {
-        String message = rawMessages.getOrDefault(key, MISSING_MESSAGE + key).replace("%prefix%", prefix);
+        String message = rawMessages.get(key);
+        if (message == null) {
+            message = MISSING_MESSAGE + key;
+        }
+
+        message = message.replace("%prefix%", prefix);
+
         for (Map.Entry<String, String> entry : replacements.entrySet()) {
             message = message.replace("{" + entry.getKey() + "}", entry.getValue());
         }
-        return TextUtils.colorize(applyPlaceholderApi(sender, message));
+
+        message = applyPlaceholderApi(sender, message);
+
+        return TextUtils.colorize(message);
     }
 
     private String applyPlaceholderApi(CommandSender sender, String message) {

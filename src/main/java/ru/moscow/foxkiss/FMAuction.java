@@ -18,7 +18,6 @@ import ru.moscow.foxkiss.permissions.LimitService;
 import ru.moscow.foxkiss.placeholders.FMAuctionExpansion;
 import ru.moscow.foxkiss.utils.managers.MessageManager;
 import ru.moscow.foxkiss.utils.managers.interfaces.IMessageManager;
-import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
 public final class FMAuction extends JavaPlugin {
 
@@ -57,7 +56,6 @@ public final class FMAuction extends JavaPlugin {
     }
 
     public void initializeManager() {
-        PlaceholderUtils.init(this);
         configManager = new ConfigManager(this);
         messageManager = new MessageManager(configManager.getConfigValues());
         auctionRepository = new SQLiteAuctionRepository(this);
@@ -82,17 +80,17 @@ public final class FMAuction extends JavaPlugin {
     }
 
     private void registerCommands() {
-        AuctionCommand vaultCommand = new AuctionCommand(AuctionCurrency.VAULT, auctionMenu, auctionService, messageManager, auctionRepository);
-        AuctionCommand playerPointsCommand = new AuctionCommand(AuctionCurrency.PLAYER_POINTS, auctionMenu, auctionService, messageManager, auctionRepository);
+        AuctionCommand auctionCmd = new AuctionCommand(AuctionCurrency.VAULT, auctionMenu, auctionService, messageManager, auctionRepository);
+        AuctionCommand donateAuctionCmd = new AuctionCommand(AuctionCurrency.PLAYER_POINTS, auctionMenu, auctionService, messageManager, auctionRepository);
         AdminCommand adminCommand = new AdminCommand(this);
 
         PluginCommand ahCommand = getCommand("ah");
-        ahCommand.setExecutor(vaultCommand);
-        ahCommand.setTabCompleter(vaultCommand);
+        ahCommand.setExecutor(auctionCmd);
+        ahCommand.setTabCompleter(auctionCmd);
         
         PluginCommand daucCommand = getCommand("dauc");
-        daucCommand.setExecutor(playerPointsCommand);
-        daucCommand.setTabCompleter(playerPointsCommand);
+        daucCommand.setExecutor(donateAuctionCmd);
+        daucCommand.setTabCompleter(donateAuctionCmd);
         
         PluginCommand fmauctionCommand = getCommand("fmauction");
         fmauctionCommand.setExecutor(adminCommand);

@@ -10,7 +10,12 @@ public enum ActionType {
     NEXT,
     REFRESH,
     CONFIRM,
-    CANCEL;
+    CANCEL,
+    DECREASE_10,
+    DECREASE_1,
+    INCREASE_1,
+    INCREASE_10,
+    BUY;
 
     public static ActionType get(String string) {
         try {

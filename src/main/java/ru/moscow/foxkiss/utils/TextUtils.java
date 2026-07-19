@@ -3,6 +3,8 @@ package ru.moscow.foxkiss.utils;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -37,6 +39,16 @@ public final class TextUtils {
         return LegacyComponentSerializer.legacySection()
                 .deserialize(colored)
                 .decoration(TextDecoration.ITALIC, false);
+    }
+
+    public static String plain(Component component) {
+        if (component == null) return "";
+        return PlainTextComponentSerializer.plainText().serialize(component);
+    }
+
+    public static String plain(String message) {
+        if (message == null || message.isEmpty()) return message;
+        return plain(component(message));
     }
 
     public static String translateAlternateColorCodes(char altColorChar, String textToTranslate) {

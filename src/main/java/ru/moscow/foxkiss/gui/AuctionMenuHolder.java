@@ -33,22 +33,7 @@ public final class AuctionMenuHolder implements InventoryHolder {
     private final long confirmLotId;
 
     private final Map<Integer, Long> lotsBySlot = new HashMap<>();
-    private final Map<Integer, Integer> lotsAmountBySlot = new HashMap<>(); // новое
-
-    public AuctionMenuHolder(AuctionViewType viewType, AuctionCurrency currency, UUID viewer, int page,
-                             AuctionSort sort, String sellerFilter, String searchFilter, long lotId,
-                             int selectedAmount, int totalPages, String category, int maxAmount) {
-        this(viewType, currency, viewer, page, sort, sellerFilter, searchFilter, lotId,
-                selectedAmount, totalPages, category, maxAmount, null, 0, 0L);
-    }
-
-    public AuctionMenuHolder(AuctionViewType viewType, AuctionCurrency currency, UUID viewer, int page,
-                             AuctionSort sort, String sellerFilter, String searchFilter, long lotId,
-                             int selectedAmount, int totalPages, String category, int maxAmount,
-                             AuctionItem auctionItem) {
-        this(viewType, currency, viewer, page, sort, sellerFilter, searchFilter, lotId,
-                selectedAmount, totalPages, category, maxAmount, auctionItem, 0, 0L);
-    }
+    private final Map<Integer, Integer> lotsAmountBySlot = new HashMap<>();
 
     public AuctionMenuHolder(AuctionViewType viewType, AuctionCurrency currency, UUID viewer, int page,
                              AuctionSort sort, String sellerFilter, String searchFilter, long lotId,

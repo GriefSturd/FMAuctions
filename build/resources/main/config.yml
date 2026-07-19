@@ -8,14 +8,18 @@ database:
 vault-auc:
   groups:
     default: 1
+    developer: 100
   priorities:
     default: 1
+    developer: 2
 
 playerpoints-auc:
   groups:
     default: 1
+    developer: 100
   priorities:
     default: 1
+    developer: 2
 
 prefix: "%frostmine_name_nosub% &7»"
 
@@ -27,6 +31,7 @@ auction:
     selling: "&r&0Ваши товары"
     expired: "&r&0Забытые товары"
     quantity: "&r&0Покупка предмета"
+    confirm-buy: "&0Подтверждение покупки"
   sorting:
     NEWEST: "Сначала новые"
     OLDEST: "Сначала старые"
@@ -71,63 +76,77 @@ auction:
     plants: "Растительность"
   confirm-menu:
     enable-confirm-menu: true
+    item-slot: 13
     size: 27
     confirm:
       actions:
         - "[CONFIRM]"
-      item: LIME_WOOL
-      slot: 12
+      item: GREEN_STAINED_GLASS_PANE
+      slots: [0,1,2,9,10,11,18,19,20]
       name: "&aПодтвердить"
       lore:
-        - "&fНажмите, чтобы &aкупить"
+        - "&x&f&f&c&5&0&0▸ &fНажмите, чтобы &aкупить"
     cancel:
       actions:
         - "[CANCEL]"
-      item: RED_WOOL
-      slot: 14
+      item: RED_STAINED_GLASS_PANE
+      slots: [6,7,8,15,16,17,24,25,26]
       name: "&cОтменить"
       lore:
-        - "&fНажмите, чтобы &cотменить"
+        - "&x&f&f&c&5&0&0▸ &fНажмите, чтобы &cотменить"
     glass:
-      - glass-type: BLACK_STAINED_GLASS_PANE
-        display-name: ""
-        slots: [0, 1, 2, 3, 4, 5, 6, 7, 8, 18, 19, 20, 21, 22, 23, 24, 25, 26]
+      - glass-type: GRAY_STAINED_GLASS_PANE
+        display-name: "&8ᴡᴡᴡ.ꜰʀᴏsᴛᴍɪɴᴇ.ᴘᴡ"
+        slots: [3,4,5,12,14,21,22,23]
   quantity-menu:
-    slot-decrease-10: 10
-    slot-decrease-1: 11
     slot-amount: 13
-    slot-increase-1: 15
-    slot-increase-10: 16
+    size-menu: 27
     decrease-10:
-      actions: []
-      material: RED_CONCRETE
+      actions:
+        - "[DECREASE_10]"
+      slots: [10, 1, 19]
+      material: RED_STAINED_GLASS_PANE
       name: "&r&c(-) Уменьшить на 10 единиц"
       lore:
         - "&x&f&f&c&5&0&0▸ &fНажмите, чтобы &x&f&f&c&5&0&0уменьшить"
     decrease-1:
-      actions: []
-      material: RED_WOOL
+      actions:
+        - "[DECREASE_1]"
+      slots: [11, 2, 20]
+      material: RED_STAINED_GLASS_PANE
       name: "&r&c(-) Уменьшить на 1 единицу"
       lore:
         - "&x&f&f&c&5&0&0▸ &fНажмите, чтобы &x&f&f&c&5&0&0уменьшить"
     amount:
-      actions: []
+      actions:
+        - "[BUY]"
       material: GUNPOWDER
       name: "&r&eКоличество: &f{amount}"
       lore:
         - "&x&f&f&c&5&0&0▸ &fНажмите, чтобы &x&f&f&c&5&0&0купить"
     increase-1:
-      actions: []
-      material: GREEN_WOOL
+      actions:
+        - "[INCREASE_1]"
+      slots: [15, 6, 24]
+      material: LIME_STAINED_GLASS_PANE
       name: "&r&a(+) Увеличить на 1 единицу"
       lore:
         - "&x&f&f&c&5&0&0▸ &fНажмите, чтобы &x&f&f&c&5&0&0увеличить"
     increase-10:
-      actions: []
-      material: LIME_CONCRETE
+      actions:
+        - "[INCREASE_10]"
+      slots: [16, 7, 25]
+      material: LIME_STAINED_GLASS_PANE
       name: "&r&a(+) Увеличить на 10 единиц"
       lore:
         - "&x&f&f&c&5&0&0▸ &fНажмите, чтобы &x&f&f&c&5&0&0увеличить"
+    glass:
+      - glass-type: GRAY_STAINED_GLASS_PANE
+        display-name: "&8ᴡᴡᴡ.ꜰʀᴏsᴛᴍɪɴᴇ.ᴘᴡ"
+        slots: [3, 4, 5, 12, 14, 21, 22, 23]
+      - glass-type: BLACK_STAINED_GLASS_PANE
+        display-name: "&8ᴡᴡᴡ.ꜰʀᴏsᴛᴍɪɴᴇ.ᴘᴡ"
+        slots: [0, 9, 18, 8, 17, 26]
   navigation:
     previous:
       actions:
@@ -164,7 +183,7 @@ auction:
       name: "&x&f&f&c&5&0&0Ваши товары"
       lore:
         - ""
-        - "&x&F&F&A&5&0&0&l┃ &fВыставлено предметов: &e{count}"
+        - " &x&F&F&A&5&0&0&l┃ &fВыставлено предметов: &e{count}"
         - ""
         - "&x&f&f&c&5&0&0▸ &fНажмите, чтобы &x&f&f&c&5&0&0открыть"
     expired:
@@ -175,7 +194,7 @@ auction:
       name: "&x&f&f&c&5&0&0Забытые товары"
       lore:
         - ""
-        - "&x&F&F&A&5&0&0&l┃ &fНепроданных предметов: &e{count}"
+        - " &x&F&F&A&5&0&0&l┃ &fНепроданных предметов: &e{count}"
         - ""
         - "&x&f&f&c&5&0&0▸ &fНажмите, чтобы &x&f&f&c&5&0&0открыть"
     sort:
@@ -198,6 +217,16 @@ auction:
         - ""
         - "&r&fЛКМ вниз | ПКМ вверх"
   active-slots:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
     - 10
     - 11
     - 12
@@ -205,6 +234,8 @@ auction:
     - 14
     - 15
     - 16
+    - 17
+    - 18
     - 19
     - 20
     - 21
@@ -212,6 +243,8 @@ auction:
     - 23
     - 24
     - 25
+    - 26
+    - 27
     - 28
     - 29
     - 30
@@ -219,13 +252,7 @@ auction:
     - 32
     - 33
     - 34
-    - 37
-    - 38
-    - 39
-    - 40
-    - 41
-    - 42
-    - 43
+    - 35
   errors:
     economy-unavailable: "%prefix% §cЭкономика для этого аукциона недоступна."
 
@@ -255,7 +282,7 @@ symbol_value:
   item-lore_buy_one_item:
     lore:
       - ""
-      - "&f&x&F&F&A&5&0&0╔ &fЦена: &e{price_one}"
+      - "&f&x&F&F&A&5&0&0╔ &fЦена: &e{total_price}"
       - "&f&x&F&F&A&5&0&0╠ &fПродавец: &#74F271{seller}"
       - "&f&x&F&F&A&5&0&0╚ &fКоличество: &7{amount}"
       - ""
@@ -273,6 +300,7 @@ categories:
     - BOW
     - CROSSBOW
     - TRIDENT
+    - MACE
     - NETHERITE_AXE
     - DIAMOND_AXE
     - IRON_AXE
@@ -304,9 +332,9 @@ categories:
     - LEATHER_CHESTPLATE
     - LEATHER_LEGGINGS
     - LEATHER_BOOTS
+    - TURTLE_HELMET
     - SHIELD
     - ELYTRA
-    - TURTLE_HELMET
   alchemy:
     - POTION
     - SPLASH_POTION
@@ -331,6 +359,7 @@ categories:
     - GLOWSTONE_DUST
     - GUNPOWDER
   blocks:
+    - SANDSTONE
     - STONE
     - GRANITE
     - POLISHED_GRANITE
@@ -359,6 +388,15 @@ categories:
     - MANGROVE_LOG
     - CHERRY_LOG
     - BAMBOO_BLOCK
+    - STRIPPED_OAK_LOG
+    - STRIPPED_SPRUCE_LOG
+    - STRIPPED_BIRCH_LOG
+    - STRIPPED_JUNGLE_LOG
+    - STRIPPED_ACACIA_LOG
+    - STRIPPED_DARK_OAK_LOG
+    - STRIPPED_MANGROVE_LOG
+    - STRIPPED_CHERRY_LOG
+    - STRIPPED_BAMBOO_BLOCK
     - SAND
     - RED_SAND
     - GRAVEL
@@ -398,12 +436,14 @@ categories:
     - GREEN_STAINED_GLASS
     - RED_STAINED_GLASS
     - BLACK_STAINED_GLASS
+    - TINTED_GLASS
     - OBSIDIAN
     - CRYING_OBSIDIAN
     - BRICKS
     - BRICK_SLAB
     - BRICK_STAIRS
     - BOOKSHELF
+    - CHISELED_BOOKSHELF
     - TNT
     - DIAMOND_BLOCK
     - GOLD_BLOCK
@@ -415,9 +455,9 @@ categories:
     - COAL_BLOCK
     - NETHERITE_BLOCK
     - NETHER_BRICKS
+    - RED_NETHER_BRICKS
     - NETHER_BRICK_FENCE
     - NETHER_BRICK_STAIRS
-    - RED_NETHER_BRICKS
     - NETHER_WART_BLOCK
     - WARPED_WART_BLOCK
     - SOUL_SAND
@@ -463,6 +503,46 @@ categories:
     - SCULK_SENSOR
     - SCULK_SHRIEKER
     - REINFORCED_DEEPSLATE
+    - COPPER_GRATE
+    - COPPER_BULB
+    - COPPER_DOOR
+    - COPPER_TRAPDOOR
+    - CHISELED_COPPER
+    - EXPOSED_COPPER
+    - WEATHERED_COPPER
+    - OXIDIZED_COPPER
+    - EXPOSED_COPPER_GRATE
+    - WEATHERED_COPPER_GRATE
+    - OXIDIZED_COPPER_GRATE
+    - EXPOSED_COPPER_BULB
+    - WEATHERED_COPPER_BULB
+    - OXIDIZED_COPPER_BULB
+    - EXPOSED_COPPER_DOOR
+    - WEATHERED_COPPER_DOOR
+    - OXIDIZED_COPPER_DOOR
+    - EXPOSED_COPPER_TRAPDOOR
+    - WEATHERED_COPPER_TRAPDOOR
+    - OXIDIZED_COPPER_TRAPDOOR
+    - WAXED_COPPER_BLOCK
+    - WAXED_EXPOSED_COPPER
+    - WAXED_WEATHERED_COPPER
+    - WAXED_OXIDIZED_COPPER
+    - WAXED_COPPER_GRATE
+    - WAXED_EXPOSED_COPPER_GRATE
+    - WAXED_WEATHERED_COPPER_GRATE
+    - WAXED_OXIDIZED_COPPER_GRATE
+    - WAXED_COPPER_BULB
+    - WAXED_EXPOSED_COPPER_BULB
+    - WAXED_WEATHERED_COPPER_BULB
+    - WAXED_OXIDIZED_COPPER_BULB
+    - WAXED_COPPER_DOOR
+    - WAXED_EXPOSED_COPPER_DOOR
+    - WAXED_WEATHERED_COPPER_DOOR
+    - WAXED_OXIDIZED_COPPER_DOOR
+    - WAXED_COPPER_TRAPDOOR
+    - WAXED_EXPOSED_COPPER_TRAPDOOR
+    - WAXED_WEATHERED_COPPER_TRAPDOOR
+    - WAXED_OXIDIZED_COPPER_TRAPDOOR
   tools:
     - DIAMOND_PICKAXE
     - IRON_PICKAXE
@@ -522,7 +602,6 @@ categories:
     - LEVER
     - TRIPWIRE_HOOK
     - TRAPPED_CHEST
-    - TNT
     - TARGET
     - LIGHTNING_ROD
     - DAYLIGHT_DETECTOR
@@ -535,11 +614,6 @@ categories:
     - FURNACE_MINECART
     - TNT_MINECART
     - HOPPER_MINECART
-    - COMMAND_BLOCK
-    - CHAIN_COMMAND_BLOCK
-    - REPEATING_COMMAND_BLOCK
-    - STRUCTURE_BLOCK
-    - JIGSAW
     - NOTE_BLOCK
     - BELL
     - IRON_DOOR
@@ -566,6 +640,17 @@ categories:
     - BAMBOO_TRAPDOOR
     - CRIMSON_TRAPDOOR
     - WARPED_TRAPDOOR
+    - OAK_FENCE_GATE
+    - SPRUCE_FENCE_GATE
+    - BIRCH_FENCE_GATE
+    - JUNGLE_FENCE_GATE
+    - ACACIA_FENCE_GATE
+    - DARK_OAK_FENCE_GATE
+    - MANGROVE_FENCE_GATE
+    - CHERRY_FENCE_GATE
+    - BAMBOO_FENCE_GATE
+    - CRIMSON_FENCE_GATE
+    - WARPED_FENCE_GATE
   food:
     - APPLE
     - GOLDEN_APPLE
@@ -650,7 +735,6 @@ categories:
     - SKELETON_SKULL
     - ZOMBIE_HEAD
     - CREEPER_HEAD
-    - PLAYER_HEAD
     - ECHO_SHARD
     - DISC_FRAGMENT_5
   plants:
@@ -772,18 +856,26 @@ categories:
     - MUSIC_DISC_5
     - MUSIC_DISC_PIGSTEP
     - MUSIC_DISC_RELIC
+    - NETHERITE_UPGRADE_SMITHING_TEMPLATE
+    - SENTRY_ARMOR_TRIM_SMITHING_TEMPLATE
+    - VEX_ARMOR_TRIM_SMITHING_TEMPLATE
+    - WILD_ARMOR_TRIM_SMITHING_TEMPLATE
+    - COAST_ARMOR_TRIM_SMITHING_TEMPLATE
+    - DUNE_ARMOR_TRIM_SMITHING_TEMPLATE
+    - WAYFINDER_ARMOR_TRIM_SMITHING_TEMPLATE
+    - RAISER_ARMOR_TRIM_SMITHING_TEMPLATE
+    - SHAPER_ARMOR_TRIM_SMITHING_TEMPLATE
+    - HOST_ARMOR_TRIM_SMITHING_TEMPLATE
+    - WARD_ARMOR_TRIM_SMITHING_TEMPLATE
+    - SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE
+    - TIDE_ARMOR_TRIM_SMITHING_TEMPLATE
+    - SNOUT_ARMOR_TRIM_SMITHING_TEMPLATE
+    - RIB_ARMOR_TRIM_SMITHING_TEMPLATE
+    - EYE_ARMOR_TRIM_SMITHING_TEMPLATE
+    - SPIRE_ARMOR_TRIM_SMITHING_TEMPLATE
+    - DISC_FRAGMENT_5
   spheres:
-    - ENDER_PEARL
-    - ENDER_EYE
-    - FIRE_CHARGE
-    - SNOWBALL
-    - EGG
-    - SLIME_BALL
-    - MAGMA_CREAM
-    - DRAGON_EGG
-    - TURTLE_EGG
-    - SNIFFER_EGG
-    - FROGSPAWN
+    - PLAYER_HEAD
   unique:
     - TOTEM_OF_UNDYING
     - ELYTRA
@@ -814,40 +906,41 @@ categories:
     - EYE_ARMOR_TRIM_SMITHING_TEMPLATE
     - SPIRE_ARMOR_TRIM_SMITHING_TEMPLATE
     - DISC_FRAGMENT_5
+    - PLAYER_HEAD
   all:
     - all
 
 menu-glass-selling:
   - glass-type: GREEN_STAINED_GLASS_PANE
-    display-name: ""
-    slots: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    display-name: "&8ᴡᴡᴡ.ꜰʀᴏsᴛᴍɪɴᴇ.ᴘᴡ"
+    slots: [46, 47, 51, 52, 53]
   - glass-type: GRAY_STAINED_GLASS_PANE
-    display-name: ""
-    slots: [9, 17, 18, 26, 27, 35, 36, 44, 46, 47, 51, 52]
+    display-name: "&8ᴡᴡᴡ.ꜰʀᴏsᴛᴍɪɴᴇ.ᴘᴡ"
+    slots: [36,37,38,39,40,41,42,43,44]
 
 menu-glass-expired:
   - glass-type: RED_STAINED_GLASS_PANE
-    display-name: ""
-    slots: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    display-name: "&8ᴡᴡᴡ.ꜰʀᴏsᴛᴍɪɴᴇ.ᴘᴡ"
+    slots: [46, 47, 51, 52, 53]
   - glass-type: GRAY_STAINED_GLASS_PANE
-    display-name: ""
-    slots: [9, 17, 18, 26, 27, 35, 36, 44, 46, 47, 51, 52]
+    display-name: "&8ᴡᴡᴡ.ꜰʀᴏsᴛᴍɪɴᴇ.ᴘᴡ"
+    slots: [36,37,38,39,40,41,42,43,44]
 
 menu-glass:
   playerpoints:
     - glass-type: ORANGE_STAINED_GLASS_PANE
-      display-name: ""
-      slots: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+      display-name: "&8ᴡᴡᴡ.ꜰʀᴏsᴛᴍɪɴᴇ.ᴘᴡ"
+      slots: [47,51]
     - glass-type: GRAY_STAINED_GLASS_PANE
-      display-name: ""
-      slots: [9, 17, 18, 26, 27, 35, 36, 44, 46, 52, 53]
+      display-name: "&8ᴡᴡᴡ.ꜰʀᴏsᴛᴍɪɴᴇ.ᴘᴡ"
+      slots: [36,37,38,39,40,41,42,43,44]
   vault:
     - glass-type: YELLOW_STAINED_GLASS_PANE
-      display-name: ""
-      slots: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+      display-name: "&8ᴡᴡᴡ.ꜰʀᴏsᴛᴍɪɴᴇ.ᴘᴡ"
+      slots: [47,51]
     - glass-type: GRAY_STAINED_GLASS_PANE
-      display-name: ""
-      slots: [9, 17, 18, 26, 27, 35, 36, 44, 46, 52, 53]
+      display-name: "&8ᴡᴡᴡ.ꜰʀᴏsᴛᴍɪɴᴇ.ᴘᴡ"
+      slots: [36,37,38,39,40,41,42,43,44]
 
 commands:
   creative: "%prefix% §fОтключите режим креатива!"
@@ -883,13 +976,13 @@ messages:
     no-name: "%prefix% §fТовар уже куплен или убран с аукциона."
     no-id: "%prefix% §fТовар уже куплен или убран с аукциона."
     no-price: "%prefix% §fТовар уже куплен или убран с аукциона."
-    no-own: "%prefix% §fВы не можете купить свой же товар."
+    no-own: "%prefix% §fВы &cне можете &fкупить свой же товар."
   buy:
     buy-seller: "%prefix% §aИгрок §f{buyer} §aкупил у вас §f{item_name} §aв количестве §f{amount} §aза §6{price}{symbol_value}"
     otmena: "%prefix% §fВы отменили покупку!"
     yspex: "%prefix% §fУспешная §aпокупка§f. Вы потратили §6{symbol_value}"
     nomoney: "%prefix% §fНедостаточно §cсредств§f для покупки."
-    quantity-exceeded: "%prefix% §cНельзя купить больше, чем выставлено: §f{max}"
+    quantity-exceeded: "%prefix% §fВы &cне можете &fкупить больше, чем &aвыставлено" #§f{max} - вывод максимального допустимого пениза
   expired:
     take: "%prefix% §fВы успешно &aзабрали &fпросроченный предмет."
   selling:

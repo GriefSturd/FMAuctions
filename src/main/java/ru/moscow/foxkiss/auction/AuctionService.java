@@ -1,15 +1,18 @@
 package ru.moscow.foxkiss.auction;
 
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.economy.EconomyProvider;
 import ru.moscow.foxkiss.permissions.LimitService;
 import ru.moscow.foxkiss.utils.ItemUtils;
 import ru.moscow.foxkiss.utils.PriceFormatter;
+import ru.moscow.foxkiss.utils.TextUtils;
 import ru.moscow.foxkiss.utils.managers.interfaces.IMessageManager;
 
 import java.util.HashMap;
@@ -158,11 +161,13 @@ public final class AuctionService {
                                 price
                         );
 
-                        String itemDisplayName;
-                        if (bought.getItemMeta() != null && bought.getItemMeta().hasDisplayName()) {
-                            itemDisplayName = bought.getItemMeta().getDisplayName();
-                        } else {
-                            itemDisplayName = bought.getType().name().toLowerCase().replace('_', ' ');
+                        String itemDisplayName = bought.getType().name().toLowerCase().replace('_', ' ');
+                        ItemMeta meta = bought.getItemMeta();
+                        if (meta != null && meta.hasDisplayName()) {
+                            Component displayName = meta.displayName();
+                            if (displayName != null) {
+                                itemDisplayName = TextUtils.plain(displayName);
+                            }
                         }
 
                         String priceStr = PriceFormatter.format(price);

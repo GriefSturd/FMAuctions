@@ -24,10 +24,6 @@ public final class PlayerPointsApi {
         }
     }
 
-    public boolean isAvailable() {
-        return true;
-    }
-
     public boolean has(Player player, int amount) {
         return api.look(player.getUniqueId()) >= amount;
     }

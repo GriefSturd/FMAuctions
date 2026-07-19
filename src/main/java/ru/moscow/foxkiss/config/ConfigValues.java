@@ -51,7 +51,8 @@ public record ConfigValues(
             String main,
             String selling,
             String expired,
-            String quantity
+            String quantity,
+            String confirmBuy
     ) {}
 
     public record SortMenuConfig(
@@ -69,16 +70,14 @@ public record ConfigValues(
     ) {}
 
     public record QuantityMenuConfig(
-            int slotDecrease10,
-            int slotDecrease1,
             int slotAmount,
-            int slotIncrease1,
-            int slotIncrease10,
+            int sizeMenu,
             ButtonConfig decrease10,
             ButtonConfig decrease1,
             ButtonConfig amount,
             ButtonConfig increase1,
-            ButtonConfig increase10
+            ButtonConfig increase10,
+            Map<Integer, GlassPane> glassPanes
     ) {}
 
     public record ButtonConfig(
@@ -86,15 +85,16 @@ public record ConfigValues(
             String name,
             List<String> lore,
             String skullTexture,
-            ActionType action
-    ) { }
+            ActionType action,
+            List<Integer> slots
+    ) {}
 
     public record ConfirmButtonConfig(
             Material material,
             String name,
             List<String> lore,
             String skullTexture,
-            int slot,
+            List<Integer> slots,
             ActionType action
     ) {}
 
@@ -132,6 +132,7 @@ public record ConfigValues(
 
     public record ConfirmMenuConfig(
             boolean enabled,
+            int itemSlot,
             int size,
             ConfirmButtonConfig confirm,
             ConfirmButtonConfig cancel,

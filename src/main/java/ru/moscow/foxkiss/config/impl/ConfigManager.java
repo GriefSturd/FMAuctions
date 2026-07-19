@@ -64,6 +64,10 @@ public final class ConfigManager implements IConfigManager {
                     continue;
                 }
                 Material mat = Material.matchMaterial(trimmed);
+                if (mat == null) {
+                    plugin.getLogger().warning("Неизвестный материал в категории " + cat + ": " + trimmed);
+                    continue;
+                }
                 materials.add(mat);
             }
             categoryMaterials.put(normalizedCat, Collections.unmodifiableSet(materials));
@@ -79,12 +83,16 @@ public final class ConfigManager implements IConfigManager {
 
         Map<String, String> messages = new HashMap<>();
         messages.put("prefix", prefix);
+
+
         for (String root : MESSAGE_ROOTS) {
             ConfigurationSection sec = config.getConfigurationSection(root);
             flattenMessages(sec, root, messages);
         }
+
         ConfigurationSection auctionErrors = auction.getConfigurationSection("errors");
-        flattenMessages(auctionErrors, "auction.errors", messages);
+        flattenMessages(auctionErrors, "errors", messages);
+
         messages = Map.copyOf(messages);
 
         ConfigurationSection sortingSection = auction.getConfigurationSection("sorting");
@@ -172,11 +180,12 @@ public final class ConfigManager implements IConfigManager {
     private ConfigValues.ConfirmMenuConfig loadConfirmMenuConfig(ConfigurationSection auction) {
         ConfigurationSection sec = auction.getConfigurationSection("confirm-menu");
         boolean enabled = sec.getBoolean("enable-confirm-menu", true);
-        int size = sec.getInt("size", 27);
+        int itemSlot = sec.getInt("item-slot");
+        int size = sec.getInt("size");
         ConfigValues.ConfirmButtonConfig confirm = loadConfirmButton(sec.getConfigurationSection("confirm"));
         ConfigValues.ConfirmButtonConfig cancel = loadConfirmButton(sec.getConfigurationSection("cancel"));
         Map<Integer, ConfigValues.GlassPane> glassPanes = loadGlassPanes(sec.getMapList("glass"));
-        return new ConfigValues.ConfirmMenuConfig(enabled, size, confirm, cancel, glassPanes);
+        return new ConfigValues.ConfirmMenuConfig(enabled, itemSlot, size, confirm, cancel, glassPanes);
     }
 
     private ConfigValues.ConfirmButtonConfig loadConfirmButton(ConfigurationSection section) {
@@ -197,28 +206,48 @@ public final class ConfigManager implements IConfigManager {
         ActionType action = loadActionFromList(section);
         String name = section.getString("name", "");
         List<String> lore = section.getStringList("lore");
-        int slot = section.getInt("slot", 0);
-        return new ConfigValues.ConfirmButtonConfig(material, name, lore, skullTexture, slot, action);
+
+        List<Integer> slots = section.getIntegerList("slots");
+        if (slots.isEmpty()) {
+            int singleSlot = section.getInt("slot", -1);
+            if (singleSlot >= 0) {
+                slots = List.of(singleSlot);
+            } else {
+                slots = List.of();
+            }
+        }
+
+        return new ConfigValues.ConfirmButtonConfig(material, name, lore, skullTexture, slots, action);
     }
 
     private ConfigValues.TitlesConfig loadTitlesConfig(ConfigurationSection auction) {
         ConfigurationSection titles = auction.getConfigurationSection("titles");
+        String main = titles.getString("main");
+        String selling = titles.getString("selling");
+        String expired = titles.getString("expired");
+        String quantity = titles.getString("quantity");
+        String confirmBuy = titles.getString("confirm-buy");
         return new ConfigValues.TitlesConfig(
-                titles.getString("main"),
-                titles.getString("selling"),
-                titles.getString("expired"),
-                titles.getString("quantity")
+                main,
+                selling,
+                expired,
+                quantity,
+                confirmBuy
         );
     }
 
     private ConfigValues.SortMenuConfig loadSortMenuConfig(ConfigurationSection auction) {
         ConfigurationSection sortMenu = auction.getConfigurationSection("sort-menu");
+        String name = sortMenu.getString("name");
+        String selectedPrefix = sortMenu.getString("selected-prefix");
+        String unselectedPrefix = sortMenu.getString("unselected-prefix");
+        String footer = sortMenu.getString("footer");
         return new ConfigValues.SortMenuConfig(
                 Material.matchMaterial(sortMenu.getString("material")),
-                sortMenu.getString("name"),
-                sortMenu.getString("selected-prefix"),
-                sortMenu.getString("unselected-prefix"),
-                sortMenu.getString("footer")
+                name,
+                selectedPrefix,
+                unselectedPrefix,
+                footer
         );
     }
 
@@ -236,52 +265,76 @@ public final class ConfigManager implements IConfigManager {
 
     private ConfigValues.QuantityMenuConfig loadQuantityMenuConfig(ConfigurationSection auction) {
         ConfigurationSection qMenu = auction.getConfigurationSection("quantity-menu");
+
+        int slotAmount = qMenu.getInt("slot-amount");
+        int sizeMenu = qMenu.getInt("size-menu");
+
+        ConfigValues.ButtonConfig decrease10 = loadButtonConfig(qMenu.getConfigurationSection("decrease-10"));
+        ConfigValues.ButtonConfig decrease1 = loadButtonConfig(qMenu.getConfigurationSection("decrease-1"));
+        ConfigValues.ButtonConfig amount = loadButtonConfig(qMenu.getConfigurationSection("amount"));
+        ConfigValues.ButtonConfig increase1 = loadButtonConfig(qMenu.getConfigurationSection("increase-1"));
+        ConfigValues.ButtonConfig increase10 = loadButtonConfig(qMenu.getConfigurationSection("increase-10"));
+
+        Map<Integer, ConfigValues.GlassPane> glassPanes = loadGlassPanes(qMenu.getMapList("glass"));
+
         return new ConfigValues.QuantityMenuConfig(
-                qMenu.getInt("slot-decrease-10", 10),
-                qMenu.getInt("slot-decrease-1", 11),
-                qMenu.getInt("slot-amount", 13),
-                qMenu.getInt("slot-increase-1", 15),
-                qMenu.getInt("slot-increase-10", 16),
-                loadButtonConfig(qMenu.getConfigurationSection("decrease-10")),
-                loadButtonConfig(qMenu.getConfigurationSection("decrease-1")),
-                loadButtonConfig(qMenu.getConfigurationSection("amount")),
-                loadButtonConfig(qMenu.getConfigurationSection("increase-1")),
-                loadButtonConfig(qMenu.getConfigurationSection("increase-10"))
+                slotAmount,
+                sizeMenu,
+                decrease10,
+                decrease1,
+                amount,
+                increase1,
+                increase10,
+                glassPanes
         );
     }
 
     private ConfigValues.NavigationConfig loadNavigationConfig(ConfigurationSection auction) {
         ConfigurationSection nav = auction.getConfigurationSection("navigation");
+        ConfigurationSection previous = nav.getConfigurationSection("previous");
+        ConfigurationSection refresh = nav.getConfigurationSection("refresh");
+        ConfigurationSection next = nav.getConfigurationSection("next");
+        ConfigurationSection selling = nav.getConfigurationSection("selling");
+        ConfigurationSection expired = nav.getConfigurationSection("expired");
+        ConfigurationSection sort = nav.getConfigurationSection("sort");
+        ConfigurationSection categories = nav.getConfigurationSection("categories");
         return new ConfigValues.NavigationConfig(
-                loadNavigationButton(nav.getConfigurationSection("previous")),
-                loadNavigationButton(nav.getConfigurationSection("refresh")),
-                loadNavigationButton(nav.getConfigurationSection("next")),
-                loadNavigationButton(nav.getConfigurationSection("selling")),
-                loadNavigationButton(nav.getConfigurationSection("expired")),
-                loadNavigationButton(nav.getConfigurationSection("sort")),
-                loadNavigationButton(nav.getConfigurationSection("categories"))
+                loadNavigationButton(previous),
+                loadNavigationButton(refresh),
+                loadNavigationButton(next),
+                loadNavigationButton(selling),
+                loadNavigationButton(expired),
+                loadNavigationButton(sort),
+                loadNavigationButton(categories)
         );
     }
 
     private ConfigValues.CategoryMenuConfig loadCategoryMenuConfig(ConfigurationSection auction) {
-        ConfigurationSection sec = auction.getConfigurationSection("category-menu");
+        ConfigurationSection section = auction.getConfigurationSection("category-menu");
+        String name = section.getString("name");
+        String selectedPrefix = section.getString("selected-prefix");
+        String unselectedPrefix = section.getString("unselected-prefix");
+        String footer = section.getString("footer");
         return new ConfigValues.CategoryMenuConfig(
-                Material.matchMaterial(sec.getString("material", "HOPPER")),
-                sec.getString("name"),
-                sec.getString("selected-prefix"),
-                sec.getString("unselected-prefix"),
-                sec.getString("footer")
+                Material.matchMaterial(section.getString("material", "HOPPER")),
+                name,
+                selectedPrefix,
+                unselectedPrefix,
+                footer
         );
     }
 
     private ConfigValues.NavigationButton loadNavigationButton(ConfigurationSection section) {
         ParsedMaterial parsed = parseMaterialAndTexture(section);
         ActionType action = loadActionFromList(section);
+        int slot = section.getInt("slot");
+        String name = section.getString("name");
+        List<String> lore = section.getStringList("lore");
         return new ConfigValues.NavigationButton(
-                section.getInt("slot", 0),
+                slot,
                 parsed.material(),
-                section.getString("name", ""),
-                List.copyOf(section.getStringList("lore")),
+                name,
+                lore,
                 parsed.skullTexture(),
                 action
         );
@@ -292,12 +345,22 @@ public final class ConfigManager implements IConfigManager {
         String name = section.getString("name", "");
         String title = section.getString("title", name);
         ActionType action = loadActionFromList(section);
+
+        List<Integer> slots = section.getIntegerList("slots");
+        if (slots.isEmpty()) {
+            int singleSlot = section.getInt("slot", -1);
+            if (singleSlot >= 0) {
+                slots = List.of(singleSlot);
+            }
+        }
+
         return new ConfigValues.ButtonConfig(
                 parsed.material(),
                 title.isEmpty() ? name : title,
                 List.copyOf(section.getStringList("lore")),
                 parsed.skullTexture(),
-                action
+                action,
+                slots
         );
     }
 
