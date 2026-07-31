@@ -22,46 +22,135 @@ public final class AuctionMenuHolder implements InventoryHolder {
     private final String searchFilter;
     private final long lotId;
     private final int maxAmount;
-    private final int totalPages;
+    private int totalPages;
     private final String category;
     private final AuctionItem auctionItem;
+    private final int confirmAmount;
+    private final long confirmLotId;
 
     private int selectedAmount;
     private Inventory inventory;
 
-    private final int confirmAmount;
-    private final long confirmLotId;
-
     private final Map<Integer, Long> lotsBySlot = new HashMap<>();
     private final Map<Integer, Integer> lotsAmountBySlot = new HashMap<>();
 
-    public AuctionMenuHolder(AuctionViewType viewType, AuctionCurrency currency, UUID viewer, int page,
-                             AuctionSort sort, String sellerFilter, String searchFilter, long lotId,
-                             int selectedAmount, int totalPages, String category, int maxAmount,
-                             int confirmAmount, long confirmLotId) {
-        this(viewType, currency, viewer, page, sort, sellerFilter, searchFilter, lotId,
-                selectedAmount, totalPages, category, maxAmount, null, confirmAmount, confirmLotId);
+    private AuctionMenuHolder(Builder builder) {
+        this.viewType = builder.viewType;
+        this.currency = builder.currency;
+        this.viewer = builder.viewer;
+        this.page = builder.page;
+        this.sort = builder.sort;
+        this.sellerFilter = builder.sellerFilter;
+        this.searchFilter = builder.searchFilter;
+        this.lotId = builder.lotId;
+        this.selectedAmount = builder.selectedAmount;
+        this.totalPages = builder.totalPages;
+        this.category = builder.category;
+        this.maxAmount = builder.maxAmount;
+        this.auctionItem = builder.auctionItem;
+        this.confirmAmount = builder.confirmAmount;
+        this.confirmLotId = builder.confirmLotId;
     }
 
-    public AuctionMenuHolder(AuctionViewType viewType, AuctionCurrency currency, UUID viewer, int page,
-                             AuctionSort sort, String sellerFilter, String searchFilter, long lotId,
-                             int selectedAmount, int totalPages, String category, int maxAmount,
-                             AuctionItem auctionItem, int confirmAmount, long confirmLotId) {
-        this.viewType = viewType;
-        this.currency = currency;
-        this.viewer = viewer;
-        this.page = page;
-        this.sort = sort;
-        this.sellerFilter = sellerFilter;
-        this.searchFilter = searchFilter;
-        this.lotId = lotId;
-        this.selectedAmount = selectedAmount;
-        this.totalPages = totalPages;
-        this.category = category;
-        this.maxAmount = maxAmount;
-        this.auctionItem = auctionItem;
-        this.confirmAmount = confirmAmount;
-        this.confirmLotId = confirmLotId;
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static final class Builder {
+        private AuctionViewType viewType;
+        private AuctionCurrency currency;
+        private UUID viewer;
+        private int page = 0;
+        private AuctionSort sort = AuctionSort.NEWEST;
+        private String sellerFilter = null;
+        private String searchFilter = null;
+        private long lotId = -1;
+        private int selectedAmount = 1;
+        private int totalPages = 1;
+        private String category = null;
+        private int maxAmount = 0;
+        private AuctionItem auctionItem = null;
+        private int confirmAmount = 0;
+        private long confirmLotId = -1;
+
+        public Builder viewType(AuctionViewType viewType) {
+            this.viewType = viewType;
+            return this;
+        }
+
+        public Builder currency(AuctionCurrency currency) {
+            this.currency = currency;
+            return this;
+        }
+
+        public Builder viewer(UUID viewer) {
+            this.viewer = viewer;
+            return this;
+        }
+
+        public Builder page(int page) {
+            this.page = page;
+            return this;
+        }
+
+        public Builder sort(AuctionSort sort) {
+            this.sort = sort;
+            return this;
+        }
+
+        public Builder sellerFilter(String sellerFilter) {
+            this.sellerFilter = sellerFilter;
+            return this;
+        }
+
+        public Builder searchFilter(String searchFilter) {
+            this.searchFilter = searchFilter;
+            return this;
+        }
+
+        public Builder lotId(long lotId) {
+            this.lotId = lotId;
+            return this;
+        }
+
+        public Builder selectedAmount(int selectedAmount) {
+            this.selectedAmount = selectedAmount;
+            return this;
+        }
+
+        public Builder totalPages(int totalPages) {
+            this.totalPages = totalPages;
+            return this;
+        }
+
+        public Builder category(String category) {
+            this.category = category;
+            return this;
+        }
+
+        public Builder maxAmount(int maxAmount) {
+            this.maxAmount = maxAmount;
+            return this;
+        }
+
+        public Builder auctionItem(AuctionItem auctionItem) {
+            this.auctionItem = auctionItem;
+            return this;
+        }
+
+        public Builder confirmAmount(int confirmAmount) {
+            this.confirmAmount = confirmAmount;
+            return this;
+        }
+
+        public Builder confirmLotId(long confirmLotId) {
+            this.confirmLotId = confirmLotId;
+            return this;
+        }
+
+        public AuctionMenuHolder build() {
+            return new AuctionMenuHolder(this);
+        }
     }
 
     @Override
@@ -136,6 +225,23 @@ public final class AuctionMenuHolder implements InventoryHolder {
     public void addLot(int slot, long id, int amount) {
         lotsBySlot.put(slot, id);
         lotsAmountBySlot.put(slot, amount);
+    }
+
+    public void refreshLotsFrom(AuctionMenuHolder source) {
+        lotsBySlot.clear();
+        lotsBySlot.putAll(source.lotsBySlot);
+        lotsAmountBySlot.clear();
+        lotsAmountBySlot.putAll(source.lotsAmountBySlot);
+        totalPages = source.totalPages;
+    }
+
+    public void clearLots() {
+        lotsBySlot.clear();
+        lotsAmountBySlot.clear();
+    }
+
+    public void totalPages(int totalPages) {
+        this.totalPages = totalPages;
     }
 
     public Long getLot(int slot) {

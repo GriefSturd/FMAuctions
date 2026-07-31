@@ -5,7 +5,6 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
-import java.util.List;
 import java.util.regex.Pattern;
 
 public final class TextUtils {
@@ -32,6 +31,25 @@ public final class TextUtils {
         return translateAlternateColorCodes('&', message);
     }
 
+    public static String translateAlternateColorCodes(char altColorChar, String text) {
+        char[] b = text.toCharArray();
+        for (int i = 0; i < b.length - 1; i++) {
+            if (b[i] == altColorChar && isValidColorCharacter(b[i + 1])) {
+                b[i] = COLOR_CHAR;
+                b[i + 1] = Character.toLowerCase(b[i + 1]);
+            }
+        }
+        return new String(b);
+    }
+
+    private static boolean isValidColorCharacter(char c) {
+        return switch (c) {
+            case '0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f',
+                 'A','B','C','D','E','F','r','R','k','K','l','L','m','M','n','N','o','O','x','X' -> true;
+            default -> false;
+        };
+    }
+
     public static Component component(String message) {
         if (message == null) return Component.empty();
         String colored = colorize(message);
@@ -44,29 +62,5 @@ public final class TextUtils {
     public static String plain(Component component) {
         if (component == null) return "";
         return PlainTextComponentSerializer.plainText().serialize(component);
-    }
-
-    public static String plain(String message) {
-        if (message == null || message.isEmpty()) return message;
-        return plain(component(message));
-    }
-
-    public static String translateAlternateColorCodes(char altColorChar, String textToTranslate) {
-        char[] b = textToTranslate.toCharArray();
-        for (int i = 0; i < b.length - 1; i++) {
-            if (b[i] == altColorChar && isValidColorCharacter(b[i + 1])) {
-                b[i++] = COLOR_CHAR;
-                b[i] |= 0x20;
-            }
-        }
-        return new String(b);
-    }
-
-    private static boolean isValidColorCharacter(char c) {
-        return switch (c) {
-            case '0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f',
-                 'A','B','C','D','E','F','r','R','k','K','l','L','m','M','n','N','o','O','x','X' -> true;
-            default -> false;
-        };
     }
 }

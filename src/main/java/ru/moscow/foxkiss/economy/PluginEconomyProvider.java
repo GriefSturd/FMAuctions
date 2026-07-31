@@ -2,6 +2,7 @@ package ru.moscow.foxkiss.economy;
 
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 
 public final class PluginEconomyProvider implements EconomyProvider {
@@ -9,17 +10,19 @@ public final class PluginEconomyProvider implements EconomyProvider {
     private VaultApi vaultApi;
     private PlayerPointsApi playerPointsApi;
 
-    public void init() {
+    public void init(JavaPlugin plugin) {
         try {
             vaultApi = new VaultApi();
-        } catch (Exception ignored) {
+        } catch (Exception exception) {
             vaultApi = null;
+            plugin.getLogger().warning("Vault economy is unavailable: " + exception.getMessage());
         }
 
         try {
             playerPointsApi = new PlayerPointsApi();
-        } catch (Exception ignored) {
+        } catch (Exception exception) {
             playerPointsApi = null;
+            plugin.getLogger().warning("PlayerPoints is unavailable: " + exception.getMessage());
         }
     }
 
@@ -35,7 +38,7 @@ public final class PluginEconomyProvider implements EconomyProvider {
     public boolean has(Player player, AuctionCurrency currency, double amount) {
         return switch (currency) {
             case VAULT -> vaultApi.has(player, amount);
-            case PLAYER_POINTS -> playerPointsApi.has(player, (int) Math.ceil(amount));
+            case PLAYER_POINTS -> playerPointsApi.has(player, toPointAmount(amount));
         };
     }
 
@@ -43,7 +46,7 @@ public final class PluginEconomyProvider implements EconomyProvider {
     public boolean withdraw(Player player, AuctionCurrency currency, double amount) {
         return switch (currency) {
             case VAULT -> vaultApi.withdraw(player, amount);
-            case PLAYER_POINTS -> playerPointsApi.withdraw(player, (int) Math.ceil(amount));
+            case PLAYER_POINTS -> playerPointsApi.withdraw(player, toPointAmount(amount));
         };
     }
 
@@ -51,7 +54,11 @@ public final class PluginEconomyProvider implements EconomyProvider {
     public void deposit(OfflinePlayer player, AuctionCurrency currency, double amount) {
         switch (currency) {
             case VAULT -> vaultApi.deposit(player, amount);
-            case PLAYER_POINTS -> playerPointsApi.deposit(player, (int) Math.ceil(amount));
+            case PLAYER_POINTS -> playerPointsApi.deposit(player, toPointAmount(amount));
         }
+    }
+
+    private int toPointAmount(double amount) {
+        return (int) Math.ceil(amount);
     }
 }

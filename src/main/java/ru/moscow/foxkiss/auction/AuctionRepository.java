@@ -36,7 +36,6 @@ public interface AuctionRepository {
 
     void close();
 
-    record SalesStats(int totalSales, double totalMoney) {}
     record TopSeller(String name, int soldCount, double totalEarned) {}
     record PlayerStats(int soldCount, double totalEarned) {}
 }

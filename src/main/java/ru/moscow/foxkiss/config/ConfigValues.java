@@ -20,7 +20,7 @@ public record ConfigValues(
         Map<String, Integer> playerPointsPriorityLimits,
         int maxAuctionStorageDays,
         int menuSize,
-        List<Integer> auctionSlots,
+        Set<Integer> auctionSlots,
         Map<String, Set<Material>> categories,
         Set<String> allMaterialCategories,
         Map<Integer, GlassPane> sellingGlassPanes,
@@ -35,8 +35,17 @@ public record ConfigValues(
         int exitSlot,
         ButtonConfig exitButton,
         GuiConfig guiConfig,
-        ConfirmMenuConfig confirmMenu
+        ConfirmMenuConfig confirmMenu,
+        Cooldowns cooldowns,
+        boolean bStatsEnabled
 ) {
+
+    public record Cooldowns(
+            double updateAuctionSeconds,
+            double takeItemSeconds,
+            boolean cooldownMessageEnabled,
+            boolean cooldownEnabled
+    ) {}
 
     public record GuiConfig(
             TitlesConfig titles,

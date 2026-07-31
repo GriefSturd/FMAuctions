@@ -13,8 +13,6 @@ import java.util.Map;
 
 public final class MessageManager implements IMessageManager {
 
-    private static final String MISSING_MESSAGE = "&cСообщение не найдено: ";
-
     private final Map<String, String> rawMessages;
     private final boolean placeholderApiEnabled;
     private String prefix;
@@ -44,9 +42,6 @@ public final class MessageManager implements IMessageManager {
 
     private String format(CommandSender sender, String key, Map<String, String> replacements) {
         String message = rawMessages.get(key);
-        if (message == null) {
-            message = MISSING_MESSAGE + key;
-        }
 
         message = message.replace("%prefix%", prefix);
 
@@ -54,7 +49,9 @@ public final class MessageManager implements IMessageManager {
             message = message.replace("{" + entry.getKey() + "}", entry.getValue());
         }
 
-        message = applyPlaceholderApi(sender, message);
+        if (message.indexOf('%') >= 0) {
+            message = applyPlaceholderApi(sender, message);
+        }
 
         return TextUtils.colorize(message);
     }

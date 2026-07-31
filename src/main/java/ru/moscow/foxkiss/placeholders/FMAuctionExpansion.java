@@ -4,41 +4,46 @@ import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import ru.moscow.foxkiss.FMAuction;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionRepository;
 import ru.moscow.foxkiss.economy.VaultChatApi;
 import ru.moscow.foxkiss.economy.VaultPermissionApi;
+import ru.moscow.foxkiss.utils.CacheManager;
 import ru.moscow.foxkiss.utils.PriceFormatter;
 
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
 import java.util.*;
 import java.util.logging.Level;
 
 public final class FMAuctionExpansion extends PlaceholderExpansion {
 
-    private static final AuctionCurrency CURRENCY = AuctionCurrency.VAULT;
-    private static final int TOP_LIMIT = 5;
+    private static final AuctionCurrency auctionCurrency = AuctionCurrency.VAULT;
 
-    private final FMAuction plugin;
+    private final JavaPlugin plugin;
     private final AuctionRepository repository;
     private final VaultChatApi vaultChat;
     private final VaultPermissionApi vaultPerm;
+    private BukkitTask cacheTask;
 
     private volatile List<TopPlayerInfo> cachedTop = Collections.emptyList();
     private final Map<UUID, CachedPlayerStats> statsCache = new HashMap<>();
 
-    public FMAuctionExpansion(FMAuction plugin, AuctionRepository repository) {
+    public FMAuctionExpansion(JavaPlugin plugin, AuctionRepository repository, CacheManager cacheManager) {
         this.plugin = plugin;
         this.repository = repository;
         this.vaultChat = new VaultChatApi();
         this.vaultPerm = new VaultPermissionApi();
 
-        scheduleCacheRefresh();
-        refreshCacheAsync();
+        cacheManager.registerClearTask(() -> {
+            statsCache.clear();
+            cachedTop = Collections.emptyList();
+        });
+
+        scheduleCacheUpdate();
+        updateCacheAsync();
     }
 
     @Override
@@ -94,7 +99,7 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
         } catch (NumberFormatException e) {
             return null;
         }
-        if (position < 1 || position > TOP_LIMIT) {
+        if (position < 1 || position > 5) {
             return null;
         }
 
@@ -133,7 +138,7 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
             return field.equals("sold") ? String.valueOf(cached.sold()) : formatMoney(cached.money());
         }
 
-        repository.getPlayerStats(name, CURRENCY).thenAccept(stats -> {
+        repository.getPlayerStats(name, auctionCurrency).thenAccept(stats -> {
             statsCache.put(player.getUniqueId(), new CachedPlayerStats(stats.soldCount(), stats.totalEarned(), System.currentTimeMillis()));
         });
 
@@ -143,19 +148,26 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
         return "0";
     }
 
-    private void scheduleCacheRefresh() {
-        Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::refreshCacheAsync, 1200L, 6000L);
+    private void scheduleCacheUpdate() {
+        cacheTask = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::updateCacheAsync, 1200L, 6000L);
+    }
+
+    public void disable() {
+        if (cacheTask != null) {
+            cacheTask.cancel();
+            cacheTask = null;
+        }
     }
 
     private String formatMoney(double amount) {
         return PriceFormatter.format(amount);
     }
 
-    private void refreshCacheAsync() {
-        repository.getTopSellers(CURRENCY, 1000)
+    private void updateCacheAsync() {
+        repository.getTopSellers(auctionCurrency, 1000)
                 .thenApply(list -> {
                     list.sort((a, b) -> Double.compare(b.totalEarned(), a.totalEarned()));
-                    return list.size() > TOP_LIMIT ? list.subList(0, TOP_LIMIT) : list;
+                    return list.size() > 5 ? list.subList(0, 5) : list;
                 })
                 .thenApply(list -> {
                     List<TopPlayerInfo> result = new ArrayList<>(list.size());
@@ -167,7 +179,7 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
                 })
                 .thenAccept(result -> cachedTop = Collections.unmodifiableList(result))
                 .exceptionally(ex -> {
-                    plugin.getLogger().log(Level.WARNING, "Failed to refresh auction top cache", ex);
+                    plugin.getLogger().log(Level.WARNING, "Не удалось обновить топ кэш аукциона", ex);
                     return null;
                 });
     }

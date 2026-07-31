@@ -7,14 +7,12 @@ import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.enums.ActionType;
+import ru.moscow.foxkiss.utils.ItemUtils;
 
+import java.io.File;
 import java.util.*;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 public final class ConfigManager implements IConfigManager {
-
-    private static final List<String> MESSAGE_ROOTS = List.of("commands", "search", "messages");
 
     private final JavaPlugin plugin;
     private ConfigValues configValues;
@@ -28,6 +26,7 @@ public final class ConfigManager implements IConfigManager {
     public void reload() {
         plugin.saveDefaultConfig();
         plugin.reloadConfig();
+        loadItemsYml();
         FileConfiguration config = plugin.getConfig();
 
         ConfigurationSection database = config.getConfigurationSection("database");
@@ -38,6 +37,15 @@ public final class ConfigManager implements IConfigManager {
         String dbName = database.getString("database");
 
         String prefix = config.getString("prefix");
+        boolean bStatsEnabled = config.getBoolean("enable-bstats");
+
+        ConfigurationSection cooldowns = config.getConfigurationSection("cooldowns");
+        ConfigValues.Cooldowns cooldownValues = new ConfigValues.Cooldowns(
+                Math.max(0.0D, cooldowns.getDouble("update-auc")),
+                Math.max(0.0D, cooldowns.getDouble("take-item")),
+                cooldowns.getBoolean("enable-cooldown-message"),
+                cooldowns.getBoolean("enable-cooldown")
+        );
 
         ConfigurationSection vaultAuc = config.getConfigurationSection("vault-auc");
         ConfigurationSection ppAuc = config.getConfigurationSection("playerpoints-auc");
@@ -49,9 +57,9 @@ public final class ConfigManager implements IConfigManager {
         ConfigurationSection auction = config.getConfigurationSection("auction");
         int maxStorageDays = auction.getInt("max-storage-days");
         int menuSize = auction.getInt("menu-size");
-        List<Integer> activeSlots = auction.getIntegerList("active-slots");
+        Set<Integer> activeSlots = new HashSet<>(auction.getIntegerList("active-slots"));
 
-        Map<String, Set<Material>> categoryMaterials = new LinkedHashMap<>();
+        Map<String, Set<Material>> categoryMaterials = new HashMap<>();
         Set<String> allMaterialCategories = new HashSet<>();
         ConfigurationSection categories = config.getConfigurationSection("categories");
         for (String cat : categories.getKeys(false)) {
@@ -84,8 +92,8 @@ public final class ConfigManager implements IConfigManager {
         Map<String, String> messages = new HashMap<>();
         messages.put("prefix", prefix);
 
-
-        for (String root : MESSAGE_ROOTS) {
+        List<String> messageRoots = List.of("commands", "search", "messages");
+        for (String root : messageRoots) {
             ConfigurationSection sec = config.getConfigurationSection(root);
             flattenMessages(sec, root, messages);
         }
@@ -96,15 +104,18 @@ public final class ConfigManager implements IConfigManager {
         messages = Map.copyOf(messages);
 
         ConfigurationSection sortingSection = auction.getConfigurationSection("sorting");
-        Map<String, String> sortingNames = sortingSection.getKeys(false).stream()
-                .collect(Collectors.toUnmodifiableMap(Function.identity(), sortingSection::getString));
+        Map<String, String> sortingNames = new HashMap<>();
+        for (String key : sortingSection.getKeys(false)) {
+            sortingNames.put(key, sortingSection.getString(key));
+        }
+        sortingNames = Map.copyOf(sortingNames);
 
         ConfigurationSection categoryNamesSection = auction.getConfigurationSection("category-names");
-        Map<String, String> categoryNames = categoryNamesSection.getKeys(false).stream()
-                .collect(Collectors.toUnmodifiableMap(
-                        key -> key.toLowerCase(),
-                        categoryNamesSection::getString
-                ));
+        Map<String, String> categoryNames = new HashMap<>();
+        for (String key : categoryNamesSection.getKeys(false)) {
+            categoryNames.put(key.toLowerCase(), categoryNamesSection.getString(key));
+        }
+        categoryNames = Map.copyOf(categoryNames);
 
         ConfigurationSection symbolSection = config.getConfigurationSection("symbol_value");
         String symbolVault = symbolSection.getString("money");
@@ -127,7 +138,7 @@ public final class ConfigManager implements IConfigManager {
                 messages, sortingNames, categoryNames,
                 symbolVault, symbolPlayerPoints,
                 exitSlot, exitButton, guiConfig,
-                confirmMenuConfig
+                confirmMenuConfig, cooldownValues, bStatsEnabled
         );
     }
 
@@ -137,11 +148,11 @@ public final class ConfigManager implements IConfigManager {
     }
 
     private Map<String, Integer> loadLimits(ConfigurationSection section) {
-        return section.getKeys(false).stream()
-                .collect(Collectors.toUnmodifiableMap(
-                        key -> key.toLowerCase(),
-                        section::getInt
-                ));
+        Map<String, Integer> limits = new HashMap<>();
+        for (String key : section.getKeys(false)) {
+            limits.put(key.toLowerCase(), section.getInt(key));
+        }
+        return Map.copyOf(limits);
     }
 
     private Map<Integer, ConfigValues.GlassPane> loadGlassPanes(List<Map<?, ?>> list) {
@@ -418,5 +429,13 @@ public final class ConfigManager implements IConfigManager {
             String parentKey = path.substring(previousDot + 1).toLowerCase().replace('.', '-');
             output.put(parentKey, message);
         }
+    }
+
+    private void loadItemsYml() {
+        File itemsFile = new File(plugin.getDataFolder(), "items.yml");
+        if (!itemsFile.exists()) {
+            plugin.saveResource("items.yml", false);
+        }
+        ItemUtils.loadTranslations(itemsFile);
     }
 }

@@ -10,10 +10,9 @@ public final class VaultChatApi {
     private final Chat chat;
 
     public VaultChatApi() {
-        RegisteredServiceProvider<Chat> provider =
-                Bukkit.getServicesManager().getRegistration(Chat.class);
+        RegisteredServiceProvider<Chat> provider = Bukkit.getServicesManager().getRegistration(Chat.class);
 
-        if (provider == null || provider.getProvider() == null) {
+        if (provider == null) {
             throw new IllegalStateException("Vault chat provider not found");
         }
 

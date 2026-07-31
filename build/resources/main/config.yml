@@ -5,6 +5,14 @@ database:
   password: ""
   database: ""
 
+enable-bstats: true
+
+cooldowns:
+  update-auc: 0.3 #(0.3 = 300 миллисекунд, 1.0 = 1 секунда)
+  take-item: 0.3 #кд на забирае предметов из просроченных/активных лотах менюшке
+  enable-cooldown-message: false
+  enable-cooldown: true
+
 vault-auc:
   groups:
     default: 1
@@ -950,6 +958,7 @@ commands:
     air: "%prefix% §fНельзя продать воздух"
     success: "%prefix% §fВаш предмет §aвыставлен§f на продажу за {symbol_value}"
     limit-reached: "%prefix% §fЛимит на выставление предметов &cизчерпан!"
+    database-error: "%prefix% §cНе удалось выставить предмет. Проверьте консоль сервера."
 
 search:
   not-found: "%prefix% §fТакой игрок не найден.."
@@ -988,3 +997,5 @@ messages:
   selling:
     take: "%prefix% §fВы успешно &aзабрали &fпредмет с продажи."
   cooldown: "%prefix% §cВоу, не так быстро! &7Подожди немного..."
+  inventory-full: "%prefix% §cВаш инвентарь полон! Освободите место и попробуйте снова."
+  cooldown-item: "%prefix% &fПодождите ещё"
