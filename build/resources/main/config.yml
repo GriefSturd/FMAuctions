@@ -8,6 +8,13 @@ database:
 enable-bstats: true #будьти добры, не выклучайте пж(
 use-papi: true
 
+# Ограничения цен для аукционов
+price-limits:
+  min-price-money-auc: 100        # Минимальная цена для обычного аукциона (деньги)
+  min-price-money-dauc: 150       # Минимальная цена для донатерского аукциона (деньги) 
+  max-price-money-auc: 100000000  # Максимальная цена для обычного аукциона (деньги)
+  max-price-money-dauc: 1000000   # Максимальная цена для донатерского аукциона (деньги)
+
 cooldowns:
   update-auc: 0.3 #(0.3 = 300 миллисекунд, 1.0 = 1 секунда)
   take-item: 0.3 #кд на забирае предметов из просроченных/активных лотах менюшке
@@ -956,6 +963,8 @@ commands:
   sell:
     cooldown: "%prefix% §fНе торопись!"
     non-price: "%prefix% §fНеверная цена"
+    price-too-low: "%prefix% §cЦена слишком низкая! Минимум: §e{min_price}{symbol_value}"
+    price-too-high: "%prefix% §cЦена слишком высокая! Максимум: §e{max_price}{symbol_value}"
     air: "%prefix% §fНельзя продать воздух"
     success: "%prefix% §fВаш предмет §aвыставлен§f на продажу за {symbol_value}"
     limit-reached: "%prefix% §fЛимит на выставление предметов &cизчерпан!"

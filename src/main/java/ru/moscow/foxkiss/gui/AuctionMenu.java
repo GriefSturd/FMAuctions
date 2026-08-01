@@ -136,11 +136,7 @@ public final class AuctionMenu {
         scheduler.runAsyncThenSync(
             () -> {
                 try {
-                    // ОДИН SQL-запрос вместо 3-4 отдельных
-                    AuctionRepository.MenuData menuData = repository.loadMenuData(
-                            currency, playerName, maxStorageDays, page, pageSize,
-                            finalSort, finalCategory, finalSellerFilter, finalSearch);
-                    
+                    AuctionRepository.MenuData menuData = repository.loadMenuData(currency, playerName, maxStorageDays, page, pageSize, finalSort, finalCategory, finalSellerFilter, finalSearch);
                     return new LoadResult(menuData.items(), menuData.sellingCount(), menuData.expiredCount(), null);
                 } catch (Exception e) {
                     plugin.getLogger().warning("Ошибка загрузки аукциона: " + e.getMessage());

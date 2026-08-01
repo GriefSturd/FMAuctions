@@ -26,9 +26,6 @@ public final class H2LibraryLoader {
     private static URLClassLoader classLoader;
     private static final Object lock = new Object();
 
-    private H2LibraryLoader() {
-    }
-
     public static DataSource loadDataSource(JavaPlugin plugin, String jdbcUrl) {
         URLClassLoader loader = getClassLoader(plugin);
         try {

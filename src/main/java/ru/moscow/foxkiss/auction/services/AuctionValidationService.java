@@ -28,6 +28,40 @@ public final class AuctionValidationService {
         return price > 0;
     }
 
+    public boolean isPriceInRange(double price, AuctionCurrency currency, boolean isDonateAuction) {
+        var priceLimits = configManager.getConfigValues().priceLimits();
+        
+        if (currency == AuctionCurrency.VAULT) {
+            if (isDonateAuction) {
+                return price >= priceLimits.minPriceMoneyDauc() && price <= priceLimits.maxPriceMoneyDauc();
+            } else {
+                return price >= priceLimits.minPriceMoneyAuc() && price <= priceLimits.maxPriceMoneyAuc();
+            }
+        }
+        
+        return true;
+    }
+    
+    public double getMinPrice(AuctionCurrency currency, boolean isDonateAuction) {
+        var priceLimits = configManager.getConfigValues().priceLimits();
+        
+        if (currency == AuctionCurrency.VAULT) {
+            return isDonateAuction ? priceLimits.minPriceMoneyDauc() : priceLimits.minPriceMoneyAuc();
+        }
+        
+        return 0.01;
+    }
+    
+    public double getMaxPrice(AuctionCurrency currency, boolean isDonateAuction) {
+        var priceLimits = configManager.getConfigValues().priceLimits();
+        
+        if (currency == AuctionCurrency.VAULT) {
+            return isDonateAuction ? priceLimits.maxPriceMoneyDauc() : priceLimits.maxPriceMoneyAuc();
+        }
+        
+        return Double.MAX_VALUE;
+    }
+
     public boolean isSellableItem(ItemStack item) {
         return ItemUtils.isSellable(item);
     }

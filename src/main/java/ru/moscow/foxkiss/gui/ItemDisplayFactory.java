@@ -47,6 +47,13 @@ public final class ItemDisplayFactory {
 
         ObjectArrayList<Component> lore = new ObjectArrayList<>();
 
+        if (meta != null && meta.hasLore()) {
+            List<Component> originalLore = meta.lore();
+            if (originalLore != null) {
+                lore.addAll(originalLore);
+            }
+        }
+
         ConfigValues config = configManager.getConfigValues();
         ConfigValues.ItemLoreConfig loreConfig = config.guiConfig().itemLore();
 
@@ -72,8 +79,10 @@ public final class ItemDisplayFactory {
             lore.add(TextUtils.component(processed));
         }
 
-        meta.lore(lore);
-        base.setItemMeta(meta);
+        if (meta != null) {
+            meta.lore(lore);
+            base.setItemMeta(meta);
+        }
 
         lotCache.put(id, base.clone());
         return base;
@@ -98,23 +107,11 @@ public final class ItemDisplayFactory {
     }
 
     public ItemStack createButton(ConfigValues.ButtonConfig config) {
-        return createButton(
-                config.material(),
-                config.name(),
-                config.lore(),
-                config.skullTexture(),
-                config.action()
-        );
+        return createButton(config.material(), config.name(), config.lore(), config.skullTexture(), config.action());
     }
 
     public ItemStack createButton(ConfigValues.ConfirmButtonConfig config) {
-        return createButton(
-                config.material(),
-                config.name(),
-                config.lore(),
-                config.skullTexture(),
-                config.action()
-        );
+        return createButton(config.material(), config.name(), config.lore(), config.skullTexture(), config.action());
     }
 
     public ItemStack createNavigationButton(ConfigValues.NavigationButton button, List<String> lore) {
@@ -127,7 +124,6 @@ public final class ItemDisplayFactory {
         ConfigValues.SortMenuConfig sortMenu = config.guiConfig().sortMenu();
         ConfigValues.NavigationConfig nav = config.guiConfig().navigation();
 
-        // Используем ObjectArrayList
         ObjectArrayList<String> lore = new ObjectArrayList<>();
         for (AuctionSort sort : AuctionSort.values()) {
             String display = config.sortingNames().getOrDefault(sort.name(), sort.name());
@@ -182,6 +178,15 @@ public final class ItemDisplayFactory {
                 ItemFlag.HIDE_PLACED_ON);
 
         ObjectArrayList<Component> lore = new ObjectArrayList<>();
+
+        if (meta.hasLore()) {
+            List<Component> originalLore = meta.lore();
+            if (originalLore != null) {
+                lore.addAll(originalLore);
+                lore.add(Component.empty());
+            }
+        }
+        
         double totalPrice = item.pricePerItem() * selectedAmount;
         String totalPriceFormatted = PriceFormatter.format(totalPrice);
 

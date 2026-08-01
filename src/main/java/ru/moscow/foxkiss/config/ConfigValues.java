@@ -37,9 +37,17 @@ public record ConfigValues(
         GuiConfig guiConfig,
         ConfirmMenuConfig confirmMenu,
         Cooldowns cooldowns,
+        PriceLimits priceLimits,
         boolean bStatsEnabled,
         boolean usePapi
 ) {
+
+    public record PriceLimits(
+            double minPriceMoneyAuc,
+            double minPriceMoneyDauc,
+            double maxPriceMoneyAuc,
+            double maxPriceMoneyDauc
+    ) {}
 
     public record Cooldowns(
             double updateAuctionSeconds,
@@ -161,6 +169,8 @@ public record ConfigValues(
             String economyUnavailable,
             String air,
             String sellSuccess,
+            String priceTooLow,
+            String priceTooHigh,
             String limitReached,
             String databaseError,
             String enterPlayerName,

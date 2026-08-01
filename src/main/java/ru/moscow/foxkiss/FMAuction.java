@@ -96,9 +96,6 @@ public final class FMAuction extends JavaPlugin {
         if (auctionMenu != null) {
             auctionMenu.clearCaches();
         }
-        if (limitService != null) {
-            limitService.clearCache();
-        }
         if (auctionMenuListener != null) {
             auctionMenuListener.reloadCategories();
         }
@@ -133,7 +130,6 @@ public final class FMAuction extends JavaPlugin {
     private void registerListeners() {
         auctionMenuListener = new AuctionMenuListener(configManager, auctionMenu, auctionService, this);
         getServer().getPluginManager().registerEvents(auctionMenuListener, this);
-        getServer().getPluginManager().registerEvents(limitService, this);
     }
 
     private void registerPlaceholders() {

@@ -49,6 +49,18 @@ public final class ConfigManager implements IConfigManager {
                 cooldowns.getBoolean("enable-cooldown")
         );
 
+        ConfigurationSection priceLimitsSection = config.getConfigurationSection("price-limits");
+        if (priceLimitsSection == null) {
+            plugin.getLogger().warning("Секция 'price-limits' не найдена в config.yml! Используются значения по умолчанию.");
+            priceLimitsSection = config.createSection("price-limits");
+        }
+        ConfigValues.PriceLimits priceLimits = new ConfigValues.PriceLimits(
+                priceLimitsSection.getDouble("min-price-money-auc", 100.0),
+                priceLimitsSection.getDouble("min-price-money-dauc", 150.0),
+                priceLimitsSection.getDouble("max-price-money-auc", 100_000_000.0),
+                priceLimitsSection.getDouble("max-price-money-dauc", 1_000_000.0)
+        );
+
         ConfigurationSection vaultAuc = config.getConfigurationSection("vault-auc");
         ConfigurationSection ppAuc = config.getConfigurationSection("playerpoints-auc");
         Map<String, Integer> vaultGroupLimits = loadLimits(vaultAuc.getConfigurationSection("groups"));
@@ -128,7 +140,7 @@ public final class ConfigManager implements IConfigManager {
                 messages, sortingNames, categoryNames,
                 symbolVault, symbolPlayerPoints,
                 exitSlot, exitButton, guiConfig,
-                confirmMenuConfig, cooldownValues, bStatsEnabled, usePapi
+                confirmMenuConfig, cooldownValues, priceLimits, bStatsEnabled, usePapi
         );
     }
 
@@ -386,6 +398,8 @@ public final class ConfigManager implements IConfigManager {
         String economyUnavailable = formatMessage(config, auctionErrors.getString("economy-unavailable"));
         String air = formatMessage(config, sell.getString("air"));
         String sellSuccess = formatMessage(config, sell.getString("success"));
+        String priceTooLow = formatMessage(config, sell.getString("price-too-low"));
+        String priceTooHigh = formatMessage(config, sell.getString("price-too-high"));
         String limitReached = formatMessage(config, sell.getString("limit-reached"));
         String databaseError = formatMessage(config, sell.getString("database-error"));
         String enterPlayerName = formatMessage(config, String.join("\n", config.getStringList("search.enter-player-name")));
@@ -411,6 +425,8 @@ public final class ConfigManager implements IConfigManager {
                 economyUnavailable,
                 air,
                 sellSuccess,
+                priceTooLow,
+                priceTooHigh,
                 limitReached,
                 databaseError,
                 enterPlayerName,
