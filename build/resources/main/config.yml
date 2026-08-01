@@ -5,7 +5,7 @@ database:
   password: ""
   database: ""
 
-enable-bstats: true
+enable-bstats: true #будьти добры, не выклучайте пж(
 use-papi: true
 
 cooldowns:

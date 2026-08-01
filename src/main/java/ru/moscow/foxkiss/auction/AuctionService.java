@@ -9,16 +9,15 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.economy.EconomyProvider;
-import ru.moscow.foxkiss.gui.AuctionViewType;
 import ru.moscow.foxkiss.permissions.LimitService;
 import ru.moscow.foxkiss.utils.ItemUtils;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 import ru.moscow.foxkiss.utils.PriceFormatter;
 
-import java.util.*;
+import java.util.Optional;
+import java.util.function.Consumer;
 
 public final class AuctionService {
-
     private final JavaPlugin plugin;
     private final IConfigManager configManager;
     private final AuctionRepository repository;
@@ -33,227 +32,274 @@ public final class AuctionService {
         this.limitService = limitService;
     }
 
-    public boolean sell(Player player, AuctionCurrency currency, double price) {
+    public void sell(Player player, AuctionCurrency currency, double price) {
         if (!economyProvider.available(currency)) {
             player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().economyUnavailable(), configManager));
-            return false;
+            return;
         }
+
         if (price <= 0) {
             player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noPrice(), configManager));
-            return false;
+            return;
         }
+
         ItemStack hand = player.getInventory().getItemInMainHand();
         if (!ItemUtils.isSellable(hand)) {
             player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().air(), configManager));
-            return false;
+            return;
         }
 
         int maxDays = configManager.getConfigValues().maxAuctionStorageDays();
         int limit = limitService.getLimit(player, currency);
-        long now = System.currentTimeMillis();
-        long cutoff = now - maxDays * 86_400_000L;
-
-        int count = repository.countActiveBySellerSince(player.getName(), currency, cutoff);
-        if (count >= limit) {
-            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().limitReached(), configManager));
-            return false;
-        }
-
+        long cutoff = System.currentTimeMillis() - maxDays * 86_400_000L;
         ItemStack soldItem = hand.clone();
-        long id = repository.create(player.getName(), currency, soldItem, price);
-        if (id > 0) {
-            player.getInventory().setItemInMainHand(null);
-            String symbol = currency.symbol(configManager.getConfigValues());
-            String formatted = PriceFormatter.format(price) + " " + symbol;
-            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().sellSuccess().replace("{symbol_value}", formatted), configManager));
-            return true;
-        } else {
-            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().databaseError(), configManager));
-            return false;
-        }
+        String playerName = player.getName();
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            int count = repository.countActiveBySellerSince(playerName, currency, cutoff);
+            if (count >= limit) {
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (!player.isOnline()) return;
+                    player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().limitReached(), configManager));
+                });
+                return;
+            }
+
+            long id = repository.create(playerName, currency, soldItem, price);
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline()) return;
+                if (id <= 0) {
+                    player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().databaseError(), configManager));
+                    return;
+                }
+
+                player.getInventory().setItemInMainHand(null);
+                String symbol = currency.symbol(configManager.getConfigValues());
+                String formatted = PriceFormatter.format(price) + " " + symbol;
+                player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().sellSuccess().replace("{symbol_value}", formatted), configManager));
+            });
+        });
     }
 
-    public boolean buy(Player buyer, long lotId, int amount) {
-        if (!repository.markAsSelling(lotId)) {
-            buyer.sendMessage(PlaceholderUtils.applypapi(buyer, configManager.getConfigValues().messages().noId(), configManager));
-            return false;
-        }
+    public void buy(Player buyer, long lotId, int amount, Consumer<Boolean> callback) {
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            if (!repository.markAsSelling(lotId)) {
+                finish(buyer, callback, false, configManager.getConfigValues().messages().noId());
+                return;
+            }
 
-        Optional<AuctionItem> optItem = repository.findById(lotId);
-        if (optItem.isEmpty()) {
-            repository.restoreStatus(lotId);
-            buyer.sendMessage(PlaceholderUtils.applypapi(buyer, configManager.getConfigValues().messages().noId(), configManager));
-            return false;
-        }
+            Optional<AuctionItem> optional = repository.findById(lotId);
+            if (optional.isEmpty()) {
+                repository.restoreStatus(lotId);
+                finish(buyer, callback, false, configManager.getConfigValues().messages().noId());
+                return;
+            }
 
-        AuctionItem item = optItem.get();
+            AuctionItem item = optional.get();
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!buyer.isOnline()) {
+                    restoreAsync(lotId);
+                    callback.accept(false);
+                    return;
+                }
 
-        if (item.sellerName().equals(buyer.getName())) {
-            repository.restoreStatus(lotId);
-            buyer.sendMessage(PlaceholderUtils.applypapi(buyer, configManager.getConfigValues().messages().noOwn(), configManager));
-            return false;
-        }
+                if (item.sellerName().equalsIgnoreCase(buyer.getName())) {
+                    restoreAndFinish(buyer, lotId, callback, false, configManager.getConfigValues().messages().noOwn());
+                    return;
+                }
 
-        if (item.expired(configManager.getConfigValues().maxAuctionStorageDays())) {
-            repository.restoreStatus(lotId);
-            buyer.sendMessage(PlaceholderUtils.applypapi(buyer, configManager.getConfigValues().messages().noId(), configManager));
-            return false;
-        }
+                if (item.expired(configManager.getConfigValues().maxAuctionStorageDays())) {
+                    restoreAndFinish(buyer, lotId, callback, false, configManager.getConfigValues().messages().noId());
+                    return;
+                }
 
-        int buyAmount = Math.max(1, Math.min(amount, item.amount()));
-        ItemStack bought = item.itemStackClone();
-        bought.setAmount(buyAmount);
+                int buyAmount = Math.max(1, Math.min(amount, item.amount()));
+                ItemStack bought = item.itemStackClone();
+                bought.setAmount(buyAmount);
 
-        if (!canFit(buyer, bought)) {
-            repository.restoreStatus(lotId);
-            buyer.sendMessage(PlaceholderUtils.applypapi(buyer, configManager.getConfigValues().messages().inventoryFull(), configManager));
-            return false;
-        }
+                if (!canFit(buyer, bought)) {
+                    restoreAndFinish(buyer, lotId, callback, false, configManager.getConfigValues().messages().inventoryFull());
+                    return;
+                }
 
-        double totalPrice = item.pricePerItem() * buyAmount;
+                double totalPrice = item.pricePerItem() * buyAmount;
+                if (!economyProvider.has(buyer, item.currency(), totalPrice)) {
+                    restoreAndFinish(buyer, lotId, callback, false, configManager.getConfigValues().messages().nomoney());
+                    return;
+                }
 
-        if (!economyProvider.has(buyer, item.currency(), totalPrice)) {
-            repository.restoreStatus(lotId);
-            buyer.sendMessage(PlaceholderUtils.applypapi(buyer, configManager.getConfigValues().messages().nomoney(), configManager));
-            return false;
-        }
+                if (!economyProvider.withdraw(buyer, item.currency(), totalPrice)) {
+                    restoreAndFinish(buyer, lotId, callback, false, configManager.getConfigValues().messages().nomoney());
+                    return;
+                }
 
-        if (!economyProvider.withdraw(buyer, item.currency(), totalPrice)) {
-            repository.restoreStatus(lotId);
-            buyer.sendMessage(PlaceholderUtils.applypapi(buyer, configManager.getConfigValues().messages().nomoney(), configManager));
-            return false;
-        }
+                Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                    boolean deleted = repository.delete(lotId);
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (!buyer.isOnline()) {
+                            if (deleted) economyProvider.deposit(buyer, item.currency(), totalPrice);
+                            callback.accept(false);
+                            return;
+                        }
 
-        boolean deleted = repository.delete(lotId);
-        if (!deleted) {
-            economyProvider.deposit(buyer, item.currency(), totalPrice);
-            repository.restoreStatus(lotId);
-            buyer.sendMessage(PlaceholderUtils.applypapi(buyer, configManager.getConfigValues().messages().noId(), configManager));
-            return false;
-        }
+                        if (!deleted) {
+                            economyProvider.deposit(buyer, item.currency(), totalPrice);
+                            repository.restoreStatus(lotId);
+                            buyer.sendMessage(PlaceholderUtils.applypapi(buyer, configManager.getConfigValues().messages().noId(), configManager));
+                            callback.accept(false);
+                            return;
+                        }
 
+                        finishPurchase(buyer, item, buyAmount, totalPrice, callback);
+                    });
+                });
+            });
+        });
+    }
+
+    private void finishPurchase(Player buyer, AuctionItem item, int buyAmount, double totalPrice, Consumer<Boolean> callback) {
         try {
-            ItemStack boughtFinal = item.itemStackClone();
-            boughtFinal.setAmount(buyAmount);
-            buyer.getInventory().addItem(boughtFinal).values()
-                    .forEach(left -> buyer.getWorld().dropItemNaturally(buyer.getLocation(), left));
-
+            ItemStack bought = item.itemStackClone();
+            bought.setAmount(buyAmount);
+            buyer.getInventory().addItem(bought).values().forEach(left -> buyer.getWorld().dropItemNaturally(buyer.getLocation(), left));
             int leftAmount = item.amount() - buyAmount;
             if (leftAmount > 0) {
                 ItemStack left = item.itemStackClone();
                 left.setAmount(leftAmount);
                 double leftPrice = item.pricePerItem() * leftAmount;
-                repository.create(item.sellerName(), item.currency(), left, leftPrice);
+                Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> repository.create(item.sellerName(), item.currency(), left, leftPrice));
             }
 
             OfflinePlayer seller = Bukkit.getOfflinePlayer(item.sellerName());
             economyProvider.deposit(seller, item.currency(), totalPrice);
-
-            repository.recordSale(
-                    item.sellerName(),
-                    buyer.getName(),
-                    item.currency(),
-                    boughtFinal.getType().name(),
-                    buyAmount,
-                    totalPrice
-            );
-
-            String itemDisplayName = ItemUtils.getItemDisplayName(boughtFinal);
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> repository.recordSale(item.sellerName(), buyer.getName(), item.currency(), bought.getType().name(), buyAmount, totalPrice));
+            String itemDisplayName = ItemUtils.getItemDisplayName(bought);
             String priceStr = PriceFormatter.format(totalPrice);
             String symbol = item.currency().symbol(configManager.getConfigValues());
             buyer.sendMessage(PlaceholderUtils.applypapi(buyer, configManager.getConfigValues().messages().yspex().replace("{symbol_value}", priceStr + " " + symbol), configManager));
-
             Player onlineSeller = Bukkit.getPlayer(item.sellerName());
             if (onlineSeller != null) {
-                onlineSeller.sendMessage(PlaceholderUtils.applypapi(onlineSeller, configManager.getConfigValues().messages().buySeller()
-                        .replace("{buyer}", buyer.getName())
-                        .replace("{item_name}", itemDisplayName)
-                        .replace("{amount}", String.valueOf(buyAmount))
-                        .replace("{price}", priceStr)
-                        .replace("{symbol_value}", symbol), configManager));
+                onlineSeller.sendMessage(PlaceholderUtils.applypapi(onlineSeller,
+                        configManager.getConfigValues().messages().buySeller()
+                                .replace("{buyer}", buyer.getName())
+                                .replace("{item_name}", itemDisplayName)
+                                .replace("{amount}", String.valueOf(buyAmount))
+                                .replace("{price}", priceStr)
+                                .replace("{symbol_value}", symbol),
+                        configManager));
             }
-            return true;
+            callback.accept(true);
+
         } catch (Exception e) {
             plugin.getLogger().warning("Ошибка при завершении покупки: " + e.getMessage());
             economyProvider.deposit(buyer, item.currency(), totalPrice);
-            repository.restoreStatus(lotId);
+            restoreAsync(item.id());
             buyer.sendMessage(PlaceholderUtils.applypapi(buyer, configManager.getConfigValues().messages().databaseError(), configManager));
-            return false;
+            callback.accept(false);
         }
     }
 
-    public boolean take(Player player, long lotId) {
-        if (!repository.markAsSelling(lotId)) {
-            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
-            return false;
-        }
+    public void take(Player player, long lotId, Consumer<Boolean> callback) {
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            if (!repository.markAsSelling(lotId)) {
+                finish(player, callback, false, configManager.getConfigValues().messages().noId());
+                return;
+            }
 
-        Optional<AuctionItem> optItem = repository.findById(lotId);
-        if (optItem.isEmpty()) {
+            Optional<AuctionItem> optional = repository.findById(lotId);
+            if (optional.isEmpty()) {
+                repository.restoreStatus(lotId);
+                finish(player, callback, false, configManager.getConfigValues().messages().noId());
+                return;
+            }
+
+            AuctionItem item = optional.get();
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline()) {
+                    restoreAsync(lotId);
+                    callback.accept(false);
+                    return;
+                }
+
+                if (!item.sellerName().equalsIgnoreCase(player.getName())) {
+                    restoreAndFinish(player, lotId, callback, false, configManager.getConfigValues().messages().noOwn());
+                    return;
+                }
+
+                ItemStack returned = item.itemStackClone();
+                if (!canFit(player, returned)) {
+                    restoreAndFinish(player, lotId, callback, false, configManager.getConfigValues().messages().inventoryFull());
+                    return;
+                }
+
+                Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                    boolean deleted = repository.delete(lotId);
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (!player.isOnline()) {
+                            callback.accept(false);
+                            return;
+                        }
+                        if (!deleted) {
+                            repository.restoreStatus(lotId);
+                            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
+                            callback.accept(false);
+                            return;
+                        }
+                        player.getInventory().addItem(returned).values().forEach(left -> player.getWorld().dropItemNaturally(player.getLocation(), left));
+                        String message = item.expired(configManager.getConfigValues().maxAuctionStorageDays())
+                                ? configManager.getConfigValues().messages().takeExpired()
+                                : configManager.getConfigValues().messages().takeSelling();
+                        player.sendMessage(PlaceholderUtils.applypapi(player, message, configManager));
+                        callback.accept(true);
+                    });
+                });
+            });
+        });
+    }
+
+    private void finish(Player player, Consumer<Boolean> callback, boolean result, String message) {
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (player.isOnline()) player.sendMessage(PlaceholderUtils.applypapi(player, message, configManager));
+            callback.accept(result);
+        });
+    }
+
+    private void restoreAndFinish(Player player, long lotId, Consumer<Boolean> callback, boolean result, String message) {
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             repository.restoreStatus(lotId);
-            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
-            return false;
-        }
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (player.isOnline()) player.sendMessage(PlaceholderUtils.applypapi(player, message, configManager));
+                callback.accept(result);
+            });
+        });
+    }
 
-        AuctionItem item = optItem.get();
-        if (!item.sellerName().equalsIgnoreCase(player.getName())) {
-            repository.restoreStatus(lotId);
-            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noOwn(), configManager));
-            return false;
-        }
-
-        ItemStack returned = item.itemStackClone();
-        if (!canFit(player, returned)) {
-            repository.restoreStatus(lotId);
-            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().inventoryFull(), configManager));
-            return false;
-        }
-
-        boolean deleted = repository.delete(lotId);
-        if (!deleted) {
-            repository.restoreStatus(lotId);
-            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
-            return false;
-        }
-
-        player.getInventory().addItem(returned).values().forEach(left ->
-                player.getWorld().dropItemNaturally(player.getLocation(), left));
-
-        String msg = item.expired(configManager.getConfigValues().maxAuctionStorageDays())
-                ? configManager.getConfigValues().messages().takeExpired() : configManager.getConfigValues().messages().takeSelling();
-        player.sendMessage(PlaceholderUtils.applypapi(player, msg, configManager));
-        return true;
+    private void restoreAsync(long lotId) {
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> repository.restoreStatus(lotId));
     }
 
     private boolean canFit(Player player, ItemStack item) {
         Inventory inv = player.getInventory();
-        int amount = item.getAmount();
-        ItemStack copy = item.clone();
+        int needed = item.getAmount();
+        ItemStack template = item.clone();
+        int emptySlots = 0;
 
-        for (ItemStack invItem : inv.getStorageContents()) {
-            if (invItem == null || invItem.getType() == Material.AIR) continue;
-            if (invItem.isSimilar(copy)) {
-                int maxStack = invItem.getMaxStackSize();
-                int space = maxStack - invItem.getAmount();
-                if (space > 0) {
-                    int toAdd = Math.min(space, amount);
-                    amount -= toAdd;
-                    if (amount == 0) return true;
+        for (ItemStack slot : inv.getStorageContents()) {
+            if (slot == null || slot.getType() == Material.AIR) {
+                emptySlots++;
+                continue;
+            }
+            if (slot.isSimilar(template)) {
+                int free = slot.getMaxStackSize() - slot.getAmount();
+                if (free > 0) {
+                    int take = Math.min(free, needed);
+                    needed -= take;
+                    if (needed <= 0) return true;
                 }
             }
         }
 
-        if (amount > 0) {
-            int emptySlots = 0;
-            for (ItemStack invItem : inv.getStorageContents()) {
-                if (invItem == null || invItem.getType() == Material.AIR) {
-                    emptySlots++;
-                }
-            }
-            int maxStack = copy.getMaxStackSize();
-            int slotsNeeded = (amount + maxStack - 1) / maxStack;
-            return emptySlots >= slotsNeeded;
-        }
-        return true;
+        int maxStack = template.getMaxStackSize();
+        int slotsNeeded = (needed + maxStack - 1) / maxStack;
+        return emptySlots >= slotsNeeded;
     }
 }
