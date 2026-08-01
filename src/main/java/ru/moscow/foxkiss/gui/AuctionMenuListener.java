@@ -1,6 +1,5 @@
 package ru.moscow.foxkiss.gui;
 
-import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -96,7 +95,7 @@ public final class AuctionMenuListener implements Listener {
             String nick = player.getName();
             long now = System.currentTimeMillis();
             long last = quantityMessageCooldowns.getOrDefault(nick, 0L);
-            if (now - last >= 5_000L) {
+            if (now - last >= 5000L) {
                 player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().quantityExceeded()
                         .replace("{max}", String.valueOf(holder.maxAmount())), configManager));
                 quantityMessageCooldowns.put(nick, now);
@@ -169,14 +168,14 @@ public final class AuctionMenuListener implements Listener {
             }
             boolean taken = auctionService.take(player, lotId);
             if (taken) {
-                Bukkit.getScheduler().runTask(plugin, () -> auctionMenu.refreshInventory(player, holder));
+                plugin.getServer().getScheduler().runTask(plugin, () -> auctionMenu.refreshInventory(player, holder));
             }
             return;
         }
         Integer amount = holder.getLotAmount(slot);
         if (amount == null || amount <= 0) return;
         if (rightClick && amount > 1) {
-            auctionMenu.openQuantityAsync(player, holder.currency(), lotId);
+            auctionMenu.openQuantity(player, holder.currency(), lotId);
             return;
         }
         if (configManager.getConfigValues().confirmMenu().enabled() && !rightClick) {
@@ -184,7 +183,7 @@ public final class AuctionMenuListener implements Listener {
         } else {
             boolean success = auctionService.buy(player, lotId, amount);
             if (success) {
-                Bukkit.getScheduler().runTask(plugin, () -> auctionMenu.refreshInventory(player, holder));
+                auctionMenu.refreshInventory(player, holder);
             }
         }
     }
@@ -202,7 +201,7 @@ public final class AuctionMenuListener implements Listener {
     private boolean tryUseCooldown(Player player, Map<UUID, Long> cooldowns, double seconds) {
         ConfigValues.Cooldowns settings = configManager.getConfigValues().cooldowns();
         if (!settings.cooldownEnabled()) return true;
-        long cooldownMillis = Math.round(seconds * 1_000D);
+        long cooldownMillis = Math.round(seconds * 1000D);
         if (cooldownMillis <= 0L) return true;
         long now = System.currentTimeMillis();
         UUID playerId = player.getUniqueId();

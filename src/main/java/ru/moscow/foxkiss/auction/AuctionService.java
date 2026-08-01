@@ -53,18 +53,10 @@ public final class AuctionService {
         long now = System.currentTimeMillis();
         long cutoff = now - maxDays * 86_400_000L;
 
-        List<AuctionItem> all = repository.findAll(currency);
-        int count = 0;
-        for (AuctionItem item : all) {
-            if (item.sellerName().equalsIgnoreCase(player.getName())
-                    && item.createdAt() >= cutoff
-                    && item.status() == AuctionViewType.SELLING) {
-                count++;
-                if (count >= limit) {
-                    player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().limitReached(), configManager));
-                    return false;
-                }
-            }
+        int count = repository.countActiveBySellerSince(player.getName(), currency, cutoff);
+        if (count >= limit) {
+            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().limitReached(), configManager));
+            return false;
         }
 
         ItemStack soldItem = hand.clone();

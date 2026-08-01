@@ -14,9 +14,9 @@ public final class AuctionItem {
     private final ItemStack itemStack;
     private final double price;
     private final long createdAt;
-    private final AuctionViewType status;
+    private final AuctionStatus status;
 
-    public AuctionItem(long id, String sellerName, AuctionCurrency currency, ItemStack itemStack, double price, long createdAt, AuctionViewType status) {
+    public AuctionItem(long id, String sellerName, AuctionCurrency currency, ItemStack itemStack, double price, long createdAt, AuctionStatus status) {
         this.id = id;
         this.sellerName = sellerName;
         this.currency = currency;
@@ -58,7 +58,7 @@ public final class AuctionItem {
         return createdAt;
     }
 
-    public AuctionViewType status() {
+    public AuctionStatus status() {
         return status;
     }
 

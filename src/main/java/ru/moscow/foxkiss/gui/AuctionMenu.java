@@ -10,7 +10,6 @@ import ru.moscow.foxkiss.auction.AuctionSort;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 import ru.moscow.foxkiss.gui.builder.MenuBuilder;
-import ru.moscow.foxkiss.gui.services.AuctionFilterService;
 
 import java.util.*;
 
@@ -21,7 +20,6 @@ public final class AuctionMenu {
     private final AuctionRepository repository;
     private final PlayerPreferences playerPreferences;
     private final MenuBuilder builder;
-    private final AuctionFilterService filterService;
     private final QuantityMenuController quantityController;
     private final ConfirmMenuController confirmController;
     private final ItemDisplayFactory itemFactory;
@@ -35,7 +33,6 @@ public final class AuctionMenu {
         this.playerPreferences = playerPreferences;
 
         this.itemFactory = new ItemDisplayFactory(plugin, configManager);
-        this.filterService = new AuctionFilterService(configManager);
         this.builder = new MenuBuilder(configManager, itemFactory);
         this.quantityController = new QuantityMenuController(configManager, itemFactory, builder);
         this.confirmController = new ConfirmMenuController(configManager, itemFactory, builder);
@@ -58,28 +55,22 @@ public final class AuctionMenu {
         openInventory(player, AuctionViewType.EXPIRED, currency, page, AuctionSort.NEWEST, null, null, null);
     }
 
-    public void openQuantityAsync(Player player, AuctionCurrency currency, long lotId) {
-        repository.findById(lotId).thenAccept(optItem -> {
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
-                if (optItem.isEmpty()) {
-                    player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
-                    return;
-                }
-                quantityController.openQuantity(player, currency, optItem.get(), 1);
-            });
-        });
+    public void openQuantity(Player player, AuctionCurrency currency, long lotId) {
+        Optional<AuctionItem> optItem = repository.findById(lotId);
+        if (optItem.isEmpty()) {
+            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
+            return;
+        }
+        quantityController.openQuantity(player, currency, optItem.get(), 1);
     }
 
     public void openConfirm(Player player, AuctionCurrency currency, long lotId, int amount) {
-        repository.findById(lotId).thenAccept(optItem -> {
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
-                if (optItem.isEmpty()) {
-                    player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
-                    return;
-                }
-                confirmController.openConfirm(player, currency, optItem.get(), amount);
-            });
-        });
+        Optional<AuctionItem> optItem = repository.findById(lotId);
+        if (optItem.isEmpty()) {
+            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
+            return;
+        }
+        confirmController.openConfirm(player, currency, optItem.get(), amount);
     }
 
     public void updateQuantityDisplay(Inventory inventory, AuctionMenuHolder holder, AuctionItem item) {
@@ -108,56 +99,43 @@ public final class AuctionMenu {
     }
 
     private void loadAndRender(Player player, AuctionViewType viewType, AuctionCurrency currency, int page, AuctionSort sort, String sellerFilter, String searchFilter, String category, AuctionMenuHolder targetHolder, Runnable onFinished) {
-        repository.findAll(currency).thenAccept(items -> {
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
-                try {
-                    if (targetHolder != null && player.getOpenInventory().getTopInventory().getHolder() != targetHolder) {
-                        return;
-                    }
-                    List<AuctionItem> filtered = filterService.filter(player, viewType, items,
-                            sellerFilter, searchFilter, category);
-                    if (viewType == AuctionViewType.MAIN) {
-                        filtered.sort(sort.comparator());
-                    } else {
-                        filtered.sort((a, b) -> Long.compare(b.createdAt(), a.createdAt()));
-                    }
+        try {
+            int pageSize = configManager.getConfigValues().auctionSlots().size();
+            String playerName = player.getName();
+            int maxStorageDays = configManager.getConfigValues().maxAuctionStorageDays();
 
-                    int maxStorageDays = configManager.getConfigValues().maxAuctionStorageDays();
-                    int expiredCount = 0;
-                    int sellingCount = 0;
-                    String playerName = player.getName();
+            String effectiveSellerFilter = sellerFilter;
+            String effectiveCategory = category;
+            String effectiveSearch = searchFilter;
+            AuctionSort effectiveSort = sort;
+            if (viewType == AuctionViewType.SELLING || viewType == AuctionViewType.EXPIRED) {
+                effectiveSellerFilter = playerName;
+                effectiveCategory = null;
+                effectiveSearch = null;
+                effectiveSort = AuctionSort.NEWEST;
+            }
 
-                    for (AuctionItem item : items) {
-                        if (!item.sellerName().equalsIgnoreCase(playerName)) {
-                            continue;
-                        }
-                        if (item.expired(maxStorageDays)) {
-                            expiredCount++;
-                        } else {
-                            sellingCount++;
-                        }
-                    }
+            List<AuctionItem> items = repository.findPage(currency, page, pageSize, effectiveSort, effectiveCategory, effectiveSellerFilter, effectiveSearch);
+            int total = repository.countAll(currency, effectiveCategory, effectiveSellerFilter, effectiveSearch);
+            int totalPages = (int) Math.ceil((double) total / pageSize);
 
-                    if (targetHolder != null) {
-                        builder.refreshLotDisplays(targetHolder.getInventory(), targetHolder, filtered);
-                        return;
-                    }
+            int sellingCount = repository.countSellingByPlayer(currency, playerName);
+            int expiredCount = repository.countExpiredByPlayer(currency, playerName, maxStorageDays);
 
-                    Inventory inventory = builder.buildMainMenu(player, viewType, currency, page, sort, sellerFilter, searchFilter, category, filtered, sellingCount, expiredCount);
-                    if (targetHolder == null) {
-                        player.openInventory(inventory);
-                    }
-                } catch (Exception e) {
-                    plugin.getLogger().warning("Ошибка открытия меню: " + e.getMessage());
-                    player.sendMessage("§cОшибка открытия аукциона.");
-                } finally {
-                    if (onFinished != null) onFinished.run();
-                }
-            });
-        }).exceptionally(error -> {
+            if (targetHolder != null) {
+                builder.refreshLotDisplays(targetHolder.getInventory(), targetHolder, items);
+                if (onFinished != null) onFinished.run();
+                return;
+            }
+
+            Inventory inventory = builder.buildMainMenu(player, viewType, currency, page, effectiveSort, effectiveSellerFilter, effectiveSearch, effectiveCategory, items, sellingCount, expiredCount);
+            player.openInventory(inventory);
+        } catch (Exception e) {
+            plugin.getLogger().warning("Ошибка открытия меню: " + e.getMessage());
+            e.printStackTrace();
+            player.sendMessage("§cОшибка открытия аукциона.");
+        } finally {
             if (onFinished != null) onFinished.run();
-            plugin.getLogger().warning("Ошибка загрузки аукциона в инвентарь: " + error.getMessage());
-            return null;
-        });
+        }
     }
 }

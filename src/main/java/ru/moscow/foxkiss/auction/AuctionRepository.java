@@ -10,13 +10,19 @@ public interface AuctionRepository {
 
     long create(String sellerName, AuctionCurrency currency, ItemStack itemStack, double price);
 
-    List<AuctionItem> findAll(AuctionCurrency currency);
+    List<AuctionItem> findPage(AuctionCurrency currency, int page, int size, AuctionSort sort, String category, String sellerFilter, String searchFilter);
+
+    int countAll(AuctionCurrency currency, String category, String sellerFilter, String searchFilter);
 
     Optional<AuctionItem> findById(long id);
 
+    int countSellingByPlayer(AuctionCurrency currency, String playerName);
+    int countExpiredByPlayer(AuctionCurrency currency, String playerName, int maxDays);
+
     boolean delete(long id);
 
-    void recordSale(String sellerName, String buyerName, AuctionCurrency currency, String itemType, int amount, double price);
+    void recordSale(String sellerName, String buyerName, AuctionCurrency currency,
+                    String itemType, int amount, double price);
 
     List<TopSeller> getTopSellers(AuctionCurrency currency, int limit);
 
@@ -27,6 +33,8 @@ public interface AuctionRepository {
     boolean markAsSelling(long id);
 
     void restoreStatus(long id);
+
+    int countActiveBySellerSince(String sellerName, AuctionCurrency currency, long since);
 
     void close();
 

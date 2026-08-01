@@ -5,7 +5,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.scheduler.BukkitRunnable;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
@@ -22,7 +22,6 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
     private final AuctionRepository repository;
     private final VaultChatApi vaultChat;
     private final VaultPermissionApi vaultPerm;
-    private BukkitTask cacheTask;
 
     private List<TopPlayerInfo> cachedTop = new ArrayList<>();
     private final Map<UUID, CachedPlayerStats> statsCache = new HashMap<>();
@@ -34,8 +33,12 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
         this.vaultChat = new VaultChatApi();
         this.vaultPerm = new VaultPermissionApi();
 
-        scheduleCacheUpdate();
-        updateCacheAsync();
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                updateCache();
+            }
+        }.runTaskTimerAsynchronously(plugin, 20L, 6000L);
     }
 
     @Override
@@ -94,11 +97,10 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
             return field.equals("sold") ? String.valueOf(cached.sold) : formatMoney(cached.money);
         }
 
-        repository.getPlayerStats(name, AuctionCurrency.VAULT).thenAccept(stats -> {
-            synchronized (statsCache) {
-                statsCache.put(uuid, new CachedPlayerStats(stats.soldCount(), stats.totalEarned(), System.currentTimeMillis()));
-            }
-        });
+        AuctionRepository.PlayerStats stats = repository.getPlayerStats(name, AuctionCurrency.VAULT);
+        synchronized (statsCache) {
+            statsCache.put(uuid, new CachedPlayerStats(stats.soldCount(), stats.totalEarned(), System.currentTimeMillis()));
+        }
 
         if (cached != null) {
             return field.equals("sold") ? String.valueOf(cached.sold) : formatMoney(cached.money);
@@ -132,15 +134,7 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
         }
     }
 
-    private void scheduleCacheUpdate() {
-        cacheTask = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::updateCacheAsync, 1200L, 6000L);
-    }
-
     public void disable() {
-        if (cacheTask != null) {
-            cacheTask.cancel();
-            cacheTask = null;
-        }
         clearCache();
     }
 
@@ -152,29 +146,25 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
         cachedTop = new ArrayList<>();
     }
 
-    private void updateCacheAsync() {
-        repository.getTopSellers(AuctionCurrency.VAULT, 1000)
-                .thenApply(list -> {
-                    list.sort((a, b) -> Double.compare(b.totalEarned(), a.totalEarned()));
-                    return list.size() > 5 ? list.subList(0, 5) : list;
-                })
-                .thenApply(list -> {
-                    List<TopPlayerInfo> result = new ArrayList<>();
-                    for (AuctionRepository.TopSeller seller : list) {
-                        String prefix = prefixCache.get(seller.name());
-                        if (prefix == null) {
-                            prefix = getPrefixForPlayer(seller.name());
-                            prefixCache.put(seller.name(), prefix);
-                        }
-                        result.add(new TopPlayerInfo(seller.name(), seller.soldCount(), seller.totalEarned(), prefix));
-                    }
-                    return result;
-                })
-                .thenAccept(result -> cachedTop = new ArrayList<>(result))
-                .exceptionally(ex -> {
-                    plugin.getLogger().warning("Не удалось обновить топ: " + ex.getMessage());
-                    return null;
-                });
+    private void updateCache() {
+        try {
+            List<AuctionRepository.TopSeller> list = repository.getTopSellers(AuctionCurrency.VAULT, 1000);
+            list.sort((a, b) -> Double.compare(b.totalEarned(), a.totalEarned()));
+            if (list.size() > 5) list = list.subList(0, 5);
+
+            List<TopPlayerInfo> result = new ArrayList<>();
+            for (AuctionRepository.TopSeller seller : list) {
+                String prefix = prefixCache.get(seller.name());
+                if (prefix == null) {
+                    prefix = getPrefixForPlayer(seller.name());
+                    prefixCache.put(seller.name(), prefix);
+                }
+                result.add(new TopPlayerInfo(seller.name(), seller.soldCount(), seller.totalEarned(), prefix));
+            }
+            cachedTop = result;
+        } catch (Exception e) {
+            plugin.getLogger().warning("Не удалось обновить топ: " + e.getMessage());
+        }
     }
 
     private String getPrefixForPlayer(String name) {

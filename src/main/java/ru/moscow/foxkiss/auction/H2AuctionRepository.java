@@ -1,16 +1,14 @@
 package ru.moscow.foxkiss.auction;
 
-import org.bukkit.Bukkit;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.database.H2LibraryLoader;
 
+import javax.sql.DataSource;
 import java.nio.file.Path;
 import java.sql.*;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
-import javax.sql.DataSource;
 
 public final class H2AuctionRepository implements AuctionRepository {
 
@@ -76,232 +74,315 @@ public final class H2AuctionRepository implements AuctionRepository {
     }
 
     @Override
-    public CompletableFuture<Long> create(String sellerName, AuctionCurrency currency, ItemStack itemStack, double price) {
-        return runAsync(() -> {
-            try (Connection conn = open();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "INSERT INTO auction_items(seller_name,currency,item,price,created_at,status,material) VALUES(?,?,?,?,?,?,?)",
-                         Statement.RETURN_GENERATED_KEYS)) {
-                ps.setString(1, sellerName);
-                ps.setString(2, currency.name());
-                ps.setString(3, serialize(itemStack));
-                ps.setDouble(4, price);
-                ps.setLong(5, System.currentTimeMillis());
-                ps.setInt(6, activeStatus);
-                ps.setString(7, itemStack.getType().name());
-                ps.executeUpdate();
-                try (ResultSet keys = ps.getGeneratedKeys()) {
-                    return keys.next() ? keys.getLong(1) : -1L;
+    public long create(String sellerName, AuctionCurrency currency, ItemStack itemStack, double price) {
+        try (Connection conn = open();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT INTO auction_items(seller_name,currency,item,price,created_at,status,material) VALUES(?,?,?,?,?,?,?)",
+                     Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, sellerName);
+            ps.setString(2, currency.name());
+            ps.setString(3, serialize(itemStack));
+            ps.setDouble(4, price);
+            ps.setLong(5, System.currentTimeMillis());
+            ps.setInt(6, activeStatus);
+            ps.setString(7, itemStack.getType().name());
+            ps.executeUpdate();
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                return keys.next() ? keys.getLong(1) : -1L;
+            }
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.SEVERE, "Create auction failed", e);
+            return -1L;
+        }
+    }
+
+    @Override
+    public List<AuctionItem> findPage(AuctionCurrency currency, int page, int pageSize,
+                                      AuctionSort sort, String category, String sellerFilter, String searchFilter) {
+        List<AuctionItem> items = new ArrayList<>();
+        
+        List<Object> params = new ArrayList<>();
+        params.add(currency.name());
+        params.add(activeStatus);
+
+        StringBuilder sql = new StringBuilder();
+        sql.append("SELECT * FROM auction_items WHERE currency = ? AND status = ?");
+
+        if (category != null && !category.isEmpty() && !"all".equalsIgnoreCase(category)) {
+            sql.append(" AND material = ?");
+            params.add(category.toUpperCase());
+        }
+        if (sellerFilter != null && !sellerFilter.isEmpty()) {
+            sql.append(" AND seller_name LIKE ?");
+            params.add("%" + sellerFilter + "%");
+        }
+        if (searchFilter != null && !searchFilter.isEmpty()) {
+            sql.append(" AND (material LIKE ? OR seller_name LIKE ?)");
+            params.add("%" + searchFilter + "%");
+            params.add("%" + searchFilter + "%");
+        }
+
+        String orderBy = switch (sort) {
+            case NEWEST -> "created_at DESC";
+            case OLDEST -> "created_at ASC";
+            case EXPENSIVE -> "price DESC";
+            case CHEAP -> "price ASC";
+            case EXPENSIVE_PER_ITEM -> "price / item.amount DESC";
+            case CHEAP_PER_ITEM -> "price / item.amount ASC";
+        };
+        sql.append(" ORDER BY ").append(orderBy);
+        sql.append(" LIMIT ? OFFSET ?");
+        
+        int offset = page * pageSize;
+        params.add(pageSize);
+        params.add(offset);
+
+        String finalSql = sql.toString();
+
+        try (Connection conn = open();
+             PreparedStatement ps = conn.prepareStatement(finalSql)) {
+            for (int i = 0; i < params.size(); i++) {
+                ps.setObject(i + 1, params.get(i));
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    items.add(readItem(rs));
                 }
             }
-        });
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.SEVERE, "Find page failed", e);
+        }
+        return items;
     }
 
     @Override
-    public CompletableFuture<Long> createIfAllowed(String sellerName, AuctionCurrency currency, ItemStack itemStack, double price, int maxDays, int limit) {
-        return runAsync(() -> {
-            long minCreatedAt = System.currentTimeMillis() - maxDays * 86_400_000L;
-            try (Connection conn = open();
-                 PreparedStatement countStmt = conn.prepareStatement(
-                         "SELECT COUNT(*) FROM auction_items WHERE seller_name=? AND currency=? AND created_at>? AND status=?");
-                 PreparedStatement insertStmt = conn.prepareStatement(
-                         "INSERT INTO auction_items(seller_name,currency,item,price,created_at,status,material) VALUES(?,?,?,?,?,?,?)",
-                         Statement.RETURN_GENERATED_KEYS)) {
-                conn.setAutoCommit(false);
-                try {
+    public int countAll(AuctionCurrency currency, String category, String sellerFilter, String searchFilter) {
+        StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM auction_items WHERE currency=? AND status=?");
+        
+        List<Object> params = new ArrayList<>();
+        params.add(currency.name());
+        params.add(activeStatus);
 
-                    countStmt.setString(1, sellerName);
-                    countStmt.setString(2, currency.name());
-                    countStmt.setLong(3, minCreatedAt);
-                    countStmt.setInt(4, activeStatus);
-                    try (ResultSet result = countStmt.executeQuery()) {
-                        if (result.next() && result.getInt(1) >= limit) {
-                            conn.rollback();
-                            return -1L;
-                        }
-                    }
+        if (category != null && !category.isEmpty() && !"all".equalsIgnoreCase(category)) {
+            sql.append(" AND material=?");
+            params.add(category.toUpperCase());
+        }
+        if (sellerFilter != null && !sellerFilter.isEmpty()) {
+            sql.append(" AND seller_name LIKE ?");
+            params.add("%" + sellerFilter + "%");
+        }
+        if (searchFilter != null && !searchFilter.isEmpty()) {
+            sql.append(" AND (material LIKE ? OR seller_name LIKE ?)");
+            params.add("%" + searchFilter + "%");
+            params.add("%" + searchFilter + "%");
+        }
 
-                    insertStmt.setString(1, sellerName);
-                    insertStmt.setString(2, currency.name());
-                    insertStmt.setString(3, serialize(itemStack));
-                    insertStmt.setDouble(4, price);
-                    insertStmt.setLong(5, System.currentTimeMillis());
-                    insertStmt.setInt(6, activeStatus);
-                    insertStmt.setString(7, itemStack.getType().name());
-                    insertStmt.executeUpdate();
-
-                    try (ResultSet keys = insertStmt.getGeneratedKeys()) {
-                        if (!keys.next()) {
-                            conn.rollback();
-                            return 0L;
-                        }
-                        long id = keys.getLong(1);
-                        conn.commit();
-                        return id;
-                    }
-                } catch (Exception exception) {
-                    conn.rollback();
-                    throw exception;
-                }
-            } catch (Exception e) {
-                plugin.getLogger().log(Level.SEVERE, "Transaction failed", e);
-                return 0L;
+        try (Connection conn = open();
+             PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+            for (int i = 0; i < params.size(); i++) {
+                ps.setObject(i + 1, params.get(i));
             }
-        });
-    }
-
-    @Override
-    public CompletableFuture<List<AuctionItem>> findAll(AuctionCurrency currency) {
-        return runAsync(() -> {
-            List<AuctionItem> items = new ArrayList<>();
-            try (Connection conn = open();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "SELECT * FROM auction_items WHERE currency=? AND status=?")) {
-                ps.setString(1, currency.name());
-                ps.setInt(2, activeStatus);
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        items.add(readItem(rs));
-                    }
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1);
                 }
             }
-            return items;
-        });
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Count all failed", e);
+        }
+        return 0;
     }
 
     @Override
-    public CompletableFuture<Optional<AuctionItem>> findById(long id) {
-        return runAsync(() -> {
-            try (Connection conn = open();
-                 PreparedStatement ps = conn.prepareStatement("SELECT * FROM auction_items WHERE id=?")) {
-                ps.setLong(1, id);
-                try (ResultSet rs = ps.executeQuery()) {
-                    return rs.next() ? Optional.of(readItem(rs)) : Optional.empty();
+    public int countSellingByPlayer(AuctionCurrency currency, String playerName) {
+        try (Connection conn = open();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT COUNT(*) FROM auction_items WHERE currency=? AND seller_name=? AND status=?")) {
+            ps.setString(1, currency.name());
+            ps.setString(2, playerName);
+            ps.setInt(3, activeStatus);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Count selling by player failed", e);
+        }
+        return 0;
+    }
+
+    @Override
+    public int countExpiredByPlayer(AuctionCurrency currency, String playerName, int maxDays) {
+        long cutoff = System.currentTimeMillis() - maxDays * 86_400_000L;
+        try (Connection conn = open();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT COUNT(*) FROM auction_items WHERE currency=? AND seller_name=? AND created_at < ? AND status=?")) {
+            ps.setString(1, currency.name());
+            ps.setString(2, playerName);
+            ps.setLong(3, cutoff);
+            ps.setInt(4, activeStatus);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Count expired by player failed", e);
+        }
+        return 0;
+    }
+
+    @Override
+    public Optional<AuctionItem> findById(long id) {
+        try (Connection conn = open();
+             PreparedStatement ps = conn.prepareStatement("SELECT * FROM auction_items WHERE id=?")) {
+            ps.setLong(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? Optional.of(readItem(rs)) : Optional.empty();
+            }
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.SEVERE, "Find by id failed", e);
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public boolean delete(long id) {
+        try (Connection conn = open();
+             PreparedStatement ps = conn.prepareStatement("DELETE FROM auction_items WHERE id=?")) {
+            ps.setLong(1, id);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Delete failed", e);
+            return false;
+        }
+    }
+
+    @Override
+    public void recordSale(String sellerName, String buyerName, AuctionCurrency currency, String itemType, int amount, double price) {
+        try (Connection conn = open();
+             PreparedStatement ps = conn.prepareStatement(
+                     "INSERT INTO sales_history(seller_name,buyer_name,currency,item_type,amount,price,sold_at) VALUES(?,?,?,?,?,?,?)")) {
+            ps.setString(1, sellerName);
+            ps.setString(2, buyerName);
+            ps.setString(3, currency.name());
+            ps.setString(4, itemType);
+            ps.setInt(5, amount);
+            ps.setDouble(6, price);
+            ps.setLong(7, System.currentTimeMillis());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Record sale failed", e);
+        }
+    }
+
+    @Override
+    public boolean markAsSelling(long id) {
+        try (Connection conn = open();
+             PreparedStatement ps = conn.prepareStatement(
+                     "UPDATE auction_items SET status=? WHERE id=? AND status=?")) {
+            ps.setInt(1, proccesStart);
+            ps.setLong(2, id);
+            ps.setInt(3, activeStatus);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Mark as selling failed", e);
+            return false;
+        }
+    }
+
+    @Override
+    public void restoreStatus(long id) {
+        try (Connection conn = open();
+             PreparedStatement ps = conn.prepareStatement(
+                     "UPDATE auction_items SET status=? WHERE id=? AND status=?")) {
+            ps.setInt(1, activeStatus);
+            ps.setLong(2, id);
+            ps.setInt(3, proccesStart);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Restore status failed", e);
+        }
+    }
+
+    @Override
+    public List<TopSeller> getTopSellers(AuctionCurrency currency, int limit) {
+        List<TopSeller> sellers = new ArrayList<>();
+        try (Connection conn = open();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT seller_name, COUNT(*) as sold, COALESCE(SUM(price), 0) as earned " +
+                             "FROM sales_history WHERE currency=? GROUP BY seller_name ORDER BY sold DESC LIMIT ?")) {
+            ps.setString(1, currency.name());
+            ps.setInt(2, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    sellers.add(new TopSeller(
+                            rs.getString("seller_name"),
+                            rs.getInt("sold"),
+                            rs.getDouble("earned")
+                    ));
                 }
             }
-        });
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Get top sellers failed", e);
+        }
+        return sellers;
     }
 
     @Override
-    public CompletableFuture<Boolean> delete(long id) {
-        return runAsync(() -> {
-            try (Connection conn = open();
-                 PreparedStatement ps = conn.prepareStatement("DELETE FROM auction_items WHERE id=?")) {
-                ps.setLong(1, id);
-                return ps.executeUpdate() > 0;
+    public PlayerStats getPlayerStats(String playerName, AuctionCurrency currency) {
+        try (Connection conn = open();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT COUNT(*) as sold, COALESCE(SUM(price), 0) as earned " +
+                             "FROM sales_history WHERE seller_name=? AND currency=?")) {
+            ps.setString(1, playerName);
+            ps.setString(2, currency.name());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return new PlayerStats(rs.getInt("sold"), rs.getDouble("earned"));
+                }
+                return new PlayerStats(0, 0.0);
             }
-        });
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Get player stats failed", e);
+            return new PlayerStats(0, 0.0);
+        }
     }
 
     @Override
-    public CompletableFuture<Void> recordSale(String sellerName, String buyerName, AuctionCurrency currency,
-                                              String itemType, int amount, double price) {
-        return runAsync(() -> {
-            try (Connection conn = open();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "INSERT INTO sales_history(seller_name,buyer_name,currency,item_type,amount,price,sold_at) VALUES(?,?,?,?,?,?,?)")) {
-                ps.setString(1, sellerName);
-                ps.setString(2, buyerName);
-                ps.setString(3, currency.name());
-                ps.setString(4, itemType);
-                ps.setInt(5, amount);
-                ps.setDouble(6, price);
-                ps.setLong(7, System.currentTimeMillis());
-                ps.executeUpdate();
-            }
-            return null;
-        });
-    }
-
-    @Override
-    public CompletableFuture<Boolean> markAsSelling(long id) {
-        return runAsync(() -> {
-            try (Connection conn = open();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "UPDATE auction_items SET status=? WHERE id=? AND status=?")) {
-                ps.setInt(1, proccesStart);
-                ps.setLong(2, id);
-                ps.setInt(3, activeStatus);
-                return ps.executeUpdate() > 0;
-            }
-        });
-    }
-
-    @Override
-    public CompletableFuture<Void> restoreStatus(long id) {
-        return runAsync(() -> {
-            try (Connection conn = open();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "UPDATE auction_items SET status=? WHERE id=? AND status=?")) {
-                ps.setInt(1, activeStatus);
-                ps.setLong(2, id);
-                ps.setInt(3, proccesStart);
-                ps.executeUpdate();
-            }
-            return null;
-        });
-    }
-
-    @Override
-    public CompletableFuture<List<TopSeller>> getTopSellers(AuctionCurrency currency, int limit) {
-        return runAsync(() -> {
-            List<TopSeller> sellers = new ArrayList<>();
-            try (Connection conn = open();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "SELECT seller_name, COUNT(*) as sold, COALESCE(SUM(price), 0) as earned " +
-                                 "FROM sales_history WHERE currency=? GROUP BY seller_name ORDER BY sold DESC LIMIT ?")) {
-                ps.setString(1, currency.name());
-                ps.setInt(2, limit);
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        sellers.add(new TopSeller(
-                                rs.getString("seller_name"),
-                                rs.getInt("sold"),
-                                rs.getDouble("earned")
-                        ));
-                    }
+    public List<String> getUniqueMaterialNames(AuctionCurrency currency) {
+        List<String> names = new ArrayList<>();
+        try (Connection conn = open();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT DISTINCT material FROM auction_items WHERE currency=? AND status=? AND material IS NOT NULL")) {
+            ps.setString(1, currency.name());
+            ps.setInt(2, activeStatus);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    names.add(rs.getString("material"));
                 }
             }
-            return sellers;
-        });
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Get unique materials failed", e);
+        }
+        return names;
     }
 
     @Override
-    public CompletableFuture<PlayerStats> getPlayerStats(String playerName, AuctionCurrency currency) {
-        return runAsync(() -> {
-            try (Connection conn = open();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "SELECT COUNT(*) as sold, COALESCE(SUM(price), 0) as earned " +
-                                 "FROM sales_history WHERE seller_name=? AND currency=?")) {
-                ps.setString(1, playerName);
-                ps.setString(2, currency.name());
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next()) {
-                        return new PlayerStats(rs.getInt("sold"), rs.getDouble("earned"));
-                    }
-                    return new PlayerStats(0, 0.0);
+    public int countActiveBySellerSince(String sellerName, AuctionCurrency currency, long since) {
+        try (Connection conn = open();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT COUNT(*) FROM auction_items WHERE seller_name=? AND currency=? AND created_at>? AND status=?")) {
+            ps.setString(1, sellerName);
+            ps.setString(2, currency.name());
+            ps.setLong(3, since);
+            ps.setInt(4, activeStatus);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1);
                 }
             }
-        });
-    }
-
-    @Override
-    public CompletableFuture<List<String>> getUniqueMaterialNames(AuctionCurrency currency) {
-        return runAsync(() -> {
-            List<String> names = new ArrayList<>();
-            try (Connection conn = open();
-                 PreparedStatement ps = conn.prepareStatement(
-                         "SELECT DISTINCT material FROM auction_items WHERE currency=? AND status=? AND material IS NOT NULL")) {
-                ps.setString(1, currency.name());
-                ps.setInt(2, activeStatus);
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        names.add(rs.getString("material"));
-                    }
-                }
-            }
-            return names;
-        });
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Count active by seller since failed", e);
+        }
+        return 0;
     }
 
     @Override
@@ -321,7 +402,8 @@ public final class H2AuctionRepository implements AuctionRepository {
                 AuctionCurrency.valueOf(rs.getString("currency")),
                 deserialize(rs.getString("item")),
                 rs.getDouble("price"),
-                rs.getLong("created_at")
+                rs.getLong("created_at"),
+                AuctionStatus.fromInt(rs.getInt("status"))
         );
     }
 
@@ -330,30 +412,11 @@ public final class H2AuctionRepository implements AuctionRepository {
         return dataSource.getConnection();
     }
 
-    private <T> CompletableFuture<T> runAsync(SqlCallable<T> callable) {
-        CompletableFuture<T> future = new CompletableFuture<>();
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            try {
-                T result = callable.call();
-                future.complete(result);
-            } catch (Exception e) {
-                plugin.getLogger().log(Level.SEVERE, "Auction storage async error", e);
-                future.completeExceptionally(e);
-            }
-        });
-        return future;
-    }
-
     private String serialize(ItemStack itemStack) throws Exception {
         return Base64.getEncoder().encodeToString(itemStack.serializeAsBytes());
     }
 
     private ItemStack deserialize(String data) throws Exception {
         return ItemStack.deserializeBytes(Base64.getDecoder().decode(data));
-    }
-
-    @FunctionalInterface
-    private interface SqlCallable<T> {
-        T call() throws Exception;
     }
 }

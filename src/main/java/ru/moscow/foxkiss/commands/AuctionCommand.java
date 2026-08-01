@@ -7,6 +7,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitRunnable;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
@@ -37,6 +38,16 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
         this.auctionMenu = auctionMenu;
         this.auctionService = auctionService;
         this.repository = repository;
+        runTask();
+    }
+
+    public void runTask() {
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                updateCache();
+            }
+        }.runTaskTimerAsynchronously(plugin, 20L, 6000L);
     }
 
     @Override
@@ -121,8 +132,6 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length >= 2 && "search".equalsIgnoreCase(args[0])) {
-            updateCache();
-
             String query = args[1].toUpperCase();
             List<String> materials = materialCache.get(currency);
             if (materials == null) return List.of();
@@ -141,22 +150,13 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
     }
 
     private void updateCache() {
-        long now = System.currentTimeMillis();
-        Long lastUpdate = cacheTime.get(currency);
-
-        if (lastUpdate != null && (now - lastUpdate) <= 30_000L) {
-            return;
+        try {
+            List<String> materials = repository.getUniqueMaterialNames(currency);
+            materialCache.put(currency, materials);
+            cacheTime.put(currency, System.currentTimeMillis());
+        } catch (Exception e) {
+            plugin.getLogger().warning("Ошибка обновления кэша материалов: " + e.getMessage());
         }
-
-        repository.getUniqueMaterialNames(currency)
-                .thenAccept(materials -> {
-                    materialCache.put(currency, materials);
-                    cacheTime.put(currency, now);
-                })
-                .exceptionally(ex -> {
-                    plugin.getLogger().warning("Ошибка обновления материала " + currency + ": " + ex.getMessage());
-                    return null;
-                });
     }
 
     public void clearCache() {

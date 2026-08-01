@@ -91,8 +91,8 @@ public final class H2LibraryLoader {
         }
     }
 
-    private static void downloadAndVerify(Path library) throws IOException, NoSuchAlgorithmException {
-        Path temp = library.resolveSibling(library + ".tmp");
+    private static void downloadAndVerify(Path targetPath) throws IOException, NoSuchAlgorithmException {
+        Path temp = targetPath.resolveSibling(library + ".tmp");
         try (InputStream in = URI.create(base + library).toURL().openStream()) {
             Files.copy(in, temp, StandardCopyOption.REPLACE_EXISTING);
         }
@@ -105,7 +105,7 @@ public final class H2LibraryLoader {
             Files.deleteIfExists(temp);
             throw new IOException("Контрольная сумма скачанного H2 драйвера не совпадает с Maven Central");
         }
-        Files.move(temp, library, StandardCopyOption.REPLACE_EXISTING);
+        Files.move(temp, targetPath, StandardCopyOption.REPLACE_EXISTING);
     }
 
     private static String sha1(Path file) throws IOException, NoSuchAlgorithmException {
