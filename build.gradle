@@ -64,12 +64,11 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 tasks.shadowJar {
-    configurations = [project.configurations.runtimeClasspath]
     dependencies {
-        exclude { it.moduleGroup != "org.bstats" }
+        include(dependency("org.bstats:.*"))
     }
 
-    relocate("org.bstats", "ru.moscow.foxkiss.bstats")
+    relocate("org.bstats", "ru.moscow.foxkiss.libs.bstats")
 }
 
 build {

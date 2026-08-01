@@ -1,7 +1,6 @@
 package ru.moscow.foxkiss;
 
 import org.bstats.bukkit.Metrics;
-import org.bstats.charts.SimplePie;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
@@ -66,12 +65,15 @@ public final class FMAuction extends JavaPlugin {
         if (!configManager.getConfigValues().bStatsEnabled()) {
             return;
         }
-        int pluginId = 33041;
-        Metrics metrics = new Metrics(this, pluginId);
 
-        metrics.addCustomChart(new SimplePie("storage_engine", () -> "H2"));
-        metrics.addCustomChart(new SimplePie("cooldowns", () -> configManager.getConfigValues().cooldowns().cooldownEnabled() ? "enabled" : "disabled"));
-        metrics.addCustomChart(new SimplePie("confirmation_menu", () -> configManager.getConfigValues().confirmMenu().enabled() ? "enabled" : "disabled"));
+        int pluginId = 33068;
+        Metrics metrics = new Metrics(this, pluginId);
+        
+        metrics.addCustomChart(new org.bstats.charts.SimplePie("storage_engine", () -> "H2"));
+        metrics.addCustomChart(new org.bstats.charts.SimplePie("cooldowns", 
+            () -> configManager.getConfigValues().cooldowns().cooldownEnabled() ? "enabled" : "disabled"));
+        metrics.addCustomChart(new org.bstats.charts.SimplePie("confirmation_menu", 
+            () -> configManager.getConfigValues().confirmMenu().enabled() ? "enabled" : "disabled"));
     }
 
     public void initializeManager() {

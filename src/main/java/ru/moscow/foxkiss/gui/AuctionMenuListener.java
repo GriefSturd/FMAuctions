@@ -78,7 +78,10 @@ public final class AuctionMenuListener implements Listener {
         if (meta == null) return;
 
         String actionName = meta.getPersistentDataContainer().get(actionKey, PersistentDataType.STRING);
+        if (actionName == null) return;
+        
         ActionType action = ActionType.get(actionName);
+        if (action == null) return;
 
         switch (holder.viewType()) {
             case QUANTITY -> handleQuantityAction(player, holder, action);
