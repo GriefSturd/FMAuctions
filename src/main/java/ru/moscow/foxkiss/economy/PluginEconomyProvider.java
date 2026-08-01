@@ -7,29 +7,31 @@ import ru.moscow.foxkiss.auction.AuctionCurrency;
 
 import java.util.EnumMap;
 import java.util.Map;
-import java.util.function.BiPredicate;
-import java.util.function.BiFunction;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
 
 public final class PluginEconomyProvider implements EconomyProvider {
 
-    private final Map<AuctionCurrency, EconomyHandler> handlers = new EnumMap<>(AuctionCurrency.class);
+    private final Map<AuctionCurrency, BiPredicate<Player, Double>> hasMap = new EnumMap<>(AuctionCurrency.class);
+    private final Map<AuctionCurrency, BiFunction<Player, Double, Boolean>> withdrawMap = new EnumMap<>(AuctionCurrency.class);
+    private final Map<AuctionCurrency, BiConsumer<OfflinePlayer, Double>> depositMap = new EnumMap<>(AuctionCurrency.class);
 
     public void init(JavaPlugin plugin) {
         try {
             VaultApi vault = new VaultApi();
-            handlers.put(AuctionCurrency.VAULT, new EconomyHandler(vault::has, vault::withdraw, vault::deposit));
+            hasMap.put(AuctionCurrency.VAULT, vault::has);
+            withdrawMap.put(AuctionCurrency.VAULT, vault::withdraw);
+            depositMap.put(AuctionCurrency.VAULT, vault::deposit);
         } catch (Exception e) {
             plugin.getLogger().warning("Vault недоступен: " + e.getMessage());
         }
 
         try {
             PlayerPointsApi points = new PlayerPointsApi();
-            handlers.put(AuctionCurrency.PLAYER_POINTS, new EconomyHandler(
-                    (p, a) -> points.has(p, (int) Math.ceil(a)),
-                    (p, a) -> points.withdraw(p, (int) Math.ceil(a)),
-                    (p, a) -> points.deposit(p, (int) Math.ceil(a))
-            ));
+            hasMap.put(AuctionCurrency.PLAYER_POINTS, (p, a) -> points.has(p, (int) Math.ceil(a)));
+            withdrawMap.put(AuctionCurrency.PLAYER_POINTS, (p, a) -> points.withdraw(p, (int) Math.ceil(a)));
+            depositMap.put(AuctionCurrency.PLAYER_POINTS, (p, a) -> points.deposit(p, (int) Math.ceil(a)));
         } catch (Exception e) {
             plugin.getLogger().warning("PlayerPoints недоступен: " + e.getMessage());
         }
@@ -37,34 +39,26 @@ public final class PluginEconomyProvider implements EconomyProvider {
 
     @Override
     public boolean available(AuctionCurrency currency) {
-        return handlers.containsKey(currency);
+        return hasMap.containsKey(currency);
     }
 
     @Override
     public boolean has(Player player, AuctionCurrency currency, double amount) {
-        EconomyHandler handler = handlers.get(currency);
-        if (handler == null) return false;
-        return handler.has.test(player, amount);
+        BiPredicate<Player, Double> pred = hasMap.get(currency);
+        return pred != null && pred.test(player, amount);
     }
 
     @Override
     public boolean withdraw(Player player, AuctionCurrency currency, double amount) {
-        EconomyHandler handler = handlers.get(currency);
-        if (handler == null) return false;
-        return handler.withdraw.apply(player, amount);
+        BiFunction<Player, Double, Boolean> func = withdrawMap.get(currency);
+        return func != null && func.apply(player, amount);
     }
 
     @Override
     public void deposit(OfflinePlayer player, AuctionCurrency currency, double amount) {
-        EconomyHandler handler = handlers.get(currency);
-        if (handler != null) {
-            handler.deposit.accept(player, amount);
+        BiConsumer<OfflinePlayer, Double> cons = depositMap.get(currency);
+        if (cons != null) {
+            cons.accept(player, amount);
         }
     }
-
-    private record EconomyHandler(
-            BiPredicate<Player, Double> has,
-            BiFunction<Player, Double, Boolean> withdraw,
-            BiConsumer<OfflinePlayer, Double> deposit
-    ) {}
 }
