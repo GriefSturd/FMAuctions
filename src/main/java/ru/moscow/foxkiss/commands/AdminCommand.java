@@ -8,48 +8,51 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import ru.moscow.foxkiss.FMAuction;
+import ru.moscow.foxkiss.config.interfaces.IConfigManager;
+import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
 import java.util.List;
-import java.util.Map;
 
 public final class AdminCommand implements CommandExecutor, TabCompleter {
 
     private final FMAuction plugin;
+    private final IConfigManager configManager;
 
-    public AdminCommand(FMAuction plugin) {
+    public AdminCommand(FMAuction plugin, IConfigManager configManager) {
         this.plugin = plugin;
+        this.configManager = configManager;
     }
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
-        Player player = playerOrNull(sender);
-
         if (!sender.hasPermission("fmauction.admin")) {
-            sendMessage(sender, player, "admin-nopermission");
+            sender.sendMessage(PlaceholderUtils.applypapi(sender, configManager.getConfigValues().messages().noPermission(), configManager));
             return true;
         }
 
         if (args.length != 1) {
-            sendMessage(sender, player, "admin-unknown-subcommand");
+            sender.sendMessage(PlaceholderUtils.applypapi(sender, configManager.getConfigValues().messages().unknownSubcommand(), configManager));
             return true;
         }
 
         if (args[0].equalsIgnoreCase("reload")) {
-            handleReload(sender, player);
+            handleReload(sender);
             return true;
         }
-        sendMessage(sender, player, "admin-unknown-subcommand");
+        sender.sendMessage(PlaceholderUtils.applypapi(sender, configManager.getConfigValues().messages().unknownSubcommand(), configManager));
         return true;
     }
 
-    private void handleReload(CommandSender sender, Player player) {
+    private void handleReload(CommandSender sender) {
         long start = System.currentTimeMillis();
 
         try {
             plugin.reloadAll();
-            sendMessage(sender, player, "admin-reload", Map.of("time", String.valueOf(System.currentTimeMillis() - start)));
+            sender.sendMessage(PlaceholderUtils.applypapi(sender, configManager.getConfigValues().messages().reload()
+                    .replace("{time}", String.valueOf(System.currentTimeMillis() - start)), configManager));
         } catch (Exception e) {
-            sendMessage(sender, player, "admin-error-reload", Map.of("error", e.getClass().getSimpleName()));
+            sender.sendMessage(PlaceholderUtils.applypapi(sender, configManager.getConfigValues().messages().errorReload()
+                    .replace("{error}", e.getClass().getSimpleName()), configManager));
         }
     }
 
@@ -64,17 +67,5 @@ public final class AdminCommand implements CommandExecutor, TabCompleter {
         }
 
         return List.of();
-    }
-
-    private Player playerOrNull(CommandSender sender) {
-        return sender instanceof Player player ? player : null;
-    }
-
-    private void sendMessage(CommandSender sender, Player player, String key) {
-        sender.sendMessage(plugin.getMessageManager().getMessage(player, key));
-    }
-
-    private void sendMessage(CommandSender sender, Player player, String key, Map<String, String> placeholders) {
-        sender.sendMessage(plugin.getMessageManager().getMessage(player, key, placeholders));
     }
 }

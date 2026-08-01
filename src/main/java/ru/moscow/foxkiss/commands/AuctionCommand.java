@@ -12,29 +12,30 @@ import org.jetbrains.annotations.Nullable;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionRepository;
 import ru.moscow.foxkiss.auction.AuctionService;
+import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.AuctionMenu;
-import ru.moscow.foxkiss.utils.managers.interfaces.IMessageManager;
+import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
 import java.util.*;
 
 public final class AuctionCommand implements CommandExecutor, TabCompleter {
 
     private final JavaPlugin plugin;
+    private final IConfigManager configManager;
     private final AuctionCurrency currency;
     private final AuctionMenu auctionMenu;
     private final AuctionService auctionService;
-    private final IMessageManager messageManager;
     private final AuctionRepository repository;
 
     private final Map<AuctionCurrency, List<String>> materialCache = new HashMap<>();
     private final Map<AuctionCurrency, Long> cacheTime = new HashMap<>();
 
-    public AuctionCommand(JavaPlugin plugin, AuctionCurrency currency, AuctionMenu auctionMenu, AuctionService auctionService, IMessageManager messageManager, AuctionRepository repository) {
+    public AuctionCommand(JavaPlugin plugin, IConfigManager configManager, AuctionCurrency currency, AuctionMenu auctionMenu, AuctionService auctionService, AuctionRepository repository) {
         this.plugin = plugin;
+        this.configManager = configManager;
         this.currency = currency;
         this.auctionMenu = auctionMenu;
         this.auctionService = auctionService;
-        this.messageManager = messageManager;
         this.repository = repository;
     }
 
@@ -66,7 +67,7 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
 
     private boolean handleSell(Player player, String[] args) {
         if (args.length < 2) {
-            player.sendMessage(messageManager.getMessage(player, "non-price"));
+            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noPrice(), configManager));
             return true;
         }
 
@@ -74,7 +75,7 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
         try {
             price = Double.parseDouble(args[1]);
         } catch (NumberFormatException e) {
-            player.sendMessage(messageManager.getMessage(player, "non-price"));
+            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noPrice(), configManager));
             return true;
         }
 
@@ -84,7 +85,7 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
 
     private boolean handleSearch(Player player, String[] args) {
         if (args.length < 2) {
-            player.sendMessage(messageManager.getMessage(player, "enter-player-name"));
+            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().enterPlayerName(), configManager));
             return true;
         }
 
@@ -98,7 +99,7 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
         Material material = Material.matchMaterial(query);
 
         if (material == null) {
-            player.sendMessage("§cМатериал не найден: " + query);
+            player.sendMessage(PlaceholderUtils.applypapi(player, "§cМатериал не найден: " + query, configManager));
             return true;
         }
 

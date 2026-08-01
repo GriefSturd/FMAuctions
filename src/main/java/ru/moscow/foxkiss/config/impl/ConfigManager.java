@@ -8,6 +8,7 @@ import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.enums.ActionType;
 import ru.moscow.foxkiss.utils.ItemUtils;
+import ru.moscow.foxkiss.utils.TextUtils;
 
 import java.io.File;
 import java.util.*;
@@ -38,6 +39,7 @@ public final class ConfigManager implements IConfigManager {
 
         String prefix = config.getString("prefix");
         boolean bStatsEnabled = config.getBoolean("enable-bstats");
+        boolean usePapi = config.getBoolean("use-papi", true);
 
         ConfigurationSection cooldowns = config.getConfigurationSection("cooldowns");
         ConfigValues.Cooldowns cooldownValues = new ConfigValues.Cooldowns(
@@ -89,19 +91,7 @@ public final class ConfigManager implements IConfigManager {
         Map<Integer, ConfigValues.GlassPane> vaultGlass = loadGlassPanes(menuGlass.getMapList("vault"));
         Map<Integer, ConfigValues.GlassPane> ppGlass = loadGlassPanes(menuGlass.getMapList("playerpoints"));
 
-        Map<String, String> messages = new HashMap<>();
-        messages.put("prefix", prefix);
-
-        List<String> messageRoots = List.of("commands", "search", "messages");
-        for (String root : messageRoots) {
-            ConfigurationSection sec = config.getConfigurationSection(root);
-            flattenMessages(sec, root, messages);
-        }
-
-        ConfigurationSection auctionErrors = auction.getConfigurationSection("errors");
-        flattenMessages(auctionErrors, "errors", messages);
-
-        messages = Map.copyOf(messages);
+        ConfigValues.ConfigMessages messages = loadMessagesConfig(config);
 
         ConfigurationSection sortingSection = auction.getConfigurationSection("sorting");
         Map<String, String> sortingNames = new HashMap<>();
@@ -138,7 +128,7 @@ public final class ConfigManager implements IConfigManager {
                 messages, sortingNames, categoryNames,
                 symbolVault, symbolPlayerPoints,
                 exitSlot, exitButton, guiConfig,
-                confirmMenuConfig, cooldownValues, bStatsEnabled
+                confirmMenuConfig, cooldownValues, bStatsEnabled, usePapi
         );
     }
 
@@ -375,6 +365,72 @@ public final class ConfigManager implements IConfigManager {
         );
     }
 
+    private ConfigValues.ConfigMessages loadMessagesConfig(FileConfiguration config) {
+        ConfigurationSection messages = config.getConfigurationSection("messages");
+        ConfigurationSection admin = messages.getConfigurationSection("admin");
+        ConfigurationSection errors = messages.getConfigurationSection("errors");
+        ConfigurationSection buy = messages.getConfigurationSection("buy");
+        ConfigurationSection expired = messages.getConfigurationSection("expired");
+        ConfigurationSection selling = messages.getConfigurationSection("selling");
+        ConfigurationSection sell = config.getConfigurationSection("commands.sell");
+        ConfigurationSection auctionErrors = config.getConfigurationSection("auction.errors");
+
+        String reload = formatMessage(config, admin.getString("reload"));
+        String unknownSubcommand = formatMessage(config, admin.getString("unknown-subcommand"));
+        String errorReload = formatMessage(config, admin.getString("error-reload"));
+        String noPermission = formatMessage(config, admin.getString("no-permission"));
+        String noName = formatMessage(config, errors.getString("no-name"));
+        String noId = formatMessage(config, errors.getString("no-id"));
+        String noPrice = formatMessage(config, sell.getString("non-price"));
+        String noOwn = formatMessage(config, errors.getString("no-own"));
+        String economyUnavailable = formatMessage(config, auctionErrors.getString("economy-unavailable"));
+        String air = formatMessage(config, sell.getString("air"));
+        String sellSuccess = formatMessage(config, sell.getString("success"));
+        String limitReached = formatMessage(config, sell.getString("limit-reached"));
+        String databaseError = formatMessage(config, sell.getString("database-error"));
+        String enterPlayerName = formatMessage(config, String.join("\n", config.getStringList("search.enter-player-name")));
+        String buySeller = formatMessage(config, buy.getString("buy-seller"));
+        String otmena = formatMessage(config, buy.getString("otmena"));
+        String yspex = formatMessage(config, buy.getString("yspex"));
+        String noMoney = formatMessage(config, buy.getString("nomoney"));
+        String quantityExceeded = formatMessage(config, buy.getString("quantity-exceeded"));
+        String takeExpired = formatMessage(config, expired.getString("take"));
+        String takeSelling = formatMessage(config, selling.getString("take"));
+        String cooldown = formatMessage(config, messages.getString("cooldown"));
+        String inventoryFull = formatMessage(config, messages.getString("inventory-full"));
+        String cooldownItem = formatMessage(config, messages.getString("cooldown-item"));
+        return new ConfigValues.ConfigMessages(
+                reload,
+                unknownSubcommand,
+                errorReload,
+                noPermission,
+                noName,
+                noId,
+                noPrice,
+                noOwn,
+                economyUnavailable,
+                air,
+                sellSuccess,
+                limitReached,
+                databaseError,
+                enterPlayerName,
+                buySeller,
+                otmena,
+                yspex,
+                noMoney,
+                quantityExceeded,
+                takeExpired,
+                takeSelling,
+                cooldown,
+                inventoryFull,
+                cooldownItem
+        );
+    }
+
+    private String formatMessage(FileConfiguration config, String message) {
+        return TextUtils.colorize(message.replace("%prefix%", config.getString("prefix", "")));
+    }
+
     private record ParsedMaterial(Material material, String skullTexture) {}
 
     private ParsedMaterial parseMaterialAndTexture(ConfigurationSection section) {
@@ -401,34 +457,6 @@ public final class ConfigManager implements IConfigManager {
             return ActionType.get(first.substring(1, first.length() - 1));
         }
         return ActionType.get(first);
-    }
-
-    private void flattenMessages(ConfigurationSection section, String path, Map<String, String> output) {
-        for (String key : section.getKeys(false)) {
-            String childPath = path + "." + key;
-            if (section.isString(key)) {
-                putMessage(output, childPath, section.getString(key));
-            } else if (section.isList(key)) {
-                putMessage(output, childPath, String.join("\n", section.getStringList(key)));
-            } else {
-                ConfigurationSection child = section.getConfigurationSection(key);
-                flattenMessages(child, childPath, output);
-            }
-        }
-    }
-
-    private void putMessage(Map<String, String> output, String path, String message) {
-        String simpleKey = path.substring(path.lastIndexOf('.') + 1).toLowerCase();
-        String dashedPath = path.toLowerCase().replace('.', '-');
-        output.putIfAbsent(simpleKey, message);
-        output.put(dashedPath, message);
-
-        int lastDot = path.lastIndexOf('.');
-        int previousDot = lastDot <= 0 ? -1 : path.lastIndexOf('.', lastDot - 1);
-        if (previousDot >= 0) {
-            String parentKey = path.substring(previousDot + 1).toLowerCase().replace('.', '-');
-            output.put(parentKey, message);
-        }
     }
 
     private void loadItemsYml() {

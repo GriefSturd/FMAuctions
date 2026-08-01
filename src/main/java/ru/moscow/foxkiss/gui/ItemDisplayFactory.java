@@ -1,5 +1,8 @@
 package ru.moscow.foxkiss.gui;
 
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -24,8 +27,8 @@ public final class ItemDisplayFactory {
     private final IConfigManager configManager;
     private final JavaPlugin plugin;
 
-    private final Map<Long, ItemStack> lotCache = new HashMap<>();
-    private final Map<String, ItemStack> navCache = new HashMap<>();
+    private final Long2ObjectOpenHashMap<ItemStack> lotCache = new Long2ObjectOpenHashMap<>();
+    private final Object2ObjectOpenHashMap<String, ItemStack> navCache = new Object2ObjectOpenHashMap<>();
 
     public ItemDisplayFactory(JavaPlugin plugin, IConfigManager configManager) {
         this.plugin = plugin;
@@ -43,7 +46,7 @@ public final class ItemDisplayFactory {
         ItemMeta meta = base.getItemMeta();
         if (meta == null) return base;
 
-        List<Component> lore = new ArrayList<>();
+        ObjectArrayList<Component> lore = new ObjectArrayList<>();
 
         ConfigValues config = configManager.getConfigValues();
         ConfigValues.ItemLoreConfig loreConfig = config.guiConfig().itemLore();
@@ -125,7 +128,8 @@ public final class ItemDisplayFactory {
         ConfigValues.SortMenuConfig sortMenu = config.guiConfig().sortMenu();
         ConfigValues.NavigationConfig nav = config.guiConfig().navigation();
 
-        List<String> lore = new ArrayList<>();
+        // Используем ObjectArrayList
+        ObjectArrayList<String> lore = new ObjectArrayList<>();
         for (AuctionSort sort : AuctionSort.values()) {
             String display = config.sortingNames().getOrDefault(sort.name(), sort.name());
             String prefix = (sort == selected)
@@ -144,14 +148,14 @@ public final class ItemDisplayFactory {
         ConfigValues.CategoryMenuConfig categoryMenu = config.guiConfig().categoryMenu();
         ConfigValues.NavigationConfig nav = config.guiConfig().navigation();
 
-        List<String> categories = new ArrayList<>(config.categories().keySet());
+        ObjectArrayList<String> categories = new ObjectArrayList<>(config.categories().keySet());
         if (!categories.contains("all")) {
             categories.addFirst("all");
         }
 
         String current = selectedCategory.toLowerCase();
 
-        List<String> lore = new ArrayList<>();
+        ObjectArrayList<String> lore = new ObjectArrayList<>();
         for (String category : categories) {
             String display = config.categoryNames().getOrDefault(category.toLowerCase(), category.substring(0, 1).toUpperCase() + category.substring(1).toLowerCase());
             String prefix = category.equalsIgnoreCase(current)
@@ -178,7 +182,7 @@ public final class ItemDisplayFactory {
                 ItemFlag.HIDE_DESTROYS,
                 ItemFlag.HIDE_PLACED_ON);
 
-        List<Component> lore = new ArrayList<>();
+        ObjectArrayList<Component> lore = new ObjectArrayList<>();
         double totalPrice = item.pricePerItem() * selectedAmount;
         String totalPriceFormatted = PriceFormatter.format(totalPrice);
 

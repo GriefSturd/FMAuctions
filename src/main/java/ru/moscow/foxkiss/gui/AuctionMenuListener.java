@@ -16,7 +16,7 @@ import ru.moscow.foxkiss.auction.AuctionSort;
 import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.enums.ActionType;
-import ru.moscow.foxkiss.utils.managers.interfaces.IMessageManager;
+import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
 import java.util.*;
 import java.util.ArrayList;
@@ -31,8 +31,6 @@ public final class AuctionMenuListener implements Listener {
     private final AuctionService auctionService;
     private final JavaPlugin plugin;
     private final NamespacedKey actionKey;
-    private final IMessageManager messageManager;
-    private final CacheManager cacheManager;
 
     private List<String> cats;
     private final Map<String, Long> quantityMessageCooldowns = new HashMap<>();
@@ -40,25 +38,14 @@ public final class AuctionMenuListener implements Listener {
     private final Map<UUID, Long> takeCooldowns = new HashMap<>();
     private final Map<UUID, Integer> cooldownMessageSkips = new HashMap<>();
 
-    private ConfigValues messageConfig;
-    private String cooldownMessage;
-
-    public AuctionMenuListener(IConfigManager configManager, AuctionMenu auctionMenu, AuctionService auctionService, IMessageManager messageManager, JavaPlugin plugin, CacheManager cacheManager) {
+    public AuctionMenuListener(IConfigManager configManager, AuctionMenu auctionMenu, AuctionService auctionService, JavaPlugin plugin) {
         this.configManager = configManager;
         this.auctionMenu = auctionMenu;
         this.auctionService = auctionService;
         this.plugin = plugin;
-        this.messageManager = messageManager;
-        this.cacheManager = cacheManager;
         this.actionKey = new NamespacedKey(plugin, "action");
         reloadCategories();
 
-        cacheManager.registerClearTask(() -> {
-            quantityMessageCooldowns.clear();
-            updateCooldowns.clear();
-            takeCooldowns.clear();
-            cooldownMessageSkips.clear();
-        });
     }
 
     public void reloadCategories() {
@@ -116,8 +103,8 @@ public final class AuctionMenuListener implements Listener {
             long now = System.currentTimeMillis();
             long last = quantityMessageCooldowns.getOrDefault(nick, 0L);
             if (now - last >= 5_000L) {
-                String message = messageManager.getMessage(player, "buy-quantity-exceeded", Map.of("max", String.valueOf(holder.maxAmount())));
-                player.sendMessage(message);
+                player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().quantityExceeded()
+                        .replace("{max}", String.valueOf(holder.maxAmount())), configManager));
                 quantityMessageCooldowns.put(nick, now);
             }
             amount = holder.maxAmount();
@@ -215,14 +202,11 @@ public final class AuctionMenuListener implements Listener {
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
-        cacheManager.clearForPlayer(uuid);
-
         updateCooldowns.remove(uuid);
         takeCooldowns.remove(uuid);
         cooldownMessageSkips.remove(uuid);
         quantityMessageCooldowns.remove(event.getPlayer().getName());
 
-        cacheManager.removePlayerTasks(uuid);
         auctionMenu.removeRefreshProgress(uuid);
     }
 
@@ -241,21 +225,12 @@ public final class AuctionMenuListener implements Listener {
         }
         int skips = cooldownMessageSkips.getOrDefault(playerId, 0);
         if (settings.cooldownMessageEnabled() && skips == 0) {
-            player.sendMessage(getCooldownMessage(player));
+            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().cooldownItem(), configManager));
             cooldownMessageSkips.put(playerId, 2);
         } else if (settings.cooldownMessageEnabled()) {
             cooldownMessageSkips.put(playerId, skips - 1);
         }
         return false;
-    }
-
-    private String getCooldownMessage(Player player) {
-        ConfigValues currentConfig = configManager.getConfigValues();
-        if (cooldownMessage == null || messageConfig != currentConfig) {
-            cooldownMessage = messageManager.getMessage(player, "cooldown-item");
-            messageConfig = currentConfig;
-        }
-        return cooldownMessage;
     }
 
     private List<String> getCategoriesList() { return cats; }

@@ -7,12 +7,13 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
+import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.economy.EconomyProvider;
 import ru.moscow.foxkiss.permissions.LimitService;
 import ru.moscow.foxkiss.utils.ItemUtils;
 import ru.moscow.foxkiss.utils.PriceFormatter;
-import ru.moscow.foxkiss.utils.managers.interfaces.IMessageManager;
+import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -26,18 +27,16 @@ public final class AuctionService {
 
     private final JavaPlugin plugin;
     private final IConfigManager configManager;
-    private final IMessageManager messageManager;
     private final AuctionRepository repository;
     private final EconomyProvider economyProvider;
     private final LimitService limitService;
 
     private final Map<UUID, Object> locks = new HashMap<>();
 
-    public AuctionService(JavaPlugin plugin, IConfigManager configManager, IMessageManager messageManager,
+    public AuctionService(JavaPlugin plugin, IConfigManager configManager,
                           AuctionRepository repository, EconomyProvider economyProvider, LimitService limitService) {
         this.plugin = plugin;
         this.configManager = configManager;
-        this.messageManager = messageManager;
         this.repository = repository;
         this.economyProvider = economyProvider;
         this.limitService = limitService;
@@ -45,17 +44,17 @@ public final class AuctionService {
 
     public CompletableFuture<Boolean> sell(Player player, AuctionCurrency currency, double price) {
         if (!economyProvider.available(currency)) {
-            sendMessage(player, "economy-unavailable");
+            player.sendMessage(PlaceholderUtils.applypapi(player, messages().economyUnavailable(), configManager));
             return completedFalse();
         }
         if (price <= 0) {
-            sendMessage(player, "non-price");
+            player.sendMessage(PlaceholderUtils.applypapi(player, messages().noPrice(), configManager));
             return completedFalse();
         }
 
         ItemStack hand = player.getInventory().getItemInMainHand();
         if (!ItemUtils.isSellable(hand)) {
-            sendMessage(player, "air");
+            player.sendMessage(PlaceholderUtils.applypapi(player, messages().air(), configManager));
             return completedFalse();
         }
 
@@ -79,15 +78,14 @@ public final class AuctionService {
                         player.getInventory().setItemInMainHand(null);
                         String symbol = currency.symbol(configManager.getConfigValues());
                         String formatted = PriceFormatter.format(price) + " " + symbol;
-                        sendMessage(player, "commands-sell-success",
-                                Map.of("symbol_value", formatted));
+                        player.sendMessage(PlaceholderUtils.applypapi(player, messages().sellSuccess().replace("{symbol_value}", formatted), configManager));
                     });
                     return true;
                 } else if (id == -1L) {
-                    runSync(() -> sendMessage(player, "limit-reached"));
+                    runSync(() -> player.sendMessage(PlaceholderUtils.applypapi(player, messages().limitReached(), configManager)));
                     return false;
                 } else {
-                    runSync(() -> sendMessage(player, "database-error"));
+                    runSync(() -> player.sendMessage(PlaceholderUtils.applypapi(player, messages().databaseError(), configManager)));
                     return false;
                 }
             });
@@ -98,7 +96,7 @@ public final class AuctionService {
         return repository.markAsSelling(lotId)
                 .thenCompose(acquired -> {
                     if (!acquired) {
-                        sendMessage(buyer, "no-id");
+                        buyer.sendMessage(PlaceholderUtils.applypapi(buyer, messages().noId(), configManager));
                         return CompletableFuture.completedFuture(false);
                     }
                     return repository.findById(lotId)
@@ -106,24 +104,24 @@ public final class AuctionService {
                 })
                 .exceptionally(error -> {
                     repository.restoreStatus(lotId);
-                    runSync(() -> sendMessage(buyer, "no-id"));
+                    runSync(() -> buyer.sendMessage(PlaceholderUtils.applypapi(buyer, messages().noId(), configManager)));
                     return false;
                 });
     }
 
     private CompletableFuture<Boolean> processBuy(Player buyer, Optional<AuctionItem> optItem, long lotId, int amount) {
         if (optItem.isEmpty()) {
-            return restoreAndFail(buyer, lotId, "no-id").thenApply(ignored -> false);
+            return restoreAndFail(buyer, lotId, messages().noId()).thenApply(ignored -> false);
         }
 
         AuctionItem item = optItem.get();
 
         if (item.sellerName().equals(buyer.getName())) {
-            return restoreAndFail(buyer, lotId, "no-own").thenApply(ignored -> false);
+            return restoreAndFail(buyer, lotId, messages().noOwn()).thenApply(ignored -> false);
         }
 
         if (item.expired(configManager.getConfigValues().maxAuctionStorageDays())) {
-            return restoreAndFail(buyer, lotId, "no-id").thenApply(ignored -> false);
+            return restoreAndFail(buyer, lotId, messages().noId()).thenApply(ignored -> false);
         }
 
         int buyAmount = Math.max(1, Math.min(amount, item.amount()));
@@ -132,24 +130,24 @@ public final class AuctionService {
 
         return canFitAsync(buyer, bought).thenCompose(canFit -> {
             if (!canFit) {
-                return restoreAndFail(buyer, lotId, "inventory-full").thenApply(ignored -> false);
+                return restoreAndFail(buyer, lotId, messages().inventoryFull()).thenApply(ignored -> false);
             }
 
             double totalPrice = item.pricePerItem() * buyAmount;
 
             if (!economyProvider.has(buyer, item.currency(), totalPrice)) {
-                return restoreAndFail(buyer, lotId, "nomoney").thenApply(ignored -> false);
+                return restoreAndFail(buyer, lotId, messages().nomoney()).thenApply(ignored -> false);
             }
 
             if (!economyProvider.withdraw(buyer, item.currency(), totalPrice)) {
-                return restoreAndFail(buyer, lotId, "nomoney").thenApply(ignored -> false);
+                return restoreAndFail(buyer, lotId, messages().nomoney()).thenApply(ignored -> false);
             }
 
             return repository.delete(lotId)
                     .thenCompose(deleted -> {
                         if (!deleted) {
                             economyProvider.deposit(buyer, item.currency(), totalPrice);
-                            return restoreAndFail(buyer, lotId, "no-id").thenApply(ignored -> false);
+                            return restoreAndFail(buyer, lotId, messages().noId()).thenApply(ignored -> false);
                         }
                         return finalizePurchase(buyer, item, buyAmount, totalPrice)
                                 .thenApply(ignored -> true);
@@ -189,18 +187,16 @@ public final class AuctionService {
                 String itemDisplayName = ItemUtils.getItemDisplayName(bought);
                 String priceStr = PriceFormatter.format(totalPrice);
                 String symbol = item.currency().symbol(configManager.getConfigValues());
-                sendMessage(buyer, "buy-yspex",
-                        Map.of("symbol_value", priceStr + " " + symbol));
+                buyer.sendMessage(PlaceholderUtils.applypapi(buyer, messages().yspex().replace("{symbol_value}", priceStr + " " + symbol), configManager));
 
                 Player onlineSeller = Bukkit.getPlayer(item.sellerName());
                 if (onlineSeller != null) {
-                    sendMessage(onlineSeller, "buy-seller", Map.of(
-                            "buyer", buyer.getName(),
-                            "item_name", itemDisplayName,
-                            "amount", String.valueOf(buyAmount),
-                            "price", priceStr,
-                            "symbol_value", symbol
-                    ));
+                    onlineSeller.sendMessage(PlaceholderUtils.applypapi(onlineSeller, messages().buySeller()
+                            .replace("{buyer}", buyer.getName())
+                            .replace("{item_name}", itemDisplayName)
+                            .replace("{amount}", String.valueOf(buyAmount))
+                            .replace("{price}", priceStr)
+                            .replace("{symbol_value}", symbol), configManager));
                 }
                 future.complete(null);
             } catch (Exception e) {
@@ -213,40 +209,40 @@ public final class AuctionService {
     public CompletableFuture<Boolean> take(Player player, long lotId) {
         return repository.markAsSelling(lotId).thenCompose(acquired -> {
             if (!acquired) {
-                runSync(() -> sendMessage(player, "no-id"));
+                runSync(() -> player.sendMessage(PlaceholderUtils.applypapi(player, messages().noId(), configManager)));
                 return completedFalse();
             }
             return repository.findById(lotId).thenCompose(optItem -> {
-                if (optItem.isEmpty()) return restoreAndFail(player, lotId, "no-id").thenApply(ignored -> false);
+                if (optItem.isEmpty()) return restoreAndFail(player, lotId, messages().noId()).thenApply(ignored -> false);
 
                 AuctionItem item = optItem.get();
                 if (!item.sellerName().equalsIgnoreCase(player.getName())) {
-                    return restoreAndFail(player, lotId, "no-own").thenApply(ignored -> false);
+                    return restoreAndFail(player, lotId, messages().noOwn()).thenApply(ignored -> false);
                 }
 
                 ItemStack returned = item.itemStackClone();
 
                 return canFitAsync(player, returned).thenCompose(canFit -> {
-                    if (!canFit) return restoreAndFail(player, lotId, "inventory-full").thenApply(ignored -> false);
+                    if (!canFit) return restoreAndFail(player, lotId, messages().inventoryFull()).thenApply(ignored -> false);
 
                     return repository.delete(lotId).thenCompose(deleted -> runSyncResult(() -> {
                         if (!deleted) {
-                            sendMessage(player, "no-id");
+                            player.sendMessage(PlaceholderUtils.applypapi(player, messages().noId(), configManager));
                             return false;
                         }
                         player.getInventory().addItem(returned).values().forEach(left ->
                                 player.getWorld().dropItemNaturally(player.getLocation(), left));
 
-                        String key = item.expired(configManager.getConfigValues().maxAuctionStorageDays())
-                                ? "expired-take" : "selling-take";
-                        sendMessage(player, key);
+                        player.sendMessage(PlaceholderUtils.applypapi(player,
+                                item.expired(configManager.getConfigValues().maxAuctionStorageDays())
+                                        ? messages().takeExpired() : messages().takeSelling(), configManager));
                         return true;
                     }));
                 });
             });
         }).exceptionally(error -> {
             repository.restoreStatus(lotId);
-            runSync(() -> sendMessage(player, "no-id"));
+            runSync(() -> player.sendMessage(PlaceholderUtils.applypapi(player, messages().noId(), configManager)));
             return false;
         });
     }
@@ -290,24 +286,20 @@ public final class AuctionService {
         return result;
     }
 
-    private CompletableFuture<Void> restoreAndFail(Player player, long lotId, String key) {
+    private CompletableFuture<Void> restoreAndFail(Player player, long lotId, String message) {
         return repository.restoreStatus(lotId)
                 .handle((ignored, error) -> {
                     if (error != null) {
                         plugin.getLogger().log(Level.WARNING,
                                 "Ошибка при восстановлении лота аукциона " + lotId, error);
                     }
-                    runSync(() -> sendMessage(player, key));
+                    runSync(() -> player.sendMessage(PlaceholderUtils.applypapi(player, message, configManager)));
                     return null;
                 });
     }
 
-    private void sendMessage(Player player, String key) {
-        player.sendMessage(messageManager.getMessage(player, key));
-    }
-
-    private void sendMessage(Player player, String key, Map<String, String> placeholders) {
-        player.sendMessage(messageManager.getMessage(player, key, placeholders));
+    private ConfigValues.ConfigMessages messages() {
+        return configManager.getConfigValues().messages();
     }
 
     private void runSync(Runnable task) {

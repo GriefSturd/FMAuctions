@@ -19,7 +19,8 @@ public final class PlayerPreferences {
             return AuctionSort.NEWEST;
         }
 
-        return playerSorts.get(currency);
+        AuctionSort sort = playerSorts.get(currency);
+        return sort != null ? sort : AuctionSort.NEWEST;
     }
 
     public void setSort(UUID uuid, AuctionCurrency currency, AuctionSort sort) {
@@ -34,7 +35,8 @@ public final class PlayerPreferences {
             return "all";
         }
 
-        return playerCategories.get(currency);
+        String category = playerCategories.get(currency);
+        return category != null ? category : "all";
     }
 
     public void setCategory(UUID uuid, AuctionCurrency currency, String category) {

@@ -19,15 +19,12 @@ import ru.moscow.foxkiss.gui.PlayerPreferences;
 import ru.moscow.foxkiss.permissions.LimitService;
 import ru.moscow.foxkiss.placeholders.FMAuctionExpansion;
 import ru.moscow.foxkiss.utils.ItemUtils;
-import ru.moscow.foxkiss.utils.managers.MessageManager;
-import ru.moscow.foxkiss.utils.managers.interfaces.IMessageManager;
 
 import java.io.File;
 
 public final class FMAuction extends JavaPlugin {
 
     private IConfigManager configManager;
-    private IMessageManager messageManager;
     private AuctionRepository auctionRepository;
     private AuctionService auctionService;
     private AuctionMenu auctionMenu;
@@ -39,8 +36,6 @@ public final class FMAuction extends JavaPlugin {
     private AuctionCommand donateAuctionCommand;
     private AuctionMenuListener auctionMenuListener;
 
-    private final CacheManager cacheManager = new CacheManager();
-
     @Override
     public void onEnable() {
         long startTime = System.currentTimeMillis();
@@ -51,8 +46,6 @@ public final class FMAuction extends JavaPlugin {
         registerCommands();
         registerListeners();
         registerPlaceholders();
-
-        setupCacheTasks();
 
         long endTime = System.currentTimeMillis();
         getLogger().info("Plugin enabled in " + (endTime - startTime) + " ms");
@@ -67,7 +60,6 @@ public final class FMAuction extends JavaPlugin {
             placeholderExpansion.disable();
             placeholderExpansion.unregister();
         }
-        cacheManager.clearAll();
     }
 
     private void setupMetrics() {
@@ -84,7 +76,6 @@ public final class FMAuction extends JavaPlugin {
 
     public void initializeManager() {
         configManager = new ConfigManager(this);
-        messageManager = new MessageManager(configManager.getConfigValues());
         auctionRepository = new H2AuctionRepository(this);
         ItemUtils.loadTranslations(new File(getDataFolder(), "items.yml"));
         auctionRepository.init();
@@ -92,7 +83,7 @@ public final class FMAuction extends JavaPlugin {
         economyProvider.init(this);
         limitService = new LimitService(configManager);
         limitService.init();
-        auctionService = new AuctionService(this, configManager, messageManager, auctionRepository, economyProvider, limitService);
+        auctionService = new AuctionService(this, configManager, auctionRepository, economyProvider, limitService);
         playerPreferences = new PlayerPreferences();
         auctionMenu = new AuctionMenu(this, configManager, auctionRepository, playerPreferences);
     }
@@ -100,25 +91,31 @@ public final class FMAuction extends JavaPlugin {
     public void reloadAll() {
         ItemUtils.loadTranslations(new File(getDataFolder(), "items.yml"));
         configManager.reload();
-        messageManager.reload(configManager.getConfigValues());
         limitService.init();
 
-        cacheManager.clearAll();
-
+        if (auctionMenu != null) {
+            auctionMenu.clearCaches();
+        }
+        if (limitService != null) {
+            limitService.clearCache();
+        }
         if (auctionMenuListener != null) {
             auctionMenuListener.reloadCategories();
         }
-    }
-
-    public IMessageManager getMessageManager() {
-        return messageManager;
+        if (auctionCommand != null) {
+            auctionCommand.clearCache();
+        }
+        if (donateAuctionCommand != null) {
+            donateAuctionCommand.clearCache();
+        }
+        ItemUtils.clearCache();
     }
 
     private void registerCommands() {
-        auctionCommand = new AuctionCommand(this, AuctionCurrency.VAULT, auctionMenu, auctionService, messageManager, auctionRepository);
-        donateAuctionCommand = new AuctionCommand(this, AuctionCurrency.PLAYER_POINTS, auctionMenu, auctionService, messageManager, auctionRepository);
+        auctionCommand = new AuctionCommand(this, configManager, AuctionCurrency.VAULT, auctionMenu, auctionService, auctionRepository);
+        donateAuctionCommand = new AuctionCommand(this, configManager, AuctionCurrency.PLAYER_POINTS, auctionMenu, auctionService, auctionRepository);
 
-        AdminCommand adminCommand = new AdminCommand(this);
+        AdminCommand adminCommand = new AdminCommand(this, configManager);
 
         PluginCommand ahCommand = getCommand("ah");
         ahCommand.setExecutor(auctionCommand);
@@ -134,40 +131,19 @@ public final class FMAuction extends JavaPlugin {
     }
 
     private void registerListeners() {
-        auctionMenuListener = new AuctionMenuListener(configManager, auctionMenu, auctionService, messageManager, this, cacheManager);
+        auctionMenuListener = new AuctionMenuListener(configManager, auctionMenu, auctionService, this);
         getServer().getPluginManager().registerEvents(auctionMenuListener, this);
         getServer().getPluginManager().registerEvents(limitService, this);
     }
 
     private void registerPlaceholders() {
         if (getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-            placeholderExpansion = new FMAuctionExpansion(this, auctionRepository, cacheManager);
+            placeholderExpansion = new FMAuctionExpansion(this, auctionRepository);
             if (placeholderExpansion.register()) {
                 getLogger().info("PlaceholderAPI expansion registered successfully.");
             } else {
                 getLogger().warning("Failed to register PlaceholderAPI expansion.");
             }
         }
-    }
-
-    private void setupCacheTasks() {
-        cacheManager.registerClearTask(() -> {
-            if (auctionMenu != null) {
-                auctionMenu.clearCaches();
-            }
-            if (limitService != null) {
-                limitService.clearCache();
-            }
-            if (auctionMenuListener != null) {
-                auctionMenuListener.reloadCategories();
-            }
-            if (auctionCommand != null) {
-                auctionCommand.clearCache();
-            }
-            if (donateAuctionCommand != null) {
-                donateAuctionCommand.clearCache();
-            }
-            ItemUtils.clearCache();
-        });
     }
 }

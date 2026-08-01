@@ -27,7 +27,7 @@ public record ConfigValues(
         Map<Integer, GlassPane> expiredGlassPanes,
         Map<Integer, GlassPane> vaultGlassPanes,
         Map<Integer, GlassPane> playerPointsGlassPanes,
-        Map<String, String> messages,
+        ConfigMessages messages,
         Map<String, String> sortingNames,
         Map<String, String> categoryNames,
         String symbolVault,
@@ -37,7 +37,8 @@ public record ConfigValues(
         GuiConfig guiConfig,
         ConfirmMenuConfig confirmMenu,
         Cooldowns cooldowns,
-        boolean bStatsEnabled
+        boolean bStatsEnabled,
+        boolean usePapi
 ) {
 
     public record Cooldowns(
@@ -146,5 +147,32 @@ public record ConfigValues(
             ConfirmButtonConfig confirm,
             ConfirmButtonConfig cancel,
             Map<Integer, GlassPane> glassPanes
+    ) {}
+
+    public record ConfigMessages(
+            String reload,
+            String unknownSubcommand,
+            String errorReload,
+            String noPermission,
+            String noName,
+            String noId,
+            String noPrice,
+            String noOwn,
+            String economyUnavailable,
+            String air,
+            String sellSuccess,
+            String limitReached,
+            String databaseError,
+            String enterPlayerName,
+            String buySeller,
+            String otmena,
+            String yspex,
+            String nomoney,
+            String quantityExceeded,
+            String takeExpired,
+            String takeSelling,
+            String cooldown,
+            String inventoryFull,
+            String cooldownItem
     ) {}
 }

@@ -6,6 +6,7 @@ database:
   database: ""
 
 enable-bstats: true
+use-papi: true
 
 cooldowns:
   update-auc: 0.3 #(0.3 = 300 миллисекунд, 1.0 = 1 секунда)
@@ -980,7 +981,7 @@ messages:
     reload: "%prefix% §fКонфигурация &aперезагружена &fза &x&f&f&c&5&0&0{time} мс."
     unknown-subcommand: "%prefix% §cНеизвестная &fподкоманда. Используйте /fmauction help"
     error-reload: "%prefix% §fОшибка при перезагрузке конфига: &c{error}"
-    nopermission: "%prefix% §fУ вас &cнедостаточно &fправ."
+    no-permission: "%prefix% §fУ вас &cнедостаточно &fправ."
   errors:
     no-name: "%prefix% §fТовар уже куплен или убран с аукциона."
     no-id: "%prefix% §fТовар уже куплен или убран с аукциона."

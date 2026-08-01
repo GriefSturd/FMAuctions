@@ -8,6 +8,7 @@ import ru.moscow.foxkiss.auction.AuctionItem;
 import ru.moscow.foxkiss.auction.AuctionRepository;
 import ru.moscow.foxkiss.auction.AuctionSort;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
+import ru.moscow.foxkiss.utils.PlaceholderUtils;
 import ru.moscow.foxkiss.gui.builder.MenuBuilder;
 import ru.moscow.foxkiss.gui.services.AuctionFilterService;
 
@@ -61,7 +62,7 @@ public final class AuctionMenu {
         repository.findById(lotId).thenAccept(optItem -> {
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 if (optItem.isEmpty()) {
-                    player.sendMessage(configManager.getConfigValues().messages().get("no-id"));
+                    player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
                     return;
                 }
                 quantityController.openQuantity(player, currency, optItem.get(), 1);
@@ -73,7 +74,7 @@ public final class AuctionMenu {
         repository.findById(lotId).thenAccept(optItem -> {
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 if (optItem.isEmpty()) {
-                    player.sendMessage(configManager.getConfigValues().messages().get("no-id"));
+                    player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
                     return;
                 }
                 confirmController.openConfirm(player, currency, optItem.get(), amount);
