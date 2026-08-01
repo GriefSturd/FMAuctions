@@ -14,6 +14,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.auction.AuctionItem;
 import ru.moscow.foxkiss.auction.AuctionSort;
 import ru.moscow.foxkiss.config.ConfigValues;
+import ru.moscow.foxkiss.utils.TextUtils;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.enums.ActionType;
 import ru.moscow.foxkiss.utils.ItemUtils;
@@ -44,7 +45,6 @@ public final class ItemDisplayFactory {
 
         ItemStack base = item.itemStackClone();
         ItemMeta meta = base.getItemMeta();
-        if (meta == null) return base;
 
         ObjectArrayList<Component> lore = new ObjectArrayList<>();
 
@@ -86,7 +86,7 @@ public final class ItemDisplayFactory {
     }
 
     private ItemStack createButton(Material material, String name, List<String> lore, String skullTexture, ActionType action) {
-        ItemStack item = (skullTexture != null && !skullTexture.isEmpty())
+        ItemStack item = TextUtils.isNotBlank(skullTexture)
                 ? ItemUtils.skull(skullTexture, name, lore)
                 : ItemUtils.named(material, name, lore);
 

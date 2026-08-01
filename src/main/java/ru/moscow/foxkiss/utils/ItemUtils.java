@@ -24,18 +24,20 @@ public final class ItemUtils {
     public static ItemStack named(Material material, String name, List<String> lore) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
-        if (meta == null) return item;
+
+        if (meta == null) {
+            return item;
+        }
 
         meta.displayName(TextUtils.component(name).decoration(TextDecoration.ITALIC, false));
 
-        if (lore != null && !lore.isEmpty()) {
+        if (!lore.isEmpty()) {
             List<Component> loreComponents = new ArrayList<>(lore.size());
             for (String line : lore) {
                 loreComponents.add(TextUtils.component(line).decoration(TextDecoration.ITALIC, false));
             }
+
             meta.lore(loreComponents);
-        } else {
-            meta.lore(null);
         }
 
         item.setItemMeta(meta);
@@ -82,20 +84,13 @@ public final class ItemUtils {
     }
 
     public static String getItemDisplayName(ItemStack item) {
-        if (item == null) return "Воздух";
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null && meta.hasDisplayName()) {
-            return meta.getDisplayName();
-        }
-        String materialName = item.getType().name();
-        if (Material.getMaterial(materialName) == null) {
-            return "Неизвестный блок";
-        }
-        return perevod.getOrDefault(materialName, materialName.toLowerCase().replace('_', ' '));
+        Material material = item.getType();
+        String materialName = material.name();
+        return perevod.getOrDefault(materialName, materialName.toLowerCase(Locale.ROOT).replace('_', ' '));
     }
 
     public static boolean isSellable(ItemStack item) {
-        return item != null && item.getType() != Material.AIR && item.getAmount() > 0;
+        return item.getType() != Material.AIR && item.getAmount() > 0;
     }
 
     private static PlayerProfile createSkullProfile(String texture) {

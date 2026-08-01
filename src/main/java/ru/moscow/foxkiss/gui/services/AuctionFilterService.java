@@ -6,6 +6,7 @@ import ru.moscow.foxkiss.auction.AuctionItem;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.AuctionViewType;
 import ru.moscow.foxkiss.utils.ItemUtils;
+import ru.moscow.foxkiss.utils.TextUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,7 +34,7 @@ public final class AuctionFilterService {
                 if (!item.sellerName().equalsIgnoreCase(player.getName()) || !expired) continue;
             } else if (expired) continue;
 
-            if (sellerFilter != null && !sellerFilter.isEmpty() && !item.sellerName().equalsIgnoreCase(sellerFilter)) continue;
+            if (TextUtils.isNotBlank(sellerFilter) && !item.sellerName().equalsIgnoreCase(sellerFilter)) continue;
 
             if (!query.isEmpty()) {
                 String name = normalize(item.material().name());

@@ -211,20 +211,12 @@ public final class MenuBuilder {
         cacheGlassPanes(config.expiredGlassPanes());
         cacheGlassPanes(config.vaultGlassPanes());
         cacheGlassPanes(config.playerPointsGlassPanes());
-
-        if (config.confirmMenu() != null) {
-            cacheGlassPanes(config.confirmMenu().glassPanes());
-        }
-        if (config.guiConfig() != null && config.guiConfig().quantityMenu() != null) {
-            cacheGlassPanes(config.guiConfig().quantityMenu().glassPanes());
-        }
+        cacheGlassPanes(config.confirmMenu().glassPanes());
+        cacheGlassPanes(config.guiConfig().quantityMenu().glassPanes());
     }
 
     private void cacheGlassPanes(Map<Integer, ConfigValues.GlassPane> panes) {
-        if (panes == null || panes.isEmpty()) return;
-
         for (ConfigValues.GlassPane pane : panes.values()) {
-            if (pane == null) continue;
             glassPaneCache.putIfAbsent(pane, createGlassPane(pane));
         }
     }

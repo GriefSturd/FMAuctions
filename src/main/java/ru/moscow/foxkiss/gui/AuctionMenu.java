@@ -10,6 +10,7 @@ import ru.moscow.foxkiss.auction.AuctionRepository;
 import ru.moscow.foxkiss.auction.AuctionSort;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.builder.MenuBuilder;
+import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
 import java.util.*;
 
@@ -53,28 +54,38 @@ public final class AuctionMenu {
 
     public void openQuantity(Player player, AuctionCurrency currency, long lotId) {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            Optional<AuctionItem> optItem = repository.findById(lotId);
+            AuctionItem item = repository.findById(lotId).orElse(null);
+
             Bukkit.getScheduler().runTask(plugin, () -> {
-                if (!player.isOnline()) return;
-                if (optItem.isEmpty()) {
-                    player.sendMessage(ru.moscow.foxkiss.utils.PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
+                if (!player.isOnline()) {
                     return;
                 }
-                quantityController.openQuantity(player, currency, optItem.get(), 1);
+
+                if (item == null) {
+                    player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
+                    return;
+                }
+
+                quantityController.openQuantity(player, currency, item, 1);
             });
         });
     }
 
     public void openConfirm(Player player, AuctionCurrency currency, long lotId, int amount) {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            Optional<AuctionItem> optItem = repository.findById(lotId);
+            AuctionItem item = repository.findById(lotId).orElse(null);
+
             Bukkit.getScheduler().runTask(plugin, () -> {
-                if (!player.isOnline()) return;
-                if (optItem.isEmpty()) {
-                    player.sendMessage(ru.moscow.foxkiss.utils.PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
+                if (!player.isOnline()) {
                     return;
                 }
-                confirmController.openConfirm(player, currency, optItem.get(), amount);
+
+                if (item == null) {
+                    player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
+                    return;
+                }
+
+                confirmController.openConfirm(player, currency, item, amount);
             });
         });
     }

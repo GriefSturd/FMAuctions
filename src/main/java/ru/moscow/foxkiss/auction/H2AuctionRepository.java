@@ -3,6 +3,7 @@ package ru.moscow.foxkiss.auction;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.database.H2LibraryLoader;
+import ru.moscow.foxkiss.utils.TextUtils;
 
 import javax.sql.DataSource;
 import java.nio.file.Path;
@@ -148,17 +149,17 @@ public final class H2AuctionRepository implements AuctionRepository {
                 "SELECT * FROM auction_items WHERE currency=? AND status=?"
         );
 
-        if(category!=null&&!category.isEmpty()&&!category.equalsIgnoreCase("all")) {
+        if(TextUtils.isNotBlank(category) && !category.equalsIgnoreCase("all")) {
             sql.append(" AND material=?");
             params.add(category.toUpperCase(Locale.ROOT));
         }
 
-        if(sellerFilter!=null&&!sellerFilter.isEmpty()) {
+        if(TextUtils.isNotBlank(sellerFilter)) {
             sql.append(" AND seller_name LIKE ?");
             params.add("%"+sellerFilter+"%");
         }
 
-        if(searchFilter!=null&&!searchFilter.isEmpty()) {
+        if(TextUtils.isNotBlank(searchFilter)) {
             sql.append(" AND (material LIKE ? OR seller_name LIKE ?)");
             params.add("%"+searchFilter+"%");
             params.add("%"+searchFilter+"%");
@@ -206,17 +207,17 @@ public final class H2AuctionRepository implements AuctionRepository {
         params.add(currency.name());
         params.add(ACTIVE_STATUS);
 
-        if(category!=null&&!category.isEmpty()&&!category.equalsIgnoreCase("all")) {
+        if(TextUtils.isNotBlank(category) && !category.equalsIgnoreCase("all")) {
             sql.append(" AND material=?");
             params.add(category.toUpperCase(Locale.ROOT));
         }
 
-        if(sellerFilter!=null&&!sellerFilter.isEmpty()) {
+        if(TextUtils.isNotBlank(sellerFilter)) {
             sql.append(" AND seller_name LIKE ?");
             params.add("%"+sellerFilter+"%");
         }
 
-        if(searchFilter!=null&&!searchFilter.isEmpty()) {
+        if(TextUtils.isNotBlank(searchFilter)) {
             sql.append(" AND (material LIKE ? OR seller_name LIKE ?)");
             params.add("%"+searchFilter+"%");
             params.add("%"+searchFilter+"%");

@@ -17,7 +17,9 @@ import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.AuctionMenu;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
+import java.sql.SQLException;
 import java.util.*;
+import java.util.logging.Level;
 
 public final class AuctionCommand implements CommandExecutor, TabCompleter {
 
@@ -150,13 +152,9 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
     }
 
     private void updateCache() {
-        try {
-            List<String> materials = repository.getUniqueMaterialNames(currency);
-            materialCache.put(currency, materials);
-            cacheTime.put(currency, System.currentTimeMillis());
-        } catch (Exception e) {
-            plugin.getLogger().warning("Ошибка обновления кэша материалов: " + e.getMessage());
-        }
+        List<String> materials = repository.getUniqueMaterialNames(currency);
+        materialCache.put(currency, materials);
+        cacheTime.put(currency, System.currentTimeMillis());
     }
 
     public void clearCache() {
