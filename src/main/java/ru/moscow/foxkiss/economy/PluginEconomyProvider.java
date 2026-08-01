@@ -18,7 +18,7 @@ public final class PluginEconomyProvider implements EconomyProvider {
     public void init(JavaPlugin plugin) {
         try {
             VaultApi vault = new VaultApi();
-            handlers.put(AuctionCurrency.VAULT, new EconomyHandler(vault::has, vault:пше :withdraw, vault::deposit));
+            handlers.put(AuctionCurrency.VAULT, new EconomyHandler(vault::has, vault::withdraw, vault::deposit));
         } catch (Exception e) {
             plugin.getLogger().warning("Vault недоступен: " + e.getMessage());
         }
