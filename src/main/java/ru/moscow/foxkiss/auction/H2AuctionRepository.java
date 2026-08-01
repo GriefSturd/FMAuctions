@@ -12,8 +12,8 @@ import java.util.*;
 import java.util.logging.Level;
 
 public final class H2AuctionRepository implements AuctionRepository {
-    private static final int ACTIVE_STATUS=0;
-    private static final int PROCESS_STATUS=1;
+    private static final int activestatus = 0;
+    private static final int processStatus = 1;
     private final JavaPlugin plugin;
     private final String jdbcUrl;
     private DataSource dataSource;
@@ -123,7 +123,7 @@ public final class H2AuctionRepository implements AuctionRepository {
             ps.setString(3,serialize(itemStack));
             ps.setDouble(4,price);
             ps.setLong(5,System.currentTimeMillis());
-            ps.setInt(6,ACTIVE_STATUS);
+            ps.setInt(6,activestatus);
             ps.setString(7,itemStack.getType().name());
             ps.setInt(8,itemStack.getAmount());
             ps.executeUpdate();
@@ -143,11 +143,9 @@ public final class H2AuctionRepository implements AuctionRepository {
         List<Object> params=new ArrayList<>();
 
         params.add(currency.name());
-        params.add(ACTIVE_STATUS);
+        params.add(activestatus);
 
-        StringBuilder sql=new StringBuilder(
-                "SELECT * FROM auction_items WHERE currency=? AND status=?"
-        );
+        StringBuilder sql=new StringBuilder("SELECT * FROM auction_items WHERE currency=? AND status=?");
 
         if(TextUtils.isNotBlank(category) && !category.equalsIgnoreCase("all")) {
             sql.append(" AND material=?");
@@ -198,61 +196,41 @@ public final class H2AuctionRepository implements AuctionRepository {
     }
 
     @Override
-    public int countAll(AuctionCurrency currency,String category,String sellerFilter,String searchFilter) {
-        StringBuilder sql=new StringBuilder(
-                "SELECT COUNT(*) FROM auction_items WHERE currency=? AND status=?"
-        );
-
-        List<Object> params=new ArrayList<>();
-        params.add(currency.name());
-        params.add(ACTIVE_STATUS);
-
-        if(TextUtils.isNotBlank(category) && !category.equalsIgnoreCase("all")) {
-            sql.append(" AND material=?");
-            params.add(category.toUpperCase(Locale.ROOT));
-        }
-
-        if(TextUtils.isNotBlank(sellerFilter)) {
-            sql.append(" AND seller_name LIKE ?");
-            params.add("%"+sellerFilter+"%");
-        }
-
-        if(TextUtils.isNotBlank(searchFilter)) {
-            sql.append(" AND (material LIKE ? OR seller_name LIKE ?)");
-            params.add("%"+searchFilter+"%");
-            params.add("%"+searchFilter+"%");
-        }
-
-        try(Connection conn=open();PreparedStatement ps=conn.prepareStatement(sql.toString())) {
-            for(int i=0;i<params.size();i++) {
-                ps.setObject(i+1,params.get(i));
+    public MenuData loadMenuData(AuctionCurrency currency, String playerName, int maxDays, int page, int pageSize, AuctionSort sort, String category, String sellerFilter, String searchFilter) {
+        long cutoff = System.currentTimeMillis() - maxDays * 86_400_000L;
+        
+        try (Connection conn = open()) {
+            List<AuctionItem> items = findPage(currency, page, pageSize, sort, category, sellerFilter, searchFilter);
+            String countSql = """
+                SELECT 
+                    COUNT(CASE WHEN status=? THEN 1 END) as selling_count,
+                    COUNT(CASE WHEN status=? AND created_at<? THEN 1 END) as expired_count
+                FROM auction_items 
+                WHERE currency=? AND seller_name=?
+                """;
+            
+            try (PreparedStatement ps = conn.prepareStatement(countSql)) {
+                ps.setInt(1, activestatus);
+                ps.setInt(2, activestatus);
+                ps.setLong(3, cutoff);
+                ps.setString(4, currency.name());
+                ps.setString(5, playerName);
+                
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        int sellingCount = rs.getInt("selling_count");
+                        int expiredCount = rs.getInt("expired_count");
+                        return new MenuData(items, sellingCount, expiredCount);
+                    }
+                }
             }
-
-            try(ResultSet rs=ps.executeQuery()) {
-                return rs.next()?rs.getInt(1):0;
-            }
-        } catch(SQLException e) {
-            plugin.getLogger().log(Level.SEVERE,"Count all failed",e);
-            return 0;
+            
+            return new MenuData(items, 0, 0);
+            
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Load menu data failed", e);
+            return new MenuData(List.of(), 0, 0);
         }
-    }
-
-    @Override
-    public int countSellingByPlayer(AuctionCurrency currency,String playerName) {
-        return count(
-                "SELECT COUNT(*) FROM auction_items WHERE currency=? AND seller_name=? AND status=?",
-                currency.name(),playerName,ACTIVE_STATUS
-        );
-    }
-
-    @Override
-    public int countExpiredByPlayer(AuctionCurrency currency,String playerName,int maxDays) {
-        long cutoff=System.currentTimeMillis()-maxDays*86_400_000L;
-
-        return count(
-                "SELECT COUNT(*) FROM auction_items WHERE currency=? AND seller_name=? AND created_at<? AND status=?",
-                currency.name(),playerName,cutoff,ACTIVE_STATUS
-        );
     }
 
     private int count(String sql,Object... params) {
@@ -324,9 +302,9 @@ public final class H2AuctionRepository implements AuctionRepository {
             PreparedStatement ps=conn.prepareStatement(
                     "UPDATE auction_items SET status=? WHERE id=? AND status=?")) {
 
-            ps.setInt(1,PROCESS_STATUS);
+            ps.setInt(1, processStatus);
             ps.setLong(2,id);
-            ps.setInt(3,ACTIVE_STATUS);
+            ps.setInt(3, activestatus);
             return ps.executeUpdate()>0;
         } catch(SQLException e) {
             plugin.getLogger().log(Level.SEVERE,"Mark as selling failed",e);
@@ -340,9 +318,9 @@ public final class H2AuctionRepository implements AuctionRepository {
             PreparedStatement ps=conn.prepareStatement(
                     "UPDATE auction_items SET status=? WHERE id=? AND status=?")) {
 
-            ps.setInt(1,ACTIVE_STATUS);
-            ps.setLong(2,id);
-            ps.setInt(3,PROCESS_STATUS);
+            ps.setInt(1, activestatus);
+            ps.setLong(2, id);
+            ps.setInt(3,processStatus);
             ps.executeUpdate();
         } catch(SQLException e) {
             plugin.getLogger().log(Level.SEVERE,"Restore status failed",e);
@@ -409,7 +387,7 @@ public final class H2AuctionRepository implements AuctionRepository {
                     "SELECT DISTINCT material FROM auction_items WHERE currency=? AND status=? AND material IS NOT NULL")) {
 
             ps.setString(1,currency.name());
-            ps.setInt(2,ACTIVE_STATUS);
+            ps.setInt(2,activestatus);
 
             try(ResultSet rs=ps.executeQuery()) {
                 while(rs.next()) {
@@ -427,7 +405,7 @@ public final class H2AuctionRepository implements AuctionRepository {
     public int countActiveBySellerSince(String sellerName,AuctionCurrency currency,long since) {
         return count(
                 "SELECT COUNT(*) FROM auction_items WHERE seller_name=? AND currency=? AND created_at>? AND status=?",
-                sellerName,currency.name(),since,ACTIVE_STATUS
+                sellerName,currency.name(),since,activestatus
         );
     }
 

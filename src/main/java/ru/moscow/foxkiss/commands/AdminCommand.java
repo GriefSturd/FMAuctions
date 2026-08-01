@@ -48,11 +48,9 @@ public final class AdminCommand implements CommandExecutor, TabCompleter {
 
         try {
             plugin.reloadAll();
-            sender.sendMessage(PlaceholderUtils.applypapi(sender, configManager.getConfigValues().messages().reload()
-                    .replace("{time}", String.valueOf(System.currentTimeMillis() - start)), configManager));
+            sender.sendMessage(PlaceholderUtils.applypapi(sender, configManager.getConfigValues().messages().reload().replace("{time}", String.valueOf(System.currentTimeMillis() - start)), configManager));
         } catch (Exception e) {
-            sender.sendMessage(PlaceholderUtils.applypapi(sender, configManager.getConfigValues().messages().errorReload()
-                    .replace("{error}", e.getClass().getSimpleName()), configManager));
+            sender.sendMessage(PlaceholderUtils.applypapi(sender, configManager.getConfigValues().messages().errorReload().replace("{error}", e.getClass().getSimpleName()), configManager));
         }
     }
 

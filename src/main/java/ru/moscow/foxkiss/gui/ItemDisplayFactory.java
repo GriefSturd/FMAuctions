@@ -19,7 +19,6 @@ import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.enums.ActionType;
 import ru.moscow.foxkiss.utils.ItemUtils;
 import ru.moscow.foxkiss.utils.PriceFormatter;
-import ru.moscow.foxkiss.utils.TextUtils;
 
 import java.util.*;
 

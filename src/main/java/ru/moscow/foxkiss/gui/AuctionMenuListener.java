@@ -202,7 +202,7 @@ public final class AuctionMenuListener implements Listener {
         });
     }
 
-    @EventHandler
+    @EventHandler(ignoreCancelled = true)
     public void onPlayerQuit(PlayerQuitEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
         updateCooldowns.remove(uuid);

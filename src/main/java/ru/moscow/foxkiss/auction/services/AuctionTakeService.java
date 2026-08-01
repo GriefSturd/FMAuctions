@@ -8,7 +8,6 @@ import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
-import java.util.Optional;
 import java.util.function.Consumer;
 
 public final class AuctionTakeService {
@@ -31,20 +30,20 @@ public final class AuctionTakeService {
         scheduler.runAsyncThenSync(
             () -> {
                 if (!repository.markAsSelling(lotId)) {
-                    return Optional.<AuctionItem>empty();
+                    return null;
                 }
-                Optional<AuctionItem> item = repository.findById(lotId);
-                if (item.isEmpty()) {
+                AuctionItem item = repository.findById(lotId).orElse(null);
+                if (item == null) {
                     repository.restoreStatus(lotId);
                 }
                 return item;
             },
-            optional -> {
-                if (optional.isEmpty()) {
+            item -> {
+                if (item == null) {
                     finish(player, callback, false, configManager.getConfigValues().messages().noId());
                     return;
                 }
-                processTake(player, optional.get(), lotId, callback);
+                processTake(player, item, lotId, callback);
             }
         );
     }
@@ -80,7 +79,7 @@ public final class AuctionTakeService {
         }
         
         if (!deleted) {
-            repository.restoreStatus(item.id());
+            transactionService.restoreStatusAsync(item.id());
             player.sendMessage(PlaceholderUtils.applypapi(player,
                     configManager.getConfigValues().messages().noId(), configManager));
             callback.accept(false);

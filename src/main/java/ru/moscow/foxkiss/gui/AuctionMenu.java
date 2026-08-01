@@ -1,6 +1,5 @@
 package ru.moscow.foxkiss.gui;
 
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import ru.moscow.foxkiss.FMAuction;
@@ -10,6 +9,7 @@ import ru.moscow.foxkiss.auction.AuctionRepository;
 import ru.moscow.foxkiss.auction.AuctionSort;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.builder.MenuBuilder;
+import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
 import java.util.*;
@@ -23,6 +23,7 @@ public final class AuctionMenu {
     private final QuantityMenuController quantityController;
     private final ConfirmMenuController confirmController;
     private final ItemDisplayFactory itemFactory;
+    private final SchedulerService scheduler;
     private final Set<UUID> refreshesInProgress = new HashSet<>();
 
     public AuctionMenu(FMAuction plugin, IConfigManager configManager, AuctionRepository repository, PlayerPreferences playerPreferences) {
@@ -30,6 +31,7 @@ public final class AuctionMenu {
         this.configManager = configManager;
         this.repository = repository;
         this.playerPreferences = playerPreferences;
+        this.scheduler = new SchedulerService(plugin);
         this.itemFactory = new ItemDisplayFactory(plugin, configManager);
         this.builder = new MenuBuilder(configManager, itemFactory);
         this.quantityController = new QuantityMenuController(configManager, itemFactory, builder);
@@ -53,41 +55,37 @@ public final class AuctionMenu {
     }
 
     public void openQuantity(Player player, AuctionCurrency currency, long lotId) {
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            AuctionItem item = repository.findById(lotId).orElse(null);
-
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                if (!player.isOnline()) {
-                    return;
-                }
-
+        scheduler.runAsyncThenSync(
+            () -> repository.findById(lotId).orElse(null),
+            item -> {
+                if (!player.isOnline()) return;
+                
                 if (item == null) {
-                    player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
+                    player.sendMessage(PlaceholderUtils.applypapi(player, 
+                            configManager.getConfigValues().messages().noId(), configManager));
                     return;
                 }
-
+                
                 quantityController.openQuantity(player, currency, item, 1);
-            });
-        });
+            }
+        );
     }
 
     public void openConfirm(Player player, AuctionCurrency currency, long lotId, int amount) {
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            AuctionItem item = repository.findById(lotId).orElse(null);
-
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                if (!player.isOnline()) {
-                    return;
-                }
-
+        scheduler.runAsyncThenSync(
+            () -> repository.findById(lotId).orElse(null),
+            item -> {
+                if (!player.isOnline()) return;
+                
                 if (item == null) {
-                    player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
+                    player.sendMessage(PlaceholderUtils.applypapi(player, 
+                            configManager.getConfigValues().messages().noId(), configManager));
                     return;
                 }
-
+                
                 confirmController.openConfirm(player, currency, item, amount);
-            });
-        });
+            }
+        );
     }
 
     public void updateQuantityDisplay(Inventory inventory, AuctionMenuHolder holder, AuctionItem item) {
@@ -135,36 +133,50 @@ public final class AuctionMenu {
         String finalSearch = effectiveSearch;
         AuctionSort finalSort = effectiveSort;
 
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            try {
-                List<AuctionItem> items = repository.findPage(currency, page, pageSize,
-                        finalSort, finalCategory, finalSellerFilter, finalSearch);
-                int sellingCount = repository.countSellingByPlayer(currency, playerName);
-                int expiredCount = repository.countExpiredByPlayer(currency, playerName, maxStorageDays);
-
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    try {
-                        if (!player.isOnline()) return;
-                        if (targetHolder != null) {
-                            builder.refreshLotDisplays(targetHolder.getInventory(), targetHolder, items);
-                            return;
+        scheduler.runAsyncThenSync(
+            () -> {
+                try {
+                    // ОДИН SQL-запрос вместо 3-4 отдельных
+                    AuctionRepository.MenuData menuData = repository.loadMenuData(
+                            currency, playerName, maxStorageDays, page, pageSize,
+                            finalSort, finalCategory, finalSellerFilter, finalSearch);
+                    
+                    return new LoadResult(menuData.items(), menuData.sellingCount(), menuData.expiredCount(), null);
+                } catch (Exception e) {
+                    plugin.getLogger().warning("Ошибка загрузки аукциона: " + e.getMessage());
+                    return new LoadResult(null, 0, 0, e);
+                }
+            },
+            data -> {
+                try {
+                    if (data.error != null) {
+                        if (player.isOnline()) {
+                            player.sendMessage("§cОшибка открытия аукциона.");
                         }
-                        Inventory inventory = builder.buildMainMenu(player, viewType, currency, page, finalSort, finalSellerFilter, finalSearch, finalCategory, items, sellingCount, expiredCount);
-                        player.openInventory(inventory);
-                    } catch (Exception e) {
-                        plugin.getLogger().warning("Ошибка открытия меню: " + e.getMessage());
-                        if (player.isOnline()) player.sendMessage("§cОшибка открытия аукциона.");
-                    } finally {
-                        if (onFinished != null) onFinished.run();
+                        return;
                     }
-                });
-            } catch (Exception e) {
-                plugin.getLogger().warning("Ошибка загрузки аукциона: " + e.getMessage());
-                Bukkit.getScheduler().runTask(plugin, () -> {
+                    
+                    if (!player.isOnline()) return;
+                    
+                    if (targetHolder != null) {
+                        builder.refreshLotDisplays(targetHolder.getInventory(), targetHolder, data.items);
+                    } else {
+                        Inventory inventory = builder.buildMainMenu(player, viewType, currency, page, 
+                                finalSort, finalSellerFilter, finalSearch, finalCategory, 
+                                data.items, data.sellingCount, data.expiredCount);
+                        player.openInventory(inventory);
+                    }
+                } catch (Exception e) {
+                    plugin.getLogger().warning("Ошибка открытия меню: " + e.getMessage());
+                    if (player.isOnline()) {
+                        player.sendMessage("§cОшибка открытия аукциона.");
+                    }
+                } finally {
                     if (onFinished != null) onFinished.run();
-                    if (player.isOnline()) player.sendMessage("§cОшибка открытия аукциона.");
-                });
+                }
             }
-        });
+        );
     }
+    
+    private record LoadResult(List<AuctionItem> items, int sellingCount, int expiredCount, Exception error) {}
 }

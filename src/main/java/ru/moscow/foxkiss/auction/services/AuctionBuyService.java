@@ -35,20 +35,20 @@ public final class AuctionBuyService {
         scheduler.runAsyncThenSync(
             () -> {
                 if (!repository.markAsSelling(lotId)) {
-                    return Optional.<AuctionItem>empty();
+                    return null;
                 }
-                Optional<AuctionItem> item = repository.findById(lotId);
-                if (item.isEmpty()) {
+                AuctionItem item = repository.findById(lotId).orElse(null);
+                if (item == null) {
                     repository.restoreStatus(lotId);
                 }
                 return item;
             },
-            optional -> {
-                if (optional.isEmpty()) {
+            item -> {
+                if (item == null) {
                     finish(buyer, callback, false, configManager.getConfigValues().messages().noId());
                     return;
                 }
-                processBuy(buyer, optional.get(), amount, lotId, callback);
+                processBuy(buyer, item, amount, lotId, callback);
             }
         );
     }
@@ -105,9 +105,8 @@ public final class AuctionBuyService {
 
         if (!deleted) {
             transactionService.depositMoney(buyer, item.currency(), totalPrice);
-            repository.restoreStatus(item.id());
-            buyer.sendMessage(PlaceholderUtils.applypapi(buyer,
-                    configManager.getConfigValues().messages().noId(), configManager));
+            transactionService.restoreStatusAsync(item.id());
+            buyer.sendMessage(PlaceholderUtils.applypapi(buyer, configManager.getConfigValues().messages().noId(), configManager));
             callback.accept(false);
             return;
         }
