@@ -15,10 +15,7 @@ import ru.moscow.foxkiss.gui.AuctionViewType;
 import ru.moscow.foxkiss.gui.ItemDisplayFactory;
 import ru.moscow.foxkiss.utils.TextUtils;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public final class MenuBuilder {
 
@@ -29,27 +26,66 @@ public final class MenuBuilder {
     public MenuBuilder(IConfigManager configManager, ItemDisplayFactory itemFactory) {
         this.configManager = configManager;
         this.itemFactory = itemFactory;
-        buildpaneGlass();
+        cacheAllGlassPanes();
     }
 
     public Inventory buildMainMenu(Player player, AuctionViewType viewType, AuctionCurrency currency, int page, AuctionSort sort, String sellerFilter, String searchFilter, String category, List<AuctionItem> filtered, int sellingCount, int expiredCount) {
         ConfigValues values = configManager.getConfigValues();
-        int menuSize = values.menuSize();
-        ConfigValues.TitlesConfig titles = values.guiConfig().titles();
+        int totalPages = calculateTotalPages(filtered.size(), values.auctionSlots().size());
+        String pageDisplay = formatPageDisplay(page, totalPages);
+        String title = buildTitle(viewType, pageDisplay, values.guiConfig().titles());
 
-        int totalPages = (int) Math.ceil((double) filtered.size() / values.auctionSlots().size());
-        String pageDisplay = (totalPages > 0) ? (page + 1) + "/" + totalPages : "1/1";
+        AuctionMenuHolder holder = createHolder(player, viewType, currency, page, sort, sellerFilter, searchFilter, category, totalPages);
+        Inventory inv = Bukkit.createInventory(holder, values.menuSize(), TextUtils.component(title));
+        holder.setInventory(inv);
 
-        String title;
-        switch (viewType) {
-            case MAIN -> title = titles.main();
-            case SELLING -> title = titles.selling();
-            case EXPIRED -> title = titles.expired();
-            default -> title = titles.main();
+        fillGlassPanes(inv, viewType, values);
+        fillAuctionItems(inv, filtered, page, values.auctionSlots(), holder, currency);
+        addNavigationButtons(inv, viewType, page, totalPages, sort, category, sellingCount, expiredCount);
+        addExitButton(inv, viewType, pageDisplay, values);
+
+        return inv;
+    }
+
+    public void refreshLotDisplays(Inventory inventory, AuctionMenuHolder holder, List<AuctionItem> filtered) {
+        List<Integer> activeSlots = new ArrayList<>(configManager.getConfigValues().auctionSlots());
+        clearSlots(inventory, activeSlots);
+        holder.clearLots();
+
+        int totalPages = calculateTotalPages(filtered.size(), activeSlots.size());
+        holder.totalPages(totalPages);
+
+        int start = holder.page() * activeSlots.size();
+        int end = Math.min(start + activeSlots.size(), filtered.size());
+
+        for (int i = start; i < end; i++) {
+            int slot = activeSlots.get(i - start);
+            AuctionItem item = filtered.get(i);
+            inventory.setItem(slot, itemFactory.createLotDisplay(item));
+            holder.addLot(slot, item.id(), item.amount());
         }
-        title = title.replace("{page}", pageDisplay);
+    }
 
-        AuctionMenuHolder holder = AuctionMenuHolder.builder()
+    private int calculateTotalPages(int itemsCount, int slotsPerPage) {
+        return (int) Math.ceil((double) itemsCount / slotsPerPage);
+    }
+
+    private String formatPageDisplay(int page, int totalPages) {
+        return (totalPages > 0) ? (page + 1) + "/" + totalPages : "1/1";
+    }
+
+    private String buildTitle(AuctionViewType viewType, String pageDisplay, ConfigValues.TitlesConfig titles) {
+        String raw = switch (viewType) {
+            case MAIN -> titles.main();
+            case SELLING -> titles.selling();
+            case EXPIRED -> titles.expired();
+            default -> titles.main();
+        };
+        return raw.replace("{page}", pageDisplay);
+    }
+
+    private AuctionMenuHolder createHolder(Player player, AuctionViewType viewType, AuctionCurrency currency, int page, AuctionSort sort, String sellerFilter, String searchFilter, String category, int totalPages) {
+        return AuctionMenuHolder.builder()
                 .viewType(viewType)
                 .currency(currency)
                 .viewer(player.getUniqueId())
@@ -60,131 +96,97 @@ public final class MenuBuilder {
                 .category(category)
                 .totalPages(totalPages)
                 .build();
-
-        Inventory inv = Bukkit.createInventory(holder, menuSize, TextUtils.component(title));
-        holder.setInventory(inv);
-
-        Map<Integer, ConfigValues.GlassPane> glassPanes;
-        switch (viewType) {
-            case MAIN -> glassPanes = values.sellingGlassPanes();
-            case SELLING -> glassPanes = values.sellingGlassPanes();
-            case EXPIRED -> glassPanes = values.expiredGlassPanes();
-            default -> glassPanes = Map.of();
-        }
-        fillGlass(inv, glassPanes);
-
-        List<Integer> activeSlots = new ArrayList<>(values.auctionSlots());
-        int startIndex = page * activeSlots.size();
-        int endIndex = Math.min(startIndex + activeSlots.size(), filtered.size());
-        List<AuctionItem> pageItems = filtered.subList(startIndex, endIndex);
-
-        for (int i = 0; i < pageItems.size(); i++) {
-            int slot = activeSlots.get(i);
-            AuctionItem item = pageItems.get(i);
-            ItemStack display = itemFactory.createLotDisplay(item);
-            inv.setItem(slot, display);
-            holder.addLot(slot, item.id(), item.amount());
-        }
-
-        addNavigationButtons(inv, viewType, page, totalPages, sort, category, sellingCount, expiredCount);
-
-        ConfigValues.ButtonConfig exitButton = values.exitButton();
-        if (exitButton != null && (viewType == AuctionViewType.SELLING || viewType == AuctionViewType.EXPIRED)) {
-            List<String> replacedLore = new ArrayList<>(exitButton.lore().size());
-            for (String line : exitButton.lore()) {
-                replacedLore.add(line.replace("{page}", pageDisplay));
-            }
-            ConfigValues.ButtonConfig replacedExit = new ConfigValues.ButtonConfig(
-                    exitButton.material(),
-                    exitButton.name().replace("{page}", pageDisplay),
-                    replacedLore,
-                    exitButton.skullTexture(),
-                    exitButton.action(),
-                    exitButton.slots()
-            );
-            for (int slot : replacedExit.slots()) {
-                if (slot >= 0 && slot < inv.getSize()) {
-                    inv.setItem(slot, itemFactory.createButton(replacedExit));
-                }
-            }
-        }
-
-        return inv;
     }
 
-    public void refreshLotDisplays(Inventory inventory, AuctionMenuHolder holder, List<AuctionItem> filtered) {
-        List<Integer> activeSlots = new ArrayList<>(configManager.getConfigValues().auctionSlots());
-        for (int slot : activeSlots) {
-            inventory.setItem(slot, null);
+    private void fillGlassPanes(Inventory inv, AuctionViewType viewType, ConfigValues values) {
+        Map<Integer, ConfigValues.GlassPane> panes = switch (viewType) {
+            case MAIN, SELLING -> values.sellingGlassPanes();
+            case EXPIRED -> values.expiredGlassPanes();
+            default -> Collections.emptyMap();
+        };
+        fillGlass(inv, panes);
+    }
+
+    private void fillAuctionItems(Inventory inv, List<AuctionItem> filtered, int page, Set<Integer> slotsSet, AuctionMenuHolder holder, AuctionCurrency currency) {
+        List<Integer> activeSlots = new ArrayList<>(slotsSet);
+        int start = page * activeSlots.size();
+        int end = Math.min(start + activeSlots.size(), filtered.size());
+
+        for (int i = start; i < end; i++) {
+            int slot = activeSlots.get(i - start);
+            AuctionItem item = filtered.get(i);
+            inv.setItem(slot, itemFactory.createLotDisplay(item));
+            holder.addLot(slot, item.id(), item.amount());
+        }
+    }
+
+    private void addExitButton(Inventory inv, AuctionViewType viewType, String pageDisplay, ConfigValues values) {
+        ConfigValues.ButtonConfig exit = values.exitButton();
+        if (exit == null || (viewType != AuctionViewType.SELLING && viewType != AuctionViewType.EXPIRED)) {
+            return;
         }
 
-        holder.clearLots();
-        int totalPages = (int) Math.ceil((double) filtered.size() / activeSlots.size());
-        holder.totalPages(totalPages);
+        List<String> replacedLore = new ArrayList<>();
+        for (String line : exit.lore()) {
+            replacedLore.add(line.replace("{page}", pageDisplay));
+        }
 
-        int startIndex = holder.page() * activeSlots.size();
-        int endIndex = Math.min(startIndex + activeSlots.size(), filtered.size());
-        for (int index = startIndex; index < endIndex; index++) {
-            int slot = activeSlots.get(index - startIndex);
-            AuctionItem item = filtered.get(index);
-            inventory.setItem(slot, itemFactory.createLotDisplay(item));
-            holder.addLot(slot, item.id(), item.amount());
+        ConfigValues.ButtonConfig replaced = new ConfigValues.ButtonConfig(
+                exit.material(),
+                exit.name().replace("{page}", pageDisplay),
+                replacedLore,
+                exit.skullTexture(),
+                exit.action(),
+                exit.slots()
+        );
+
+        ItemStack button = itemFactory.createButton(replaced);
+        for (int slot : replaced.slots()) {
+            if (slot >= 0 && slot < inv.getSize()) {
+                inv.setItem(slot, button.clone());
+            }
         }
     }
 
     private void addNavigationButtons(Inventory inv, AuctionViewType viewType, int page, int totalPages, AuctionSort sort, String category, int sellingCount, int expiredCount) {
         ConfigValues.NavigationConfig nav = configManager.getConfigValues().guiConfig().navigation();
-        String pageDisplay = (totalPages > 0) ? (page + 1) + "/" + totalPages : "1/1";
+        String pageDisplay = formatPageDisplay(page, totalPages);
 
-        {
-            List<String> lore = replacePlaceholders(nav.previous().lore(), pageDisplay);
-            inv.setItem(nav.previous().slot(),
-                    itemFactory.createNavigationButton(nav.previous(), lore));
-        }
-
-        {
-            List<String> lore = replacePlaceholders(nav.refresh().lore(), pageDisplay);
-            inv.setItem(nav.refresh().slot(),
-                    itemFactory.createNavigationButton(nav.refresh(), lore));
-        }
-
-        {
-            List<String> lore = replacePlaceholders(nav.next().lore(), pageDisplay);
-            inv.setItem(nav.next().slot(),
-                    itemFactory.createNavigationButton(nav.next(), lore));
-        }
+        setNavButton(inv, nav.previous(), pageDisplay, null);
+        setNavButton(inv, nav.refresh(), pageDisplay, null);
+        setNavButton(inv, nav.next(), pageDisplay, null);
 
         if (viewType == AuctionViewType.MAIN) {
-            {
-                List<String> lore = replacePlaceholders(nav.selling().lore(), pageDisplay, sellingCount);
-                inv.setItem(nav.selling().slot(),
-                        itemFactory.createNavigationButton(nav.selling(), lore));
-            }
-
-            {
-                List<String> lore = new ArrayList<>(nav.expired().lore().size());
-                String countStr = String.valueOf(expiredCount);
-                for (String line : nav.expired().lore()) {
-                    lore.add(line.replace("{page}", pageDisplay).replace("{count}", countStr));
-                }
-                inv.setItem(nav.expired().slot(),
-                        itemFactory.createNavigationButton(nav.expired(), lore));
-            }
+            setNavButton(inv, nav.selling(), pageDisplay, sellingCount);
+            setNavButtonWithCount(inv, nav.expired(), pageDisplay, expiredCount);
 
             inv.setItem(nav.sort().slot(), itemFactory.createSortButton(sort));
             inv.setItem(nav.categories().slot(), itemFactory.createCategoryButton(category));
         }
     }
 
-    private List<String> replacePlaceholders(List<String> lore, String pageDisplay) {
-        return replacePlaceholders(lore, pageDisplay, null);
+    private void setNavButton(Inventory inv, ConfigValues.NavigationButton button, String pageDisplay, Integer count) {
+        List<String> lore = replacePlaceholders(button.lore(), pageDisplay, count);
+        inv.setItem(button.slot(), itemFactory.createNavigationButton(button, lore));
+    }
+
+    private void setNavButtonWithCount(Inventory inv, ConfigValues.NavigationButton button, String pageDisplay, int count) {
+        List<String> lore = new ArrayList<>(button.lore().size());
+        String countStr = String.valueOf(count);
+        for (String line : button.lore()) {
+            lore.add(line.replace("{page}", pageDisplay).replace("{count}", countStr));
+        }
+        inv.setItem(button.slot(), itemFactory.createNavigationButton(button, lore));
     }
 
     private List<String> replacePlaceholders(List<String> lore, String pageDisplay, Integer count) {
         List<String> result = new ArrayList<>(lore.size());
         for (String line : lore) {
             String replaced = line.replace("{page}", pageDisplay);
-            result.add(count == null ? replaced : replaced.replace("{count}", String.valueOf(count)));
+            if (count != null) {
+                replaced = replaced.replace("{count}", String.valueOf(count));
+            }
+            result.add(replaced);
         }
         return result;
     }
@@ -192,22 +194,17 @@ public final class MenuBuilder {
     public void fillGlass(Inventory inventory, Map<Integer, ConfigValues.GlassPane> panes) {
         for (Map.Entry<Integer, ConfigValues.GlassPane> entry : panes.entrySet()) {
             int slot = entry.getKey();
+            if (slot < 0 || slot >= inventory.getSize()) continue;
 
-            if (slot < 0 || slot >= inventory.getSize()) {
-                continue;
-            }
-
-            ItemStack item = glassPaneCache.get(entry.getValue());
-
-            if (item != null) {
-                inventory.setItem(slot, item.clone());
+            ItemStack cached = glassPaneCache.get(entry.getValue());
+            if (cached != null) {
+                inventory.setItem(slot, cached.clone());
             }
         }
     }
 
-    public void buildpaneGlass() {
+    private void cacheAllGlassPanes() {
         glassPaneCache.clear();
-
         ConfigValues config = configManager.getConfigValues();
 
         cacheGlassPanes(config.sellingGlassPanes());
@@ -215,20 +212,19 @@ public final class MenuBuilder {
         cacheGlassPanes(config.vaultGlassPanes());
         cacheGlassPanes(config.playerPointsGlassPanes());
 
-        cacheGlassPanes(config.confirmMenu().glassPanes());
-        cacheGlassPanes(config.guiConfig().quantityMenu().glassPanes());
+        if (config.confirmMenu() != null) {
+            cacheGlassPanes(config.confirmMenu().glassPanes());
+        }
+        if (config.guiConfig() != null && config.guiConfig().quantityMenu() != null) {
+            cacheGlassPanes(config.guiConfig().quantityMenu().glassPanes());
+        }
     }
 
     private void cacheGlassPanes(Map<Integer, ConfigValues.GlassPane> panes) {
-        if (panes.isEmpty()) {
-            return;
-        }
+        if (panes == null || panes.isEmpty()) return;
 
         for (ConfigValues.GlassPane pane : panes.values()) {
-            if (pane == null) {
-                continue;
-            }
-
+            if (pane == null) continue;
             glassPaneCache.putIfAbsent(pane, createGlassPane(pane));
         }
     }
@@ -241,5 +237,11 @@ public final class MenuBuilder {
             item.setItemMeta(meta);
         }
         return item;
+    }
+
+    private void clearSlots(Inventory inv, List<Integer> slots) {
+        for (int slot : slots) {
+            inv.setItem(slot, null);
+        }
     }
 }
