@@ -109,4 +109,9 @@ public final class ItemUtils {
         cacheSkull.clear();
         profileSkull.clear();
     }
+
+    public static String getTranslation(Material material) {
+        if (material == null) return null;
+        return perevod.get(material.name());
+    }
 }
