@@ -3,36 +3,30 @@ package ru.moscow.foxkiss.auction;
 import org.bukkit.inventory.ItemStack;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 
 public interface AuctionRepository {
 
     void init();
 
-    CompletableFuture<Long> create(String sellerName, AuctionCurrency currency, ItemStack itemStack, double price);
+    long create(String sellerName, AuctionCurrency currency, ItemStack itemStack, double price);
 
-    default CompletableFuture<Long> createIfAllowed(String sellerName, AuctionCurrency currency,
-                                                    ItemStack itemStack, double price, int maxDays, int limit) {
-        return create(sellerName, currency, itemStack, price);
-    }
+    List<AuctionItem> findAll(AuctionCurrency currency);
 
-    CompletableFuture<List<AuctionItem>> findAll(AuctionCurrency currency);
+    Optional<AuctionItem> findById(long id);
 
-    CompletableFuture<Optional<AuctionItem>> findById(long id);
+    boolean delete(long id);
 
-    CompletableFuture<Boolean> delete(long id);
+    void recordSale(String sellerName, String buyerName, AuctionCurrency currency, String itemType, int amount, double price);
 
-    CompletableFuture<Void> recordSale(String sellerName, String buyerName, AuctionCurrency currency,
-                                       String itemType, int amount, double price);
+    List<TopSeller> getTopSellers(AuctionCurrency currency, int limit);
 
-    CompletableFuture<List<TopSeller>> getTopSellers(AuctionCurrency currency, int limit);
+    PlayerStats getPlayerStats(String playerName, AuctionCurrency currency);
 
-    CompletableFuture<PlayerStats> getPlayerStats(String playerName, AuctionCurrency currency);
+    List<String> getUniqueMaterialNames(AuctionCurrency currency);
 
-    CompletableFuture<List<String>> getUniqueMaterialNames(AuctionCurrency currency);
+    boolean markAsSelling(long id);
 
-    CompletableFuture<Boolean> markAsSelling(long id);
-    CompletableFuture<Void> restoreStatus(long id);
+    void restoreStatus(long id);
 
     void close();
 

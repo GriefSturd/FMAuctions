@@ -2,6 +2,8 @@ package ru.moscow.foxkiss.auction;
 
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
+import ru.moscow.foxkiss.gui.AuctionViewType;
+
 import java.util.concurrent.TimeUnit;
 
 public final class AuctionItem {
@@ -12,14 +14,16 @@ public final class AuctionItem {
     private final ItemStack itemStack;
     private final double price;
     private final long createdAt;
+    private final AuctionViewType status;
 
-    public AuctionItem(long id, String sellerName, AuctionCurrency currency, ItemStack itemStack, double price, long createdAt) {
+    public AuctionItem(long id, String sellerName, AuctionCurrency currency, ItemStack itemStack, double price, long createdAt, AuctionViewType status) {
         this.id = id;
         this.sellerName = sellerName;
         this.currency = currency;
         this.itemStack = itemStack;
         this.price = price;
         this.createdAt = createdAt;
+        this.status = status;
     }
 
     public long id() {
@@ -52,6 +56,10 @@ public final class AuctionItem {
 
     public long createdAt() {
         return createdAt;
+    }
+
+    public AuctionViewType status() {
+        return status;
     }
 
     public double pricePerItem() {

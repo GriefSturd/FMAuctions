@@ -1,5 +1,6 @@
 package ru.moscow.foxkiss.gui;
 
+import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -19,10 +20,6 @@ import ru.moscow.foxkiss.gui.enums.ActionType;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
 import java.util.*;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 public final class AuctionMenuListener implements Listener {
 
@@ -45,7 +42,6 @@ public final class AuctionMenuListener implements Listener {
         this.plugin = plugin;
         this.actionKey = new NamespacedKey(plugin, "action");
         reloadCategories();
-
     }
 
     public void reloadCategories() {
@@ -66,12 +62,10 @@ public final class AuctionMenuListener implements Listener {
             return;
         }
         if (holder.viewType() == AuctionViewType.QUANTITY && slot == configManager.getConfigValues().guiConfig().quantityMenu().slotAmount()) {
-            auctionService.buy(player, holder.lotId(), holder.selectedAmount())
-                    .thenAccept(success -> {
-                        if (success) {
-                            auctionMenu.openMain(player, holder.currency(), 0, null, null, null, null);
-                        }
-                    });
+            boolean success = auctionService.buy(player, holder.lotId(), holder.selectedAmount());
+            if (success) {
+                auctionMenu.openMain(player, holder.currency(), 0, null, null, null, null);
+            }
             return;
         }
         ItemStack clicked = event.getCurrentItem();
@@ -119,12 +113,10 @@ public final class AuctionMenuListener implements Listener {
     private void handleConfirmAction(Player player, AuctionMenuHolder holder, ActionType action) {
         switch (action) {
             case CONFIRM -> {
-                auctionService.buy(player, holder.confirmLotId(), holder.confirmAmount())
-                        .thenAccept(success -> {
-                            if (success) {
-                                auctionMenu.openMain(player, holder.currency(), 0, null, null, null, null);
-                            }
-                        });
+                boolean success = auctionService.buy(player, holder.confirmLotId(), holder.confirmAmount());
+                if (success) {
+                    auctionMenu.openMain(player, holder.currency(), 0, null, null, null, null);
+                }
             }
             case CANCEL -> player.closeInventory();
             default -> {}
@@ -175,10 +167,10 @@ public final class AuctionMenuListener implements Listener {
                     configManager.getConfigValues().cooldowns().takeItemSeconds())) {
                 return;
             }
-            auctionService.take(player, lotId).thenAccept(taken -> {
-                if (!taken) return;
-                plugin.getServer().getScheduler().runTask(plugin, () -> auctionMenu.refreshInventory(player, holder));
-            });
+            boolean taken = auctionService.take(player, lotId);
+            if (taken) {
+                Bukkit.getScheduler().runTask(plugin, () -> auctionMenu.refreshInventory(player, holder));
+            }
             return;
         }
         Integer amount = holder.getLotAmount(slot);
@@ -190,12 +182,10 @@ public final class AuctionMenuListener implements Listener {
         if (configManager.getConfigValues().confirmMenu().enabled() && !rightClick) {
             auctionMenu.openConfirm(player, holder.currency(), lotId, amount);
         } else {
-            auctionService.buy(player, lotId, amount)
-                    .thenAccept(success -> {
-                        if (success) {
-                            auctionMenu.refreshInventory(player, holder);
-                        }
-                    });
+            boolean success = auctionService.buy(player, lotId, amount);
+            if (success) {
+                Bukkit.getScheduler().runTask(plugin, () -> auctionMenu.refreshInventory(player, holder));
+            }
         }
     }
 
@@ -206,7 +196,6 @@ public final class AuctionMenuListener implements Listener {
         takeCooldowns.remove(uuid);
         cooldownMessageSkips.remove(uuid);
         quantityMessageCooldowns.remove(event.getPlayer().getName());
-
         auctionMenu.removeRefreshProgress(uuid);
     }
 
