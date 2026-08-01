@@ -10,7 +10,6 @@ import ru.moscow.foxkiss.auction.AuctionSort;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.builder.MenuBuilder;
 import ru.moscow.foxkiss.gui.services.AuctionFilterService;
-import ru.moscow.foxkiss.utils.CacheManager;
 
 import java.util.*;
 
@@ -28,19 +27,17 @@ public final class AuctionMenu {
 
     private final Set<UUID> refreshesInProgress = Collections.newSetFromMap(new HashMap<>());
 
-    public AuctionMenu(FMAuction plugin, IConfigManager configManager, AuctionRepository repository, PlayerPreferences playerPreferences, CacheManager cacheManager) {
+    public AuctionMenu(FMAuction plugin, IConfigManager configManager, AuctionRepository repository, PlayerPreferences playerPreferences) {
         this.plugin = plugin;
         this.configManager = configManager;
         this.repository = repository;
         this.playerPreferences = playerPreferences;
 
-        this.itemFactory = new ItemDisplayFactory(plugin, configManager, cacheManager);
+        this.itemFactory = new ItemDisplayFactory(plugin, configManager);
         this.filterService = new AuctionFilterService(configManager);
         this.builder = new MenuBuilder(configManager, itemFactory);
         this.quantityController = new QuantityMenuController(configManager, itemFactory, builder);
         this.confirmController = new ConfirmMenuController(configManager, itemFactory, builder);
-
-        cacheManager.registerClearTask(() -> refreshesInProgress.clear());
     }
 
     public void openMain(Player player, AuctionCurrency currency, int page, AuctionSort sort, String sellerFilter, String searchFilter, String category) {
@@ -89,7 +86,7 @@ public final class AuctionMenu {
     }
 
     public void clearCaches() {
-        itemFactory.clearLotDisplayCache();
+        itemFactory.clearCache();
         builder.buildpaneGlass();
     }
 

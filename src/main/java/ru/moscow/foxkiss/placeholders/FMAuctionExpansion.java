@@ -12,7 +12,6 @@ import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionRepository;
 import ru.moscow.foxkiss.economy.VaultChatApi;
 import ru.moscow.foxkiss.economy.VaultPermissionApi;
-import ru.moscow.foxkiss.utils.CacheManager;
 import ru.moscow.foxkiss.utils.PriceFormatter;
 
 import java.util.*;

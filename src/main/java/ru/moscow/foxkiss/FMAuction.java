@@ -18,7 +18,6 @@ import ru.moscow.foxkiss.gui.AuctionMenuListener;
 import ru.moscow.foxkiss.gui.PlayerPreferences;
 import ru.moscow.foxkiss.permissions.LimitService;
 import ru.moscow.foxkiss.placeholders.FMAuctionExpansion;
-import ru.moscow.foxkiss.utils.CacheManager;
 import ru.moscow.foxkiss.utils.ItemUtils;
 import ru.moscow.foxkiss.utils.managers.MessageManager;
 import ru.moscow.foxkiss.utils.managers.interfaces.IMessageManager;
@@ -95,7 +94,7 @@ public final class FMAuction extends JavaPlugin {
         limitService.init();
         auctionService = new AuctionService(this, configManager, messageManager, auctionRepository, economyProvider, limitService);
         playerPreferences = new PlayerPreferences();
-        auctionMenu = new AuctionMenu(this, configManager, auctionRepository, playerPreferences, cacheManager);
+        auctionMenu = new AuctionMenu(this, configManager, auctionRepository, playerPreferences);
     }
 
     public void reloadAll() {

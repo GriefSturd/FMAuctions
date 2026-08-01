@@ -26,7 +26,7 @@ public final class MenuBuilder {
     public MenuBuilder(IConfigManager configManager, ItemDisplayFactory itemFactory) {
         this.configManager = configManager;
         this.itemFactory = itemFactory;
-        cacheAllGlassPanes();
+        buildpaneGlass();
     }
 
     public Inventory buildMainMenu(Player player, AuctionViewType viewType, AuctionCurrency currency, int page, AuctionSort sort, String sellerFilter, String searchFilter, String category, List<AuctionItem> filtered, int sellingCount, int expiredCount) {
@@ -203,7 +203,7 @@ public final class MenuBuilder {
         }
     }
 
-    private void cacheAllGlassPanes() {
+    public void buildpaneGlass() {
         glassPaneCache.clear();
         ConfigValues config = configManager.getConfigValues();
 

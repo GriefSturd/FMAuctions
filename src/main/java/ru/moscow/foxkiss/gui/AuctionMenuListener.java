@@ -16,7 +16,6 @@ import ru.moscow.foxkiss.auction.AuctionSort;
 import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.enums.ActionType;
-import ru.moscow.foxkiss.utils.CacheManager;
 import ru.moscow.foxkiss.utils.managers.interfaces.IMessageManager;
 
 import java.util.*;
