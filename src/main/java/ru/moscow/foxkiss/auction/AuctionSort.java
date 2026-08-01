@@ -3,38 +3,30 @@ package ru.moscow.foxkiss.auction;
 import java.util.Comparator;
 
 public enum AuctionSort {
-    NEWEST,
-    OLDEST,
-    EXPENSIVE,
-    CHEAP,
-    EXPENSIVE_PER_ITEM,
-    CHEAP_PER_ITEM;
+    NEWEST(Comparator.comparingLong(AuctionItem::createdAt).reversed()),
+    OLDEST(Comparator.comparingLong(AuctionItem::createdAt)),
+    EXPENSIVE(Comparator.comparingDouble(AuctionItem::price).reversed()),
+    CHEAP(Comparator.comparingDouble(AuctionItem::price)),
+    EXPENSIVE_PER_ITEM(Comparator.comparingDouble(AuctionItem::pricePerItem).reversed()),
+    CHEAP_PER_ITEM(Comparator.comparingDouble(AuctionItem::pricePerItem));
 
-    private static final AuctionSort[] VALUES = values();
+    private final Comparator<AuctionItem> comparator;
 
-    private static final Comparator<AuctionItem> NEWEST_SORT = Comparator.comparingLong(AuctionItem::createdAt).reversed();
-    private static final Comparator<AuctionItem> OLDEST_SORT = Comparator.comparingLong(AuctionItem::createdAt);
-    private static final Comparator<AuctionItem> EXPENSIVE_SORT = Comparator.comparingDouble(AuctionItem::price).reversed();
-    private static final Comparator<AuctionItem> CHEAP_SORT = Comparator.comparingDouble(AuctionItem::price);
-    private static final Comparator<AuctionItem> EXPENSIVE_PER_ITEM_SORT = Comparator.comparingDouble(AuctionItem::pricePerItem).reversed();
-    private static final Comparator<AuctionItem> CHEAP_PER_ITEM_SORT = Comparator.comparingDouble(AuctionItem::pricePerItem);
+    AuctionSort(Comparator<AuctionItem> comparator) {
+        this.comparator = comparator;
+    }
 
     public AuctionSort next() {
-        return VALUES[(ordinal() + 1) % VALUES.length];
+        AuctionSort[] values = values();
+        return values[(ordinal() + 1) % values.length];
     }
 
     public AuctionSort previous() {
-        return VALUES[(ordinal() - 1 + VALUES.length) % VALUES.length];
+        AuctionSort[] values = values();
+        return values[(ordinal() - 1 + values.length) % values.length];
     }
 
     public Comparator<AuctionItem> comparator() {
-        return switch (this) {
-            case NEWEST -> NEWEST_SORT;
-            case OLDEST -> OLDEST_SORT;
-            case EXPENSIVE -> EXPENSIVE_SORT;
-            case CHEAP -> CHEAP_SORT;
-            case EXPENSIVE_PER_ITEM -> EXPENSIVE_PER_ITEM_SORT;
-            case CHEAP_PER_ITEM -> CHEAP_PER_ITEM_SORT;
-        };
+        return comparator;
     }
 }
