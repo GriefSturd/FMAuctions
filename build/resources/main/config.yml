@@ -1,3 +1,16 @@
+# ═══════════════════════════════════════════════════════════
+#  FMAuction - Конфигурация плагина
+# ═══════════════════════════════════════════════════════════
+# 
+# CustomModelData:
+#   Для использования кастомных моделей из ресурспаков добавьте:
+#   custom-model-data: 1001
+#   к любой кнопке, предмету или стеклу в GUI
+#   
+#   Подробная документация: CUSTOM_MODEL_DATA.md
+#
+# ═══════════════════════════════════════════════════════════
+
 database:
   host: ""
   port: 3306
@@ -94,10 +107,15 @@ auction:
     enable-confirm-menu: true
     item-slot: 13
     size: 27
+    # Вы можете добавить custom-model-data к кнопкам подтверждения:
+    # confirm:
+    #   item: PAPER
+    #   custom-model-data: 2001
     confirm:
       actions:
         - "[CONFIRM]"
       item: GREEN_STAINED_GLASS_PANE
+      # custom-model-data: 2001  # Раскомментируйте для кастомной модели
       slots: [0,1,2,9,10,11,18,19,20]
       name: "&aПодтвердить"
       lore:
@@ -106,6 +124,7 @@ auction:
       actions:
         - "[CANCEL]"
       item: RED_STAINED_GLASS_PANE
+      # custom-model-data: 2002  # Раскомментируйте для кастомной модели
       slots: [6,7,8,15,16,17,24,25,26]
       name: "&cОтменить"
       lore:
@@ -113,15 +132,18 @@ auction:
     glass:
       - glass-type: GRAY_STAINED_GLASS_PANE
         display-name: "&8ᴡᴡᴡ.ꜰʀᴏsᴛᴍɪɴᴇ.ᴘᴡ"
+        # custom-model-data: 3001  # Можно добавить и для стекла
         slots: [3,4,5,12,14,21,22,23]
   quantity-menu:
     slot-amount: 13
     size-menu: 27
+    # CustomModelData поддерживается для всех кнопок количества
     decrease-10:
       actions:
         - "[DECREASE_10]"
       slots: [10, 1, 19]
       material: RED_STAINED_GLASS_PANE
+      # custom-model-data: 4001
       name: "&r&c(-) Уменьшить на 10 единиц"
       lore:
         - "&x&f&f&c&5&0&0▸ &fНажмите, чтобы &x&f&f&c&5&0&0уменьшить"
@@ -164,11 +186,21 @@ auction:
         display-name: "&8ᴡᴡᴡ.ꜰʀᴏsᴛᴍɪɴᴇ.ᴘᴡ"
         slots: [0, 9, 18, 8, 17, 26]
   navigation:
+    # CustomModelData - используется для кастомных моделей из ресурспаков
+    # Добавьте строку "custom-model-data: 123" к любой кнопке чтобы задать CustomModelData
+    # Пример:
+    #   previous:
+    #     slot: 48
+    #     item: PAPER
+    #     custom-model-data: 1001
+    #     name: "&cНазад"
+    # Если не указано - CustomModelData не устанавливается
     previous:
       actions:
         - "[PREVIOUS]"
       slot: 48
       item: basehead-eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvODY5NzFkZDg4MWRiYWY0ZmQ2YmNhYTkzNjE0NDkzYzYxMmY4Njk2NDFlZDU5ZDFjOTM2M2EzNjY2YTVmYTYifX19
+      # custom-model-data: 1001  # Раскомментируйте и укажите число для использования
       name: "&x&f&f&c&5&0&0Предыдущая страница"
       lore:
         - ""
@@ -943,19 +975,30 @@ menu-glass-expired:
     slots: [36,37,38,39,40,41,42,43,44]
 
 menu-glass:
+  # CustomModelData поддерживается для декоративного стекла
+  # Добавьте "custom-model-data: 123" к любой секции стекла
+  # Пример:
+  #   - glass-type: GRAY_STAINED_GLASS_PANE
+  #     display-name: "Декор"
+  #     custom-model-data: 5001
+  #     slots: [0,1,2]
   playerpoints:
     - glass-type: ORANGE_STAINED_GLASS_PANE
       display-name: "&8ᴡᴡᴡ.ꜰʀᴏsᴛᴍɪɴᴇ.ᴘᴡ"
+      # custom-model-data: 5001
       slots: [47,51]
     - glass-type: GRAY_STAINED_GLASS_PANE
       display-name: "&8ᴡᴡᴡ.ꜰʀᴏsᴛᴍɪɴᴇ.ᴘᴡ"
+      # custom-model-data: 5002
       slots: [36,37,38,39,40,41,42,43,44]
   vault:
     - glass-type: YELLOW_STAINED_GLASS_PANE
       display-name: "&8ᴡᴡᴡ.ꜰʀᴏsᴛᴍɪɴᴇ.ᴘᴡ"
+      # custom-model-data: 5003
       slots: [47,51]
     - glass-type: GRAY_STAINED_GLASS_PANE
       display-name: "&8ᴡᴡᴡ.ꜰʀᴏsᴛᴍɪɴᴇ.ᴘᴡ"
+      # custom-model-data: 5004
       slots: [36,37,38,39,40,41,42,43,44]
 
 commands:

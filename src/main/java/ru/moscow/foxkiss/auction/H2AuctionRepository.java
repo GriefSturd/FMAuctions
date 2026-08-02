@@ -142,6 +142,10 @@ public final class H2AuctionRepository implements AuctionRepository {
         List<AuctionItem> items=new ArrayList<>();
         List<Object> params=new ArrayList<>();
 
+        // Защита от некорректных значений
+        int safePage = Math.max(0, page);
+        int safePageSize = Math.max(1, pageSize);
+
         params.add(currency.name());
         params.add(activestatus);
 
@@ -175,8 +179,8 @@ public final class H2AuctionRepository implements AuctionRepository {
         sql.append(" ORDER BY ").append(orderBy);
         sql.append(" LIMIT ? OFFSET ?");
 
-        params.add(pageSize);
-        params.add(Math.max(0,page)*pageSize);
+        params.add(safePageSize);
+        params.add(safePage * safePageSize);
 
         try(Connection conn=open();PreparedStatement ps=conn.prepareStatement(sql.toString())) {
             for(int i=0;i<params.size();i++) {
@@ -200,8 +204,47 @@ public final class H2AuctionRepository implements AuctionRepository {
         long cutoff = System.currentTimeMillis() - maxDays * 86_400_000L;
         
         try (Connection conn = open()) {
+            // Получаем текущую страницу лотов
             List<AuctionItem> items = findPage(currency, page, pageSize, sort, category, sellerFilter, searchFilter);
-            String countSql = """
+            
+            // Подсчитываем общее количество лотов с учётом всех фильтров (БЕЗ LIMIT/OFFSET)
+            List<Object> countParams = new ArrayList<>();
+            countParams.add(currency.name());
+            countParams.add(activestatus);
+            
+            StringBuilder countSql = new StringBuilder("SELECT COUNT(*) as total_count FROM auction_items WHERE currency=? AND status=?");
+            
+            if (TextUtils.isNotBlank(category) && !category.equalsIgnoreCase("all")) {
+                countSql.append(" AND material=?");
+                countParams.add(category.toUpperCase(Locale.ROOT));
+            }
+            
+            if (TextUtils.isNotBlank(sellerFilter)) {
+                countSql.append(" AND seller_name LIKE ?");
+                countParams.add("%" + sellerFilter + "%");
+            }
+            
+            if (TextUtils.isNotBlank(searchFilter)) {
+                countSql.append(" AND (material LIKE ? OR seller_name LIKE ?)");
+                countParams.add("%" + searchFilter + "%");
+                countParams.add("%" + searchFilter + "%");
+            }
+            
+            int totalCount = 0;
+            try (PreparedStatement countPs = conn.prepareStatement(countSql.toString())) {
+                for (int i = 0; i < countParams.size(); i++) {
+                    countPs.setObject(i + 1, countParams.get(i));
+                }
+                
+                try (ResultSet countRs = countPs.executeQuery()) {
+                    if (countRs.next()) {
+                        totalCount = countRs.getInt("total_count");
+                    }
+                }
+            }
+            
+            // Подсчитываем selling и expired для текущего игрока
+            String playerCountSql = """
                 SELECT 
                     COUNT(CASE WHEN status=? THEN 1 END) as selling_count,
                     COUNT(CASE WHEN status=? AND created_at<? THEN 1 END) as expired_count
@@ -209,7 +252,7 @@ public final class H2AuctionRepository implements AuctionRepository {
                 WHERE currency=? AND seller_name=?
                 """;
             
-            try (PreparedStatement ps = conn.prepareStatement(countSql)) {
+            try (PreparedStatement ps = conn.prepareStatement(playerCountSql)) {
                 ps.setInt(1, activestatus);
                 ps.setInt(2, activestatus);
                 ps.setLong(3, cutoff);
@@ -220,16 +263,16 @@ public final class H2AuctionRepository implements AuctionRepository {
                     if (rs.next()) {
                         int sellingCount = rs.getInt("selling_count");
                         int expiredCount = rs.getInt("expired_count");
-                        return new MenuData(items, sellingCount, expiredCount);
+                        return new MenuData(items, totalCount, sellingCount, expiredCount);
                     }
                 }
             }
             
-            return new MenuData(items, 0, 0);
+            return new MenuData(items, totalCount, 0, 0);
             
         } catch (SQLException e) {
             plugin.getLogger().log(Level.SEVERE, "Load menu data failed", e);
-            return new MenuData(List.of(), 0, 0);
+            return new MenuData(List.of(), 0, 0, 0);
         }
     }
 
@@ -420,12 +463,20 @@ public final class H2AuctionRepository implements AuctionRepository {
         }
     }
 
-    private AuctionItem readItem(ResultSet rs)throws Exception {
+    private AuctionItem readItem(ResultSet rs) throws Exception {
+        ItemStack itemStack = deserialize(rs.getString("item"));
+        
+        // Восстанавливаем количество из БД (на случай миграции или повреждения данных)
+        int storedAmount = rs.getInt("amount");
+        if (storedAmount > 0) {
+            itemStack.setAmount(storedAmount);
+        }
+        
         return new AuctionItem(
                 rs.getLong("id"),
                 rs.getString("seller_name"),
                 AuctionCurrency.valueOf(rs.getString("currency")),
-                deserialize(rs.getString("item")),
+                itemStack,
                 rs.getDouble("price"),
                 rs.getLong("created_at"),
                 AuctionStatus.fromInt(rs.getInt("status"))

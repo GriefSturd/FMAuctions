@@ -36,5 +36,5 @@ public interface AuctionRepository {
 
     record TopSeller(String name,int soldCount,double totalEarned) {}
     record PlayerStats(int soldCount,double totalEarned) {}
-    record MenuData(List<AuctionItem> items,int sellingCount,int expiredCount) {}
+    record MenuData(List<AuctionItem> items,int totalCount,int sellingCount,int expiredCount) {}
 }

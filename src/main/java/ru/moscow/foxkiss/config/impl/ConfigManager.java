@@ -164,16 +164,18 @@ public final class ConfigManager implements IConfigManager {
             Object displayNameObj = raw.get("display-name");
             String displayName = displayNameObj != null ? String.valueOf(displayNameObj) : "";
             Material mat = Material.matchMaterial(glassType);
+            Integer customModelData = raw.containsKey("custom-model-data") ? ((Number) raw.get("custom-model-data")).intValue() : null;
+            
             if (raw.containsKey("slots")) {
                 if (raw.get("slots") instanceof List<?> slotsList) {
                     for (Object slotObj : slotsList) {
                         if (slotObj instanceof Number n) {
-                            panes.put(n.intValue(), new ConfigValues.GlassPane(mat, displayName));
+                            panes.put(n.intValue(), new ConfigValues.GlassPane(mat, displayName, customModelData));
                         }
                     }
                 }
             } else if (raw.containsKey("slot")) {
-                panes.put(((Number) raw.get("slot")).intValue(), new ConfigValues.GlassPane(mat, displayName));
+                panes.put(((Number) raw.get("slot")).intValue(), new ConfigValues.GlassPane(mat, displayName, customModelData));
             }
         }
         return Map.copyOf(panes);
@@ -219,6 +221,7 @@ public final class ConfigManager implements IConfigManager {
         ActionType action = loadActionFromList(section);
         String name = section.getString("name", "");
         List<String> lore = section.getStringList("lore");
+        Integer customModelData = section.isSet("custom-model-data") ? section.getInt("custom-model-data") : null;
 
         List<Integer> slots = section.getIntegerList("slots");
         if (slots.isEmpty()) {
@@ -230,7 +233,7 @@ public final class ConfigManager implements IConfigManager {
             }
         }
 
-        return new ConfigValues.ConfirmButtonConfig(material, name, lore, skullTexture, slots, action);
+        return new ConfigValues.ConfirmButtonConfig(material, name, lore, skullTexture, slots, action, customModelData);
     }
 
     private ConfigValues.TitlesConfig loadTitlesConfig(ConfigurationSection auction) {
@@ -343,13 +346,15 @@ public final class ConfigManager implements IConfigManager {
         int slot = section.getInt("slot");
         String name = section.getString("name");
         List<String> lore = section.getStringList("lore");
+        Integer customModelData = section.isSet("custom-model-data") ? section.getInt("custom-model-data") : null;
         return new ConfigValues.NavigationButton(
                 slot,
                 parsed.material(),
                 name,
                 lore,
                 parsed.skullTexture(),
-                action
+                action,
+                customModelData
         );
     }
 
@@ -358,6 +363,7 @@ public final class ConfigManager implements IConfigManager {
         String name = section.getString("name", "");
         String title = section.getString("title", name);
         ActionType action = loadActionFromList(section);
+        Integer customModelData = section.isSet("custom-model-data") ? section.getInt("custom-model-data") : null;
 
         List<Integer> slots = section.getIntegerList("slots");
         if (slots.isEmpty()) {
@@ -373,7 +379,8 @@ public final class ConfigManager implements IConfigManager {
                 List.copyOf(section.getStringList("lore")),
                 parsed.skullTexture(),
                 action,
-                slots
+                slots,
+                customModelData
         );
     }
 

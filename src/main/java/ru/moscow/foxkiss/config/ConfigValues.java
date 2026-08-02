@@ -104,7 +104,8 @@ public record ConfigValues(
             List<String> lore,
             String skullTexture,
             ActionType action,
-            List<Integer> slots
+            List<Integer> slots,
+            Integer customModelData
     ) {}
 
     public record ConfirmButtonConfig(
@@ -113,7 +114,8 @@ public record ConfigValues(
             List<String> lore,
             String skullTexture,
             List<Integer> slots,
-            ActionType action
+            ActionType action,
+            Integer customModelData
     ) {}
 
     public record NavigationConfig(
@@ -132,7 +134,8 @@ public record ConfigValues(
             String name,
             List<String> lore,
             String skullTexture,
-            ActionType action
+            ActionType action,
+            Integer customModelData
     ) {}
 
     public record CategoryMenuConfig(
@@ -145,7 +148,8 @@ public record ConfigValues(
 
     public record GlassPane(
             Material material,
-            String displayName
+            String displayName,
+            Integer customModelData
     ) {}
 
     public record ConfirmMenuConfig(

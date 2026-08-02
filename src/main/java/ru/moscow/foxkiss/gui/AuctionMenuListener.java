@@ -140,18 +140,18 @@ public final class AuctionMenuListener implements Listener {
             case SELLING -> auctionMenu.openSelling(player, holder.currency(), 0);
             case EXPIRED -> auctionMenu.openExpired(player, holder.currency(), 0);
             case PREVIOUS -> {
-                if (currentPage > 0) {
-                    auctionMenu.openInventory(player, holder.viewType(), holder.currency(),
-                            currentPage - 1, holder.sort(), holder.sellerFilter(),
-                            holder.searchFilter(), holder.category());
+                if (currentPage <= 0) {
+                    return;
                 }
+
+                auctionMenu.openInventory(player, holder.viewType(), holder.currency(), currentPage - 1, holder.sort(), holder.sellerFilter(), holder.searchFilter(), holder.category());
             }
+
             case NEXT -> {
-                if (currentPage + 1 < totalPages) {
-                    auctionMenu.openInventory(player, holder.viewType(), holder.currency(),
-                            currentPage + 1, holder.sort(), holder.sellerFilter(),
-                            holder.searchFilter(), holder.category());
+                if (currentPage + 1 >= totalPages) {
+                    return;
                 }
+                auctionMenu.openInventory(player, holder.viewType(), holder.currency(), currentPage + 1, holder.sort(), holder.sellerFilter(), holder.searchFilter(), holder.category());
             }
             case REFRESH -> {
                 if (tryUseCooldown(player, updateCooldowns,
@@ -161,13 +161,13 @@ public final class AuctionMenuListener implements Listener {
             }
             case SORT -> {
                 AuctionSort sort = rightClick ? holder.sort().previous() : holder.sort().next();
-                auctionMenu.openMain(player, holder.currency(), 0, sort,
+                auctionMenu.openMain(player, holder.currency(), holder.page(), sort,
                         holder.sellerFilter(), holder.searchFilter(), holder.category());
             }
             case CATEGORIES -> {
                 String currentCat = holder.category();
                 String newCat = rightClick ? getPreviousCategory(currentCat) : getNextCategory(currentCat);
-                auctionMenu.openMain(player, holder.currency(), 0, holder.sort(),
+                auctionMenu.openMain(player, holder.currency(), holder.page(), holder.sort(),
                         holder.sellerFilter(), holder.searchFilter(), newCat);
             }
             default -> {}

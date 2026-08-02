@@ -19,8 +19,7 @@ public final class PlayerPreferences {
             return AuctionSort.NEWEST;
         }
 
-        AuctionSort sort = playerSorts.get(currency);
-        return AuctionSort.NEWEST;
+        return playerSorts.getOrDefault(currency, AuctionSort.NEWEST);
     }
 
     public void setSort(UUID uuid, AuctionCurrency currency, AuctionSort sort) {

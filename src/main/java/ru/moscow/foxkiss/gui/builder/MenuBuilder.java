@@ -29,9 +29,9 @@ public final class MenuBuilder {
         buildpaneGlass();
     }
 
-    public Inventory buildMainMenu(Player player, AuctionViewType viewType, AuctionCurrency currency, int page, AuctionSort sort, String sellerFilter, String searchFilter, String category, List<AuctionItem> filtered, int sellingCount, int expiredCount) {
+    public Inventory buildMainMenu(Player player, AuctionViewType viewType, AuctionCurrency currency, int page, AuctionSort sort, String sellerFilter, String searchFilter, String category, List<AuctionItem> filtered, int totalCount, int sellingCount, int expiredCount) {
         ConfigValues values = configManager.getConfigValues();
-        int totalPages = calculateTotalPages(filtered.size(), values.auctionSlots().size());
+        int totalPages = calculateTotalPages(totalCount, values.auctionSlots().size());
         String pageDisplay = formatPageDisplay(page, totalPages);
         String title = buildTitle(viewType, pageDisplay, values.guiConfig().titles());
 
@@ -40,26 +40,26 @@ public final class MenuBuilder {
         holder.setInventory(inv);
 
         fillGlassPanes(inv, viewType, values);
-        fillAuctionItems(inv, filtered, page, values.auctionSlots(), holder, currency);
+        fillAuctionItems(inv, filtered, values.auctionSlots(), holder);
         addNavigationButtons(inv, viewType, page, totalPages, sort, category, sellingCount, expiredCount);
         addExitButton(inv, viewType, pageDisplay, values);
 
         return inv;
     }
 
-    public void refreshLotDisplays(Inventory inventory, AuctionMenuHolder holder, List<AuctionItem> filtered) {
+    public void refreshLotDisplays(Inventory inventory, AuctionMenuHolder holder, List<AuctionItem> filtered, int totalCount) {
         List<Integer> activeSlots = new ArrayList<>(configManager.getConfigValues().auctionSlots());
         clearSlots(inventory, activeSlots);
         holder.clearLots();
 
-        int totalPages = calculateTotalPages(filtered.size(), activeSlots.size());
+        int totalPages = calculateTotalPages(totalCount, activeSlots.size());
         holder.totalPages(totalPages);
 
-        int start = holder.page() * activeSlots.size();
-        int end = Math.min(start + activeSlots.size(), filtered.size());
+        // filtered уже содержит только текущую страницу, начинаем с индекса 0
+        int count = Math.min(filtered.size(), activeSlots.size());
 
-        for (int i = start; i < end; i++) {
-            int slot = activeSlots.get(i - start);
+        for (int i = 0; i < count; i++) {
+            int slot = activeSlots.get(i);
             AuctionItem item = filtered.get(i);
             inventory.setItem(slot, itemFactory.createLotDisplay(item));
             holder.addLot(slot, item.id(), item.amount());
@@ -107,14 +107,16 @@ public final class MenuBuilder {
         fillGlass(inv, panes);
     }
 
-    private void fillAuctionItems(Inventory inv, List<AuctionItem> filtered, int page, Set<Integer> slotsSet, AuctionMenuHolder holder, AuctionCurrency currency) {
+    private void fillAuctionItems(Inventory inv, List<AuctionItem> items, Set<Integer> slotsSet, AuctionMenuHolder holder) {
         List<Integer> activeSlots = new ArrayList<>(slotsSet);
-        int start = page * activeSlots.size();
-        int end = Math.min(start + activeSlots.size(), filtered.size());
 
-        for (int i = start; i < end; i++) {
-            int slot = activeSlots.get(i - start);
-            AuctionItem item = filtered.get(i);
+        // items уже содержит только текущую страницу, начинаем с индекса 0
+        int count = Math.min(items.size(), activeSlots.size());
+
+        for (int i = 0; i < count; i++) {
+            int slot = activeSlots.get(i);
+            AuctionItem item = items.get(i);
+
             inv.setItem(slot, itemFactory.createLotDisplay(item));
             holder.addLot(slot, item.id(), item.amount());
         }
@@ -137,7 +139,8 @@ public final class MenuBuilder {
                 replacedLore,
                 exit.skullTexture(),
                 exit.action(),
-                exit.slots()
+                exit.slots(),
+                exit.customModelData()
         );
 
         ItemStack button = itemFactory.createButton(replaced);
@@ -226,6 +229,9 @@ public final class MenuBuilder {
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             meta.displayName(TextUtils.component(pane.displayName()));
+            if (pane.customModelData() != null) {
+                meta.setCustomModelData(pane.customModelData());
+            }
             item.setItemMeta(meta);
         }
         return item;

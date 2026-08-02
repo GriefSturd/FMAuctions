@@ -1,6 +1,5 @@
 package ru.moscow.foxkiss.gui;
 
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.kyori.adventure.text.Component;
@@ -27,7 +26,6 @@ public final class ItemDisplayFactory {
     private final IConfigManager configManager;
     private final JavaPlugin plugin;
 
-    private final Long2ObjectOpenHashMap<ItemStack> lotCache = new Long2ObjectOpenHashMap<>();
     private final Object2ObjectOpenHashMap<String, ItemStack> navCache = new Object2ObjectOpenHashMap<>();
 
     public ItemDisplayFactory(JavaPlugin plugin, IConfigManager configManager) {
@@ -36,12 +34,6 @@ public final class ItemDisplayFactory {
     }
 
     public ItemStack createLotDisplay(AuctionItem item) {
-        Long id = item.id();
-
-        if (lotCache.containsKey(id)) {
-            return lotCache.get(id).clone();
-        }
-
         ItemStack base = item.itemStackClone();
         ItemMeta meta = base.getItemMeta();
 
@@ -84,19 +76,17 @@ public final class ItemDisplayFactory {
             base.setItemMeta(meta);
         }
 
-        lotCache.put(id, base.clone());
         return base;
     }
 
     public void clearCache() {
-        lotCache.clear();
         navCache.clear();
     }
 
-    private ItemStack createButton(Material material, String name, List<String> lore, String skullTexture, ActionType action) {
+    private ItemStack createButton(Material material, String name, List<String> lore, String skullTexture, ActionType action, Integer customModelData) {
         ItemStack item = TextUtils.isNotBlank(skullTexture)
-                ? ItemUtils.skull(skullTexture, name, lore)
-                : ItemUtils.named(material, name, lore);
+                ? ItemUtils.skull(skullTexture, name, lore, customModelData)
+                : ItemUtils.named(material, name, lore, customModelData);
 
         if (item.hasItemMeta()) {
             ItemMeta meta = item.getItemMeta();
@@ -107,16 +97,16 @@ public final class ItemDisplayFactory {
     }
 
     public ItemStack createButton(ConfigValues.ButtonConfig config) {
-        return createButton(config.material(), config.name(), config.lore(), config.skullTexture(), config.action());
+        return createButton(config.material(), config.name(), config.lore(), config.skullTexture(), config.action(), config.customModelData());
     }
 
     public ItemStack createButton(ConfigValues.ConfirmButtonConfig config) {
-        return createButton(config.material(), config.name(), config.lore(), config.skullTexture(), config.action());
+        return createButton(config.material(), config.name(), config.lore(), config.skullTexture(), config.action(), config.customModelData());
     }
 
     public ItemStack createNavigationButton(ConfigValues.NavigationButton button, List<String> lore) {
-        String key = button.slot() + "|" + button.name() + "|" + String.join("", lore);
-        return navCache.computeIfAbsent(key, k -> createButton(button.material(), button.name(), lore, button.skullTexture(), button.action())).clone();
+        String key = button.slot() + "|" + button.name() + "|" + String.join("", lore) + "|" + button.customModelData();
+        return navCache.computeIfAbsent(key, k -> createButton(button.material(), button.name(), lore, button.skullTexture(), button.action(), button.customModelData())).clone();
     }
 
     public ItemStack createSortButton(AuctionSort selected) {

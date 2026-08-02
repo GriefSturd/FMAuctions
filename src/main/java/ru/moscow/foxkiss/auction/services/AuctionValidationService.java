@@ -37,6 +37,13 @@ public final class AuctionValidationService {
             } else {
                 return price >= priceLimits.minPriceMoneyAuc() && price <= priceLimits.maxPriceMoneyAuc();
             }
+        } else if (currency == AuctionCurrency.PLAYER_POINTS) {
+            // Для PlayerPoints тоже проверяем лимиты
+            if (isDonateAuction) {
+                return price >= priceLimits.minPriceMoneyDauc() && price <= priceLimits.maxPriceMoneyDauc();
+            } else {
+                return price >= priceLimits.minPriceMoneyAuc() && price <= priceLimits.maxPriceMoneyAuc();
+            }
         }
         
         return true;
@@ -45,7 +52,7 @@ public final class AuctionValidationService {
     public double getMinPrice(AuctionCurrency currency, boolean isDonateAuction) {
         var priceLimits = configManager.getConfigValues().priceLimits();
         
-        if (currency == AuctionCurrency.VAULT) {
+        if (currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS) {
             return isDonateAuction ? priceLimits.minPriceMoneyDauc() : priceLimits.minPriceMoneyAuc();
         }
         
@@ -55,7 +62,7 @@ public final class AuctionValidationService {
     public double getMaxPrice(AuctionCurrency currency, boolean isDonateAuction) {
         var priceLimits = configManager.getConfigValues().priceLimits();
         
-        if (currency == AuctionCurrency.VAULT) {
+        if (currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS) {
             return isDonateAuction ? priceLimits.maxPriceMoneyDauc() : priceLimits.maxPriceMoneyAuc();
         }
         

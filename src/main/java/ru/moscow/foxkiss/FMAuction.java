@@ -67,13 +67,7 @@ public final class FMAuction extends JavaPlugin {
         }
 
         int pluginId = 33068;
-        Metrics metrics = new Metrics(this, pluginId);
-        
-        metrics.addCustomChart(new org.bstats.charts.SimplePie("storage_engine", () -> "H2"));
-        metrics.addCustomChart(new org.bstats.charts.SimplePie("cooldowns", 
-            () -> configManager.getConfigValues().cooldowns().cooldownEnabled() ? "enabled" : "disabled"));
-        metrics.addCustomChart(new org.bstats.charts.SimplePie("confirmation_menu", 
-            () -> configManager.getConfigValues().confirmMenu().enabled() ? "enabled" : "disabled"));
+        new Metrics(this, pluginId);
     }
 
     public void initializeManager() {

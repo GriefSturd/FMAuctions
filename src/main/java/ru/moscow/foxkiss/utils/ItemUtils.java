@@ -22,6 +22,10 @@ public final class ItemUtils {
     private static final Map<String, String> perevod = new HashMap<>();
 
     public static ItemStack named(Material material, String name, List<String> lore) {
+        return named(material, name, lore, null);
+    }
+
+    public static ItemStack named(Material material, String name, List<String> lore, Integer customModelData) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
 
@@ -30,6 +34,10 @@ public final class ItemUtils {
         }
 
         meta.displayName(TextUtils.component(name).decoration(TextDecoration.ITALIC, false));
+
+        if (customModelData != null) {
+            meta.setCustomModelData(customModelData);
+        }
 
         if (!lore.isEmpty()) {
             List<Component> loreComponents = new ArrayList<>(lore.size());
@@ -45,17 +53,21 @@ public final class ItemUtils {
     }
 
     public static ItemStack skull(String base64, String name, List<String> lore) {
+        return skull(base64, name, lore, null);
+    }
+
+    public static ItemStack skull(String base64, String name, List<String> lore, Integer customModelData) {
         if (base64 == null || base64.isBlank()) {
-            return named(Material.PLAYER_HEAD, name, lore);
+            return named(Material.PLAYER_HEAD, name, lore, customModelData);
         }
 
-        String cacheKey = base64 + "|" + name + "|" + (lore != null ? String.join("", lore) : "");
+        String cacheKey = base64 + "|" + name + "|" + (lore != null ? String.join("", lore) : "") + "|" + customModelData;
         ItemStack cached = cacheSkull.get(cacheKey);
         if (cached != null) {
             return cached.clone();
         }
 
-        ItemStack item = named(Material.PLAYER_HEAD, name, lore);
+        ItemStack item = named(Material.PLAYER_HEAD, name, lore, customModelData);
         ItemMeta meta = item.getItemMeta();
         if (meta instanceof SkullMeta skullMeta) {
             PlayerProfile profile = profileSkull.computeIfAbsent(base64, ItemUtils::createSkullProfile);
