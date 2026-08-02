@@ -10,6 +10,7 @@ import ru.moscow.foxkiss.auction.AuctionSort;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class AuctionMenuHolder implements InventoryHolder {
 
@@ -27,6 +28,7 @@ public final class AuctionMenuHolder implements InventoryHolder {
     private final AuctionItem auctionItem;
     private final int confirmAmount;
     private final long confirmLotId;
+    private final AtomicLong requestVersion = new AtomicLong(0);
 
     private int selectedAmount;
     private Inventory inventory;
@@ -50,6 +52,14 @@ public final class AuctionMenuHolder implements InventoryHolder {
         this.auctionItem = builder.auctionItem;
         this.confirmAmount = builder.confirmAmount;
         this.confirmLotId = builder.confirmLotId;
+    }
+
+    public long incrementAndGetRequestVersion() {
+        return requestVersion.incrementAndGet();
+    }
+
+    public long getRequestVersion() {
+        return requestVersion.get();
     }
 
     public static Builder builder() {

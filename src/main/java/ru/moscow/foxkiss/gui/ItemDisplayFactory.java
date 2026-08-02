@@ -1,6 +1,5 @@
 package ru.moscow.foxkiss.gui;
 
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
@@ -26,7 +25,12 @@ public final class ItemDisplayFactory {
     private final IConfigManager configManager;
     private final JavaPlugin plugin;
 
-    private final Object2ObjectOpenHashMap<String, ItemStack> navCache = new Object2ObjectOpenHashMap<>();
+    private final LinkedHashMap<String, ItemStack> navCache = new LinkedHashMap<>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, ItemStack> eldest) {
+            return size() > 128;
+        }
+    };
 
     public ItemDisplayFactory(JavaPlugin plugin, IConfigManager configManager) {
         this.plugin = plugin;

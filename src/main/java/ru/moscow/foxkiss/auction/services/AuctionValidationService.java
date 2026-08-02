@@ -38,7 +38,6 @@ public final class AuctionValidationService {
                 return price >= priceLimits.minPriceMoneyAuc() && price <= priceLimits.maxPriceMoneyAuc();
             }
         } else if (currency == AuctionCurrency.PLAYER_POINTS) {
-            // Для PlayerPoints тоже проверяем лимиты
             if (isDonateAuction) {
                 return price >= priceLimits.minPriceMoneyDauc() && price <= priceLimits.maxPriceMoneyDauc();
             } else {

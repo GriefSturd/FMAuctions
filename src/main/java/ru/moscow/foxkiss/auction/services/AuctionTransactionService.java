@@ -30,8 +30,7 @@ public final class AuctionTransactionService {
     }
 
     public void giveItem(Player player, ItemStack item) {
-        player.getInventory().addItem(item).values()
-                .forEach(left -> player.getWorld().dropItemNaturally(player.getLocation(), left));
+        player.getInventory().addItem(item).values().forEach(left -> player.getWorld().dropItemNaturally(player.getLocation(), left));
     }
 
     public void removeItemFromHand(Player player) {

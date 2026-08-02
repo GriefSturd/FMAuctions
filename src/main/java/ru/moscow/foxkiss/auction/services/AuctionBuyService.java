@@ -40,6 +40,7 @@ public final class AuctionBuyService {
                 AuctionItem item = repository.findById(lotId).orElse(null);
                 if (item == null) {
                     repository.restoreStatus(lotId);
+                    return null;
                 }
                 return item;
             },

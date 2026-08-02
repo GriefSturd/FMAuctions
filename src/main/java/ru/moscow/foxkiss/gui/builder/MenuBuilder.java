@@ -55,7 +55,6 @@ public final class MenuBuilder {
         int totalPages = calculateTotalPages(totalCount, activeSlots.size());
         holder.totalPages(totalPages);
 
-        // filtered уже содержит только текущую страницу, начинаем с индекса 0
         int count = Math.min(filtered.size(), activeSlots.size());
 
         for (int i = 0; i < count; i++) {
@@ -110,7 +109,6 @@ public final class MenuBuilder {
     private void fillAuctionItems(Inventory inv, List<AuctionItem> items, Set<Integer> slotsSet, AuctionMenuHolder holder) {
         List<Integer> activeSlots = new ArrayList<>(slotsSet);
 
-        // items уже содержит только текущую страницу, начинаем с индекса 0
         int count = Math.min(items.size(), activeSlots.size());
 
         for (int i = 0; i < count; i++) {

@@ -40,7 +40,8 @@ public final class H2AuctionRepository implements AuctionRepository {
                     created_at BIGINT NOT NULL,
                     status INTEGER DEFAULT 0,
                     material TEXT,
-                    amount INTEGER DEFAULT 1
+                    amount INTEGER DEFAULT 1,
+                    price_per_item REAL
                 )
                 """);
 
@@ -59,20 +60,39 @@ public final class H2AuctionRepository implements AuctionRepository {
 
             migrateCreatedAtColumn(conn,st);
             migrateAmountColumn(conn,st);
+            migratePricePerItemColumn(conn,st);
 
             migrateAmounts(conn);
+            migratePricePerItem(conn);
 
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auction_currency_status ON auction_items(currency,status)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auction_currency_status_created ON auction_items(currency,status,created_at)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auction_currency_status_price ON auction_items(currency,status,price)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auction_currency_status_amount ON auction_items(currency,status,amount)");
+            st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auction_currency_status_price_per_item ON auction_items(currency,status,price_per_item)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auction_seller_currency_status ON auction_items(seller_name,currency,status)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auction_seller_currency_created ON auction_items(seller_name,currency,created_at)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auction_material_currency_status ON auction_items(material,currency,status)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_sales_currency_time ON sales_history(currency,sold_at)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_sales_seller ON sales_history(seller_name,currency)");
+
+            recoverProcessingItems(conn);
         } catch(SQLException e) {
             plugin.getLogger().log(Level.SEVERE,"Failed to initialize database",e);
+        }
+    }
+
+    private void recoverProcessingItems(Connection conn) {
+        try(PreparedStatement ps = conn.prepareStatement(
+                "UPDATE auction_items SET status=? WHERE status=?")) {
+            ps.setInt(1, activestatus);
+            ps.setInt(2, processStatus);
+            int recovered = ps.executeUpdate();
+            if (recovered > 0) {
+                plugin.getLogger().info("Recovered " + recovered + " stuck PROCESSING auctions to SELLING status");
+            }
+        } catch(SQLException e) {
+            plugin.getLogger().log(Level.WARNING, "Failed to recover processing items", e);
         }
     }
 
@@ -88,6 +108,13 @@ public final class H2AuctionRepository implements AuctionRepository {
             if(columns.next())return;
         }
         statement.executeUpdate("ALTER TABLE auction_items ADD COLUMN amount INTEGER DEFAULT 1");
+    }
+
+    private void migratePricePerItemColumn(Connection connection,Statement statement)throws SQLException {
+        try(ResultSet columns=connection.getMetaData().getColumns(null,null,"AUCTION_ITEMS","PRICE_PER_ITEM")) {
+            if(columns.next())return;
+        }
+        statement.executeUpdate("ALTER TABLE auction_items ADD COLUMN price_per_item REAL");
     }
 
     private void migrateAmounts(Connection connection) {
@@ -111,12 +138,36 @@ public final class H2AuctionRepository implements AuctionRepository {
         }
     }
 
+    private void migratePricePerItem(Connection connection) {
+        try(PreparedStatement select=connection.prepareStatement("SELECT id,price,amount FROM auction_items WHERE price_per_item IS NULL");
+            PreparedStatement update=connection.prepareStatement("UPDATE auction_items SET price_per_item=? WHERE id=?");
+            ResultSet rs=select.executeQuery()) {
+
+            while(rs.next()) {
+                double price = rs.getDouble("price");
+                int amount = rs.getInt("amount");
+                double pricePerItem = (amount > 0) ? price / amount : price;
+                update.setDouble(1, pricePerItem);
+                update.setLong(2, rs.getLong("id"));
+                update.addBatch();
+            }
+
+            update.executeBatch();
+            plugin.getLogger().info("Migrated price_per_item for existing auctions");
+        } catch(SQLException e) {
+            plugin.getLogger().log(Level.WARNING,"Failed to migrate price_per_item",e);
+        }
+    }
+
     @Override
     public long create(String sellerName,AuctionCurrency currency,ItemStack itemStack,double price) {
         try(Connection conn=open();
             PreparedStatement ps=conn.prepareStatement(
-                    "INSERT INTO auction_items(seller_name,currency,item,price,created_at,status,material,amount) VALUES(?,?,?,?,?,?,?,?)",
+                    "INSERT INTO auction_items(seller_name,currency,item,price,created_at,status,material,amount,price_per_item) VALUES(?,?,?,?,?,?,?,?,?)",
                     Statement.RETURN_GENERATED_KEYS)) {
+
+            int amount = itemStack.getAmount();
+            double pricePerItem = (amount > 0) ? price / amount : price;
 
             ps.setString(1,sellerName);
             ps.setString(2,currency.name());
@@ -125,7 +176,8 @@ public final class H2AuctionRepository implements AuctionRepository {
             ps.setLong(5,System.currentTimeMillis());
             ps.setInt(6,activestatus);
             ps.setString(7,itemStack.getType().name());
-            ps.setInt(8,itemStack.getAmount());
+            ps.setInt(8,amount);
+            ps.setDouble(9,pricePerItem);
             ps.executeUpdate();
 
             try(ResultSet keys=ps.getGeneratedKeys()) {
@@ -142,7 +194,6 @@ public final class H2AuctionRepository implements AuctionRepository {
         List<AuctionItem> items=new ArrayList<>();
         List<Object> params=new ArrayList<>();
 
-        // Защита от некорректных значений
         int safePage = Math.max(0, page);
         int safePageSize = Math.max(1, pageSize);
 
@@ -204,10 +255,8 @@ public final class H2AuctionRepository implements AuctionRepository {
         long cutoff = System.currentTimeMillis() - maxDays * 86_400_000L;
         
         try (Connection conn = open()) {
-            // Получаем текущую страницу лотов
-            List<AuctionItem> items = findPage(currency, page, pageSize, sort, category, sellerFilter, searchFilter);
-            
-            // Подсчитываем общее количество лотов с учётом всех фильтров (БЕЗ LIMIT/OFFSET)
+            List<AuctionItem> items = findPageWithConnection(conn, currency, page, pageSize, sort, category, sellerFilter, searchFilter);
+
             List<Object> countParams = new ArrayList<>();
             countParams.add(currency.name());
             countParams.add(activestatus);
@@ -242,8 +291,7 @@ public final class H2AuctionRepository implements AuctionRepository {
                     }
                 }
             }
-            
-            // Подсчитываем selling и expired для текущего игрока
+
             String playerCountSql = """
                 SELECT 
                     COUNT(CASE WHEN status=? THEN 1 END) as selling_count,
@@ -274,6 +322,66 @@ public final class H2AuctionRepository implements AuctionRepository {
             plugin.getLogger().log(Level.SEVERE, "Load menu data failed", e);
             return new MenuData(List.of(), 0, 0, 0);
         }
+    }
+
+    private List<AuctionItem> findPageWithConnection(Connection conn, AuctionCurrency currency, int page, int pageSize, AuctionSort sort, String category, String sellerFilter, String searchFilter) throws SQLException {
+        List<AuctionItem> items=new ArrayList<>();
+        List<Object> params=new ArrayList<>();
+
+        int safePage = Math.max(0, page);
+        int safePageSize = Math.max(1, pageSize);
+
+        params.add(currency.name());
+        params.add(activestatus);
+
+        StringBuilder sql=new StringBuilder("SELECT * FROM auction_items WHERE currency=? AND status=?");
+
+        if(TextUtils.isNotBlank(category) && !category.equalsIgnoreCase("all")) {
+            sql.append(" AND material=?");
+            params.add(category.toUpperCase(Locale.ROOT));
+        }
+
+        if(TextUtils.isNotBlank(sellerFilter)) {
+            sql.append(" AND seller_name LIKE ?");
+            params.add("%"+sellerFilter+"%");
+        }
+
+        if(TextUtils.isNotBlank(searchFilter)) {
+            sql.append(" AND (material LIKE ? OR seller_name LIKE ?)");
+            params.add("%"+searchFilter+"%");
+            params.add("%"+searchFilter+"%");
+        }
+
+        String orderBy=switch(sort) {
+            case NEWEST -> "created_at DESC";
+            case OLDEST -> "created_at ASC";
+            case EXPENSIVE -> "price DESC";
+            case CHEAP -> "price ASC";
+            case EXPENSIVE_PER_ITEM -> "price_per_item DESC, id DESC";
+            case CHEAP_PER_ITEM -> "price_per_item ASC, id ASC";
+        };
+
+        sql.append(" ORDER BY ").append(orderBy);
+        sql.append(" LIMIT ? OFFSET ?");
+
+        params.add(safePageSize);
+        params.add(safePage * safePageSize);
+
+        try(PreparedStatement ps=conn.prepareStatement(sql.toString())) {
+            for(int i=0;i<params.size();i++) {
+                ps.setObject(i+1,params.get(i));
+            }
+
+            try(ResultSet rs=ps.executeQuery()) {
+                while(rs.next()) {
+                    items.add(readItem(rs));
+                }
+            }
+        } catch(Exception e) {
+            throw new SQLException("Find page failed", e);
+        }
+
+        return items;
     }
 
     private int count(String sql,Object... params) {
@@ -375,8 +483,7 @@ public final class H2AuctionRepository implements AuctionRepository {
         List<TopSeller> sellers=new ArrayList<>();
 
         try(Connection conn=open();
-            PreparedStatement ps=conn.prepareStatement(
-                    "SELECT seller_name,COUNT(*) AS sold,COALESCE(SUM(price),0) AS earned FROM sales_history WHERE currency=? GROUP BY seller_name ORDER BY sold DESC LIMIT ?")) {
+            PreparedStatement ps=conn.prepareStatement("SELECT seller_name,COUNT(*) AS sold,COALESCE(SUM(price),0) AS earned FROM sales_history WHERE currency=? GROUP BY seller_name ORDER BY sold DESC LIMIT ?")) {
 
             ps.setString(1,currency.name());
             ps.setInt(2,limit);
@@ -400,8 +507,7 @@ public final class H2AuctionRepository implements AuctionRepository {
     @Override
     public PlayerStats getPlayerStats(String playerName,AuctionCurrency currency) {
         try(Connection conn=open();
-            PreparedStatement ps=conn.prepareStatement(
-                    "SELECT COUNT(*) AS sold,COALESCE(SUM(price),0) AS earned FROM sales_history WHERE seller_name=? AND currency=?")) {
+            PreparedStatement ps=conn.prepareStatement("SELECT COUNT(*) AS sold,COALESCE(SUM(price),0) AS earned FROM sales_history WHERE seller_name=? AND currency=?")) {
 
             ps.setString(1,playerName);
             ps.setString(2,currency.name());
@@ -426,8 +532,7 @@ public final class H2AuctionRepository implements AuctionRepository {
         List<String> names=new ArrayList<>();
 
         try(Connection conn=open();
-            PreparedStatement ps=conn.prepareStatement(
-                    "SELECT DISTINCT material FROM auction_items WHERE currency=? AND status=? AND material IS NOT NULL")) {
+            PreparedStatement ps=conn.prepareStatement("SELECT DISTINCT material FROM auction_items WHERE currency=? AND status=? AND material IS NOT NULL")) {
 
             ps.setString(1,currency.name());
             ps.setInt(2,activestatus);
@@ -465,8 +570,7 @@ public final class H2AuctionRepository implements AuctionRepository {
 
     private AuctionItem readItem(ResultSet rs) throws Exception {
         ItemStack itemStack = deserialize(rs.getString("item"));
-        
-        // Восстанавливаем количество из БД (на случай миграции или повреждения данных)
+
         int storedAmount = rs.getInt("amount");
         if (storedAmount > 0) {
             itemStack.setAmount(storedAmount);

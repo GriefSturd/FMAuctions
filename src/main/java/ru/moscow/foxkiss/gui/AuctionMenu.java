@@ -114,14 +114,16 @@ public final class AuctionMenu {
     public void refreshInventory(Player player, AuctionMenuHolder holder) {
         UUID playerId = player.getUniqueId();
         if (!refreshesInProgress.add(playerId)) return;
-        loadAndRender(player, holder.viewType(), holder.currency(), holder.page(), holder.sort(), holder.sellerFilter(), holder.searchFilter(), holder.category(), holder, () -> refreshesInProgress.remove(playerId));
+        
+        long requestVersion = holder.incrementAndGetRequestVersion();
+        loadAndRender(player, holder.viewType(), holder.currency(), holder.page(), holder.sort(), holder.sellerFilter(), holder.searchFilter(), holder.category(), holder, requestVersion, () -> refreshesInProgress.remove(playerId));
     }
 
     public void removeRefreshProgress(UUID playerId) {
         refreshesInProgress.remove(playerId);
     }
 
-    private void loadAndRender(Player player, AuctionViewType viewType, AuctionCurrency currency, int page, AuctionSort sort, String sellerFilter, String searchFilter, String category, AuctionMenuHolder targetHolder, Runnable onFinished) {
+    private void loadAndRender(Player player, AuctionViewType viewType, AuctionCurrency currency, int page, AuctionSort sort, String sellerFilter, String searchFilter, String category, AuctionMenuHolder targetHolder, long expectedVersion, Runnable onFinished) {
         int pageSize = configManager.getConfigValues().auctionSlots().size();
         String playerName = player.getName();
         int maxStorageDays = configManager.getConfigValues().maxAuctionStorageDays();
@@ -147,10 +149,10 @@ public final class AuctionMenu {
             () -> {
                 try {
                     AuctionRepository.MenuData menuData = repository.loadMenuData(currency, playerName, maxStorageDays, page, pageSize, finalSort, finalCategory, finalSellerFilter, finalSearch);
-                    return new LoadResult(menuData.items(), menuData.totalCount(), menuData.sellingCount(), menuData.expiredCount(), null);
+                    return new LoadResult(menuData.items(), menuData.totalCount(), menuData.sellingCount(), menuData.expiredCount(), null, expectedVersion);
                 } catch (Exception e) {
                     plugin.getLogger().warning("Ошибка загрузки аукциона: " + e.getMessage());
-                    return new LoadResult(null, 0, 0, 0, e);
+                    return new LoadResult(null, 0, 0, 0, e, expectedVersion);
                 }
             },
             data -> {
@@ -163,6 +165,10 @@ public final class AuctionMenu {
                     }
                     
                     if (!player.isOnline()) return;
+
+                    if (targetHolder != null && data.requestVersion != targetHolder.getRequestVersion()) {
+                        return;
+                    }
                     
                     if (targetHolder != null) {
                         builder.refreshLotDisplays(targetHolder.getInventory(), targetHolder, data.items, data.totalCount);
@@ -183,6 +189,10 @@ public final class AuctionMenu {
             }
         );
     }
+
+    private void loadAndRender(Player player, AuctionViewType viewType, AuctionCurrency currency, int page, AuctionSort sort, String sellerFilter, String searchFilter, String category, AuctionMenuHolder targetHolder, Runnable onFinished) {
+        loadAndRender(player, viewType, currency, page, sort, sellerFilter, searchFilter, category, targetHolder, -1L, onFinished);
+    }
     
-    private record LoadResult(List<AuctionItem> items, int totalCount, int sellingCount, int expiredCount, Exception error) {}
+    private record LoadResult(List<AuctionItem> items, int totalCount, int sellingCount, int expiredCount, Exception error, long requestVersion) {}
 }
