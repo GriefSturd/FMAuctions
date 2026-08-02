@@ -29,10 +29,14 @@ public final class MenuBuilder {
         buildpaneGlass();
     }
 
-    public Inventory buildMainMenu(Player player, AuctionViewType viewType, AuctionCurrency currency, int page, AuctionSort sort, String sellerFilter, String searchFilter, String category, List<AuctionItem> filtered, int totalCount, int sellingCount, int expiredCount) {
+    public Inventory buildMainMenu(Player player, AuctionViewType viewType, AuctionCurrency currency, int page, AuctionSort sort, String sellerFilter, String searchFilter, String category, List<AuctionItem> filtered, int totalCount, int pageSize, int sellingCount, int expiredCount) {
         ConfigValues values = configManager.getConfigValues();
-        int totalPages = calculateTotalPages(totalCount, values.auctionSlots().size());
-        String pageDisplay = formatPageDisplay(page, totalPages);
+
+        int totalPages = (int) Math.ceil((double) totalCount / pageSize);
+        if (totalPages < 1) totalPages = 1;
+
+        String pageDisplay = (page + 1) + "/" + totalPages;
+        
         String title = buildTitle(viewType, pageDisplay, values.guiConfig().titles());
 
         AuctionMenuHolder holder = createHolder(player, viewType, currency, page, sort, sellerFilter, searchFilter, category, totalPages);
@@ -41,19 +45,20 @@ public final class MenuBuilder {
 
         fillGlassPanes(inv, viewType, values);
         fillAuctionItems(inv, filtered, values.auctionSlots(), holder);
-        addNavigationButtons(inv, viewType, page, totalPages, sort, category, sellingCount, expiredCount);
+        addNavigationButtons(inv, viewType, page, totalPages, sort, category, sellingCount, expiredCount, pageDisplay);
         addExitButton(inv, viewType, pageDisplay, values);
 
         return inv;
     }
 
-    public void refreshLotDisplays(Inventory inventory, AuctionMenuHolder holder, List<AuctionItem> filtered, int totalCount) {
+    public void refreshLotDisplays(Inventory inventory, AuctionMenuHolder holder, List<AuctionItem> filtered, int totalCount, int pageSize) {
         List<Integer> activeSlots = new ArrayList<>(configManager.getConfigValues().auctionSlots());
         clearSlots(inventory, activeSlots);
         holder.clearLots();
-
-        int totalPages = calculateTotalPages(totalCount, activeSlots.size());
-        holder.totalPages(totalPages);
+        
+        int totalPages = (int) Math.ceil((double) totalCount / pageSize);
+        if (totalPages < 1) totalPages = 1;
+        holder.setTotalPages(totalPages);
 
         int count = Math.min(filtered.size(), activeSlots.size());
 
@@ -63,14 +68,6 @@ public final class MenuBuilder {
             inventory.setItem(slot, itemFactory.createLotDisplay(item));
             holder.addLot(slot, item.id(), item.amount());
         }
-    }
-
-    private int calculateTotalPages(int itemsCount, int slotsPerPage) {
-        return (int) Math.ceil((double) itemsCount / slotsPerPage);
-    }
-
-    private String formatPageDisplay(int page, int totalPages) {
-        return (totalPages > 0) ? (page + 1) + "/" + totalPages : "1/1";
     }
 
     private String buildTitle(AuctionViewType viewType, String pageDisplay, ConfigValues.TitlesConfig titles) {
@@ -149,9 +146,8 @@ public final class MenuBuilder {
         }
     }
 
-    private void addNavigationButtons(Inventory inv, AuctionViewType viewType, int page, int totalPages, AuctionSort sort, String category, int sellingCount, int expiredCount) {
+    private void addNavigationButtons(Inventory inv, AuctionViewType viewType, int page, int totalPages, AuctionSort sort, String category, int sellingCount, int expiredCount, String pageDisplay) {
         ConfigValues.NavigationConfig nav = configManager.getConfigValues().guiConfig().navigation();
-        String pageDisplay = formatPageDisplay(page, totalPages);
 
         setNavButton(inv, nav.previous(), pageDisplay, null);
         setNavButton(inv, nav.refresh(), pageDisplay, null);

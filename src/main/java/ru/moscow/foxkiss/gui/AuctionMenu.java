@@ -171,11 +171,11 @@ public final class AuctionMenu {
                     }
                     
                     if (targetHolder != null) {
-                        builder.refreshLotDisplays(targetHolder.getInventory(), targetHolder, data.items, data.totalCount);
+                        builder.refreshLotDisplays(targetHolder.getInventory(), targetHolder, data.items, data.totalCount, pageSize);
                     } else {
                         Inventory inventory = builder.buildMainMenu(player, viewType, currency, page, 
                                 finalSort, finalSellerFilter, finalSearch, finalCategory, 
-                                data.items, data.totalCount, data.sellingCount, data.expiredCount);
+                                data.items, data.totalCount, pageSize, data.sellingCount, data.expiredCount);
                         player.openInventory(inventory);
                     }
                 } catch (Exception e) {

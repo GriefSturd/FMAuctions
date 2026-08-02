@@ -68,31 +68,14 @@ public final class H2AuctionRepository implements AuctionRepository {
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auction_currency_status ON auction_items(currency,status)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auction_currency_status_created ON auction_items(currency,status,created_at)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auction_currency_status_price ON auction_items(currency,status,price)");
-            st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auction_currency_status_amount ON auction_items(currency,status,amount)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auction_currency_status_price_per_item ON auction_items(currency,status,price_per_item)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auction_seller_currency_status ON auction_items(seller_name,currency,status)");
-            st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auction_seller_currency_created ON auction_items(seller_name,currency,created_at)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auction_material_currency_status ON auction_items(material,currency,status)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_sales_currency_time ON sales_history(currency,sold_at)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_sales_seller ON sales_history(seller_name,currency)");
 
-            recoverProcessingItems(conn);
         } catch(SQLException e) {
             plugin.getLogger().log(Level.SEVERE,"Failed to initialize database",e);
-        }
-    }
-
-    private void recoverProcessingItems(Connection conn) {
-        try(PreparedStatement ps = conn.prepareStatement(
-                "UPDATE auction_items SET status=? WHERE status=?")) {
-            ps.setInt(1, activestatus);
-            ps.setInt(2, processStatus);
-            int recovered = ps.executeUpdate();
-            if (recovered > 0) {
-                plugin.getLogger().info("Recovered " + recovered + " stuck PROCESSING auctions to SELLING status");
-            }
-        } catch(SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to recover processing items", e);
         }
     }
 
@@ -191,63 +174,12 @@ public final class H2AuctionRepository implements AuctionRepository {
 
     @Override
     public List<AuctionItem> findPage(AuctionCurrency currency,int page,int pageSize,AuctionSort sort,String category,String sellerFilter,String searchFilter) {
-        List<AuctionItem> items=new ArrayList<>();
-        List<Object> params=new ArrayList<>();
-
-        int safePage = Math.max(0, page);
-        int safePageSize = Math.max(1, pageSize);
-
-        params.add(currency.name());
-        params.add(activestatus);
-
-        StringBuilder sql=new StringBuilder("SELECT * FROM auction_items WHERE currency=? AND status=?");
-
-        if(TextUtils.isNotBlank(category) && !category.equalsIgnoreCase("all")) {
-            sql.append(" AND material=?");
-            params.add(category.toUpperCase(Locale.ROOT));
-        }
-
-        if(TextUtils.isNotBlank(sellerFilter)) {
-            sql.append(" AND seller_name LIKE ?");
-            params.add("%"+sellerFilter+"%");
-        }
-
-        if(TextUtils.isNotBlank(searchFilter)) {
-            sql.append(" AND (material LIKE ? OR seller_name LIKE ?)");
-            params.add("%"+searchFilter+"%");
-            params.add("%"+searchFilter+"%");
-        }
-
-        String orderBy=switch(sort) {
-            case NEWEST -> "created_at DESC";
-            case OLDEST -> "created_at ASC";
-            case EXPENSIVE -> "price DESC";
-            case CHEAP -> "price ASC";
-            case EXPENSIVE_PER_ITEM -> "price / NULLIF(amount,0) DESC";
-            case CHEAP_PER_ITEM -> "price / NULLIF(amount,0) ASC";
-        };
-
-        sql.append(" ORDER BY ").append(orderBy);
-        sql.append(" LIMIT ? OFFSET ?");
-
-        params.add(safePageSize);
-        params.add(safePage * safePageSize);
-
-        try(Connection conn=open();PreparedStatement ps=conn.prepareStatement(sql.toString())) {
-            for(int i=0;i<params.size();i++) {
-                ps.setObject(i+1,params.get(i));
-            }
-
-            try(ResultSet rs=ps.executeQuery()) {
-                while(rs.next()) {
-                    items.add(readItem(rs));
-                }
-            }
-        } catch(Exception e) {
+        try(Connection conn=open()) {
+            return findPageWithConnection(conn, currency, page, pageSize, sort, category, sellerFilter, searchFilter);
+        } catch(SQLException e) {
             plugin.getLogger().log(Level.SEVERE,"Find page failed",e);
+            return List.of();
         }
-
-        return items;
     }
 
     @Override

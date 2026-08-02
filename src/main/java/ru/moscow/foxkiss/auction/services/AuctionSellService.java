@@ -1,6 +1,5 @@
 package ru.moscow.foxkiss.auction.services;
 
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import ru.moscow.foxkiss.auction.AuctionCurrency;

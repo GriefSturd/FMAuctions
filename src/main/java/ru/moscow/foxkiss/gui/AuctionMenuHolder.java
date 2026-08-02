@@ -10,7 +10,6 @@ import ru.moscow.foxkiss.auction.AuctionSort;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicLong;
 
 public final class AuctionMenuHolder implements InventoryHolder {
 
@@ -23,13 +22,13 @@ public final class AuctionMenuHolder implements InventoryHolder {
     private final String searchFilter;
     private final long lotId;
     private final int maxAmount;
-    private int totalPages;
     private final String category;
     private final AuctionItem auctionItem;
     private final int confirmAmount;
     private final long confirmLotId;
-    private final AtomicLong requestVersion = new AtomicLong(0);
-
+    
+    private long requestVersion = 0;
+    private int totalPages = 1;
     private int selectedAmount;
     private Inventory inventory;
 
@@ -55,11 +54,19 @@ public final class AuctionMenuHolder implements InventoryHolder {
     }
 
     public long incrementAndGetRequestVersion() {
-        return requestVersion.incrementAndGet();
+        return ++requestVersion;
     }
 
     public long getRequestVersion() {
-        return requestVersion.get();
+        return requestVersion;
+    }
+    
+    public int totalPages() {
+        return totalPages;
+    }
+    
+    public void setTotalPages(int totalPages) {
+        this.totalPages = totalPages;
     }
 
     public static Builder builder() {
@@ -200,10 +207,6 @@ public final class AuctionMenuHolder implements InventoryHolder {
         return page;
     }
 
-    public int totalPages() {
-        return totalPages;
-    }
-
     public int selectedAmount() {
         return selectedAmount;
     }
@@ -248,10 +251,6 @@ public final class AuctionMenuHolder implements InventoryHolder {
     public void clearLots() {
         lotsBySlot.clear();
         lotsAmountBySlot.clear();
-    }
-
-    public void totalPages(int totalPages) {
-        this.totalPages = totalPages;
     }
 
     public Long getLot(int slot) {
