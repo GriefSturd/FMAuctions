@@ -89,9 +89,6 @@ public final class FMAuction extends JavaPlugin {
         configManager.reload();
         limitService.init();
 
-        if (auctionMenu != null) {
-            auctionMenu.clearCaches();
-        }
         if (auctionMenuListener != null) {
             auctionMenuListener.reloadCategories();
         }

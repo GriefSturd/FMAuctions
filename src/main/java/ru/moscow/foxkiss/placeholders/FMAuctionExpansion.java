@@ -15,6 +15,7 @@ import ru.moscow.foxkiss.economy.VaultPermissionApi;
 import ru.moscow.foxkiss.utils.PriceFormatter;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class FMAuctionExpansion extends PlaceholderExpansion {
 
@@ -23,7 +24,7 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
     private final VaultChatApi vaultChat;
     private final VaultPermissionApi vaultPerm;
 
-    private List<TopPlayerInfo> cachedTop = new ArrayList<>();
+    private volatile List<TopPlayerInfo> cachedTop = new ArrayList<>();
     private final Map<UUID, CachedPlayerStats> statsCache = new HashMap<>();
     private final Map<String, String> prefixCache = new HashMap<>();
 
@@ -88,24 +89,15 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
         UUID uuid = player.getUniqueId();
         long now = System.currentTimeMillis();
 
-        CachedPlayerStats cached;
-        synchronized (statsCache) {
-            cached = statsCache.get(uuid);
-        }
-
+        CachedPlayerStats cached = statsCache.get(uuid);
         if (cached != null && (now - cached.timestamp) < 60000) {
             return field.equals("sold") ? String.valueOf(cached.sold) : formatMoney(cached.money);
         }
 
         AuctionRepository.PlayerStats stats = repository.getPlayerStats(name, AuctionCurrency.VAULT);
-        synchronized (statsCache) {
-            statsCache.put(uuid, new CachedPlayerStats(stats.soldCount(), stats.totalEarned(), System.currentTimeMillis()));
-        }
+        statsCache.put(uuid, new CachedPlayerStats(stats.soldCount(), stats.totalEarned(), now));
 
-        if (cached != null) {
-            return field.equals("sold") ? String.valueOf(cached.sold) : formatMoney(cached.money);
-        }
-        return "0";
+        return field.equals("sold") ? String.valueOf(stats.soldCount()) : formatMoney(stats.totalEarned());
     }
 
     private String getTop(String posStr, String field) {
@@ -139,9 +131,7 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
     }
 
     public void clearCache() {
-        synchronized (statsCache) {
-            statsCache.clear();
-        }
+        statsCache.clear();
         prefixCache.clear();
         cachedTop = new ArrayList<>();
     }
@@ -154,11 +144,7 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
 
             List<TopPlayerInfo> result = new ArrayList<>();
             for (AuctionRepository.TopSeller seller : list) {
-                String prefix = prefixCache.get(seller.name());
-                if (prefix == null) {
-                    prefix = getPrefixForPlayer(seller.name());
-                    prefixCache.put(seller.name(), prefix);
-                }
+                String prefix = prefixCache.computeIfAbsent(seller.name(), this::getPrefixForPlayer);
                 result.add(new TopPlayerInfo(seller.name(), seller.soldCount(), seller.totalEarned(), prefix));
             }
             cachedTop = result;

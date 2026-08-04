@@ -10,104 +10,75 @@ import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 import ru.moscow.foxkiss.utils.PriceFormatter;
 
-public final class AuctionSellService {
-
-    private final SchedulerService scheduler;
-    private final IConfigManager configManager;
-    private final AuctionRepository repository;
+public final class AuctionSellService extends ru.moscow.foxkiss.auction.services.BaseAuctionService {
     private final LimitService limitService;
     private final AuctionValidationService validationService;
-    private final AuctionTransactionService transactionService;
 
     public AuctionSellService(SchedulerService scheduler, IConfigManager configManager, AuctionRepository repository, LimitService limitService, AuctionValidationService validationService, AuctionTransactionService transactionService) {
-        this.scheduler = scheduler;
-        this.configManager = configManager;
-        this.repository = repository;
+        super(scheduler, configManager, repository, transactionService);
         this.limitService = limitService;
         this.validationService = validationService;
-        this.transactionService = transactionService;
     }
 
     public void sell(Player player, AuctionCurrency currency, double price) {
         if (!validationService.isEconomyAvailable(currency)) {
-            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().economyUnavailable(), configManager));
+            sendMessage(player, config().messages().economyUnavailable());
             return;
         }
-
         if (!validationService.isValidPrice(price)) {
-            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noPrice(), configManager));
+            sendMessage(player, config().messages().noPrice());
             return;
         }
 
-        boolean isDonateAuction = currency == AuctionCurrency.PLAYER_POINTS;
-
-        if (!validationService.isPriceInRange(price, currency, isDonateAuction)) {
-            String symbol = currency.symbol(configManager.getConfigValues());
-            double minPrice = validationService.getMinPrice(currency, isDonateAuction);
-            double maxPrice = validationService.getMaxPrice(currency, isDonateAuction);
-            
-            if (price < minPrice) {
-                String message = configManager.getConfigValues().messages().priceTooLow()
-                        .replace("{min_price}", String.valueOf((long)minPrice))
+        boolean isDonate = currency == AuctionCurrency.PLAYER_POINTS;
+        if (!validationService.isPriceInRange(price, currency, isDonate)) {
+            String symbol = currency.symbol(config());
+            double min = validationService.getMinPrice(currency, isDonate);
+            double max = validationService.getMaxPrice(currency, isDonate);
+            String msg;
+            if (price < min) {
+                msg = config().messages().priceTooLow()
+                        .replace("{min_price}", String.valueOf((long) min))
                         .replace("{symbol_value}", symbol);
-                player.sendMessage(PlaceholderUtils.applypapi(player, message, configManager));
-                return;
-            }
-            
-            if (price > maxPrice) {
-                String message = configManager.getConfigValues().messages().priceTooHigh()
-                        .replace("{max_price}", String.valueOf((long)maxPrice))
+            } else {
+                msg = config().messages().priceTooHigh()
+                        .replace("{max_price}", String.valueOf((long) max))
                         .replace("{symbol_value}", symbol);
-                player.sendMessage(PlaceholderUtils.applypapi(player, message, configManager));
-                return;
             }
+            sendMessage(player, msg);
+            return;
         }
 
         ItemStack hand = player.getInventory().getItemInMainHand();
         if (!validationService.isSellableItem(hand)) {
-            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().air(), configManager));
+            sendMessage(player, config().messages().air());
             return;
         }
 
         int limit = limitService.getLimit(player, currency);
-        ItemStack soldItem = hand.clone();
         String playerName = player.getName();
+        ItemStack soldItem = hand.clone();
 
-        scheduler.runAsyncThenSync(
-            () -> {
-                int count = repository.countActiveBySellerSince(playerName, currency, 0);
-                
-                if (count >= limit) {
-                    return new SellResult(false, 0, "limitReached");
-                }
-                
-                long id = repository.create(playerName, currency, soldItem, price);
-                if (id <= 0) {
-                    return new SellResult(false, 0, "databaseError");
-                }
-                
-                return new SellResult(true, id, null);
-            },
-            result -> {
-                if (!player.isOnline()) return;
-                
-                if (!result.success) {
-                    String message = result.errorKey.equals("limitReached")
-                        ? configManager.getConfigValues().messages().limitReached()
-                        : configManager.getConfigValues().messages().databaseError();
-                    player.sendMessage(PlaceholderUtils.applypapi(player, message, configManager));
-                    return;
-                }
-
-                transactionService.removeItemFromHand(player);
-                String symbol = currency.symbol(configManager.getConfigValues());
-                String formatted = PriceFormatter.format(price) + " " + symbol;
-                player.sendMessage(PlaceholderUtils.applypapi(player,
-                        configManager.getConfigValues().messages().sellSuccess()
-                                .replace("{symbol_value}", formatted), configManager));
+        scheduler.runAsync(() -> {
+            int active = repository.countActiveBySellerSince(playerName, currency, 0);
+            if (active >= limit) {
+                sendMessage(player, config().messages().limitReached());
+                return;
             }
-        );
-    }
 
-    private record SellResult(boolean success, long lotId, String errorKey) {}
+            long id = repository.create(playerName, currency, soldItem, price);
+            if (id <= 0) {
+                sendMessage(player, config().messages().databaseError());
+                return;
+            }
+
+            scheduler.runSync(() -> {
+                transactionService.removeItemFromHand(player);
+                String symbol = currency.symbol(config());
+                String formatted = PriceFormatter.format(price) + " " + symbol;
+                String msg = config().messages().sellSuccess().replace("{symbol_value}", formatted);
+                player.sendMessage(PlaceholderUtils.applypapi(player, msg, configManager));
+            });
+        });
+    }
 }

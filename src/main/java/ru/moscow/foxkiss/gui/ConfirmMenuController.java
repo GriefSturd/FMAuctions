@@ -8,10 +8,10 @@ import ru.moscow.foxkiss.auction.AuctionItem;
 import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.builder.MenuBuilder;
+import ru.moscow.foxkiss.gui.holders.ConfirmMenuHolder;
 import ru.moscow.foxkiss.utils.TextUtils;
 
 public final class ConfirmMenuController {
-
     private final IConfigManager configManager;
     private final ItemDisplayFactory itemFactory;
     private final MenuBuilder menuBuilder;
@@ -26,33 +26,19 @@ public final class ConfirmMenuController {
         ConfigValues.ConfirmMenuConfig config = configManager.getConfigValues().confirmMenu();
         int finalAmount = (amount == Integer.MAX_VALUE) ? item.amount() : amount;
 
-        AuctionMenuHolder holder = AuctionMenuHolder.builder()
-                .viewType(AuctionViewType.CONFIRM)
-                .currency(currency)
-                .viewer(player.getUniqueId())
-                .lotId(item.id())
-                .selectedAmount(1)
-                .totalPages(1)
-                .maxAmount(item.amount())
-                .auctionItem(item)
-                .confirmAmount(finalAmount)
-                .confirmLotId(item.id())
-                .build();
-
+        ConfirmMenuHolder holder = new ConfirmMenuHolder(currency, player.getUniqueId(), item.id(), finalAmount);
         Inventory inv = Bukkit.createInventory(holder, config.size(), TextUtils.component(configManager.getConfigValues().guiConfig().titles().confirmBuy()));
         holder.setInventory(inv);
 
         menuBuilder.fillGlass(inv, config.glassPanes());
-
         inv.setItem(config.itemSlot(), itemFactory.createBuyItem(item, finalAmount));
-
-        setConfirmButton(inv, config.confirm());
-        setConfirmButton(inv, config.cancel());
+        setButton(inv, config.confirm());
+        setButton(inv, config.cancel());
 
         player.openInventory(inv);
     }
 
-    private void setConfirmButton(Inventory inv, ConfigValues.ConfirmButtonConfig config) {
+    private void setButton(Inventory inv, ConfigValues.ConfirmButtonConfig config) {
         for (int slot : config.slots()) {
             if (slot >= 0 && slot < inv.getSize()) {
                 inv.setItem(slot, itemFactory.createButton(config));

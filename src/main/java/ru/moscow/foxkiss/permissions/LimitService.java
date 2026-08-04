@@ -26,28 +26,18 @@ public final class LimitService {
     }
 
     public int getLimit(Player player, AuctionCurrency currency) {
-        Map<String, Integer> groupLimits = currency == AuctionCurrency.VAULT
+        Map<String, Integer> limits = currency == AuctionCurrency.VAULT
                 ? configManager.getConfigValues().vaultGroupLimits()
                 : configManager.getConfigValues().playerPointsGroupLimits();
+        int limit = limits.getOrDefault("default", 1);
+        if (permission == null) return limit;
 
-        int best = groupLimits.getOrDefault("default", 1);
-
-        if (permission == null) {
-            return best;
-        }
-        
-        for (Map.Entry<String, Integer> entry : groupLimits.entrySet()) {
+        for (Map.Entry<String, Integer> entry : limits.entrySet()) {
             String group = entry.getKey();
-            if ("default".equalsIgnoreCase(group)) continue;
-            
-            if (permission.playerInGroup(player, group)) {
-                int groupLimit = entry.getValue();
-                if (groupLimit > best) {
-                    best = groupLimit;
-                }
+            if (!"default".equalsIgnoreCase(group) && permission.playerInGroup(player, group)) {
+                limit = Math.max(limit, entry.getValue());
             }
         }
-
-        return best;
+        return limit;
     }
 }

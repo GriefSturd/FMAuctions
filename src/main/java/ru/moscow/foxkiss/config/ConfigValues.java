@@ -42,6 +42,16 @@ public record ConfigValues(
         boolean usePapi
 ) {
 
+    public record AuctionData(
+            int maxStorageDays,
+            int menuSize,
+            Set<Integer> activeSlots,
+            Map<String, Set<Material>> categories,
+            Set<String> allCategories,
+            int exitSlot,
+            ConfigValues.ButtonConfig exitButton
+    ) {}
+
     public record PriceLimits(
             double minPriceMoneyAuc,
             double minPriceMoneyDauc,

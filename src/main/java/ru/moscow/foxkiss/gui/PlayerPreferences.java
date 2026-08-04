@@ -8,38 +8,22 @@ import java.util.Map;
 import java.util.UUID;
 
 public final class PlayerPreferences {
-
     private final Map<UUID, Map<AuctionCurrency, AuctionSort>> sorts = new HashMap<>();
     private final Map<UUID, Map<AuctionCurrency, String>> categories = new HashMap<>();
 
     public AuctionSort getSort(UUID uuid, AuctionCurrency currency) {
-        Map<AuctionCurrency, AuctionSort> playerSorts = sorts.get(uuid);
-
-        if (playerSorts == null) {
-            return AuctionSort.NEWEST;
-        }
-
-        return playerSorts.getOrDefault(currency, AuctionSort.NEWEST);
+        return sorts.computeIfAbsent(uuid, k -> new HashMap<>()).getOrDefault(currency, AuctionSort.NEWEST);
     }
 
     public void setSort(UUID uuid, AuctionCurrency currency, AuctionSort sort) {
-        sorts.computeIfAbsent(uuid, key -> new HashMap<>())
-                .put(currency, sort);
+        sorts.computeIfAbsent(uuid, k -> new HashMap<>()).put(currency, sort);
     }
 
     public String getCategory(UUID uuid, AuctionCurrency currency) {
-        Map<AuctionCurrency, String> playerCategories = categories.get(uuid);
-
-        if (playerCategories == null) {
-            return "all";
-        }
-
-        String category = playerCategories.get(currency);
-        return category != null ? category : "all";
+        return categories.computeIfAbsent(uuid, k -> new HashMap<>()).getOrDefault(currency, "all");
     }
 
     public void setCategory(UUID uuid, AuctionCurrency currency, String category) {
-        categories.computeIfAbsent(uuid, key -> new HashMap<>())
-                .put(currency, category);
+        categories.computeIfAbsent(uuid, k -> new HashMap<>()).put(currency, category);
     }
 }

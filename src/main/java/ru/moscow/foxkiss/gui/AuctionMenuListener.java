@@ -5,6 +5,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -16,6 +17,9 @@ import ru.moscow.foxkiss.auction.AuctionSort;
 import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.enums.ActionType;
+import ru.moscow.foxkiss.gui.holders.AuctionMenuHolder;
+import ru.moscow.foxkiss.gui.holders.ConfirmMenuHolder;
+import ru.moscow.foxkiss.gui.holders.QuantityMenuHolder;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
 import java.util.*;
@@ -49,8 +53,16 @@ public final class AuctionMenuListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onClick(InventoryClickEvent event) {
-        if (!(event.getInventory().getHolder() instanceof AuctionMenuHolder holder)) return;
-        if (!(event.getWhoClicked() instanceof Player player)) return;
+        if (event.getInventory().getType() != InventoryType.CHEST) {
+            return;
+        }
+
+        if (!(event.getInventory().getHolder() instanceof AuctionMenuHolder holder)) {
+            return;
+        }
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
 
         event.setCancelled(true);
 
@@ -63,10 +75,10 @@ public final class AuctionMenuListener implements Listener {
             return;
         }
 
-        if (holder.viewType() == AuctionViewType.QUANTITY && slot == configManager.getConfigValues().guiConfig().quantityMenu().slotAmount()) {
-            auctionService.buy(player, holder.lotId(), holder.selectedAmount(), success -> {
+        if (holder instanceof QuantityMenuHolder qh && slot == configManager.getConfigValues().guiConfig().quantityMenu().slotAmount()) {
+            auctionService.buy(player, qh.lotId(), qh.selectedAmount(), success -> {
                 if (!success || !player.isOnline()) return;
-                auctionMenu.openMain(player, holder.currency(), 0, null, null, null, null);
+                auctionMenu.openMain(player, qh.currency(), 0, null, null, null, null);
             });
             return;
         }
@@ -78,19 +90,18 @@ public final class AuctionMenuListener implements Listener {
         if (meta == null) return;
 
         String actionName = meta.getPersistentDataContainer().get(actionKey, PersistentDataType.STRING);
-        if (actionName == null) return;
-        
         ActionType action = ActionType.get(actionName);
-        if (action == null) return;
 
-        switch (holder.viewType()) {
-            case QUANTITY -> handleQuantityAction(player, holder, action);
-            case CONFIRM -> handleConfirmAction(player, holder, action);
-            default -> handleNavigationAction(player, holder, action, event.isRightClick());
+        if (holder instanceof QuantityMenuHolder qh) {
+            handleQuantityAction(player, qh, action);
+        } else if (holder instanceof ConfirmMenuHolder ch) {
+            handleConfirmAction(player, ch, action);
+        } else {
+            handleNavigationAction(player, holder, action, event.isRightClick());
         }
     }
 
-    private void handleQuantityAction(Player player, AuctionMenuHolder holder, ActionType action) {
+    private void handleQuantityAction(Player player, QuantityMenuHolder holder, ActionType action) {
         int amount = holder.selectedAmount();
         switch (action) {
             case DECREASE_10 -> amount -= 10;
@@ -120,7 +131,7 @@ public final class AuctionMenuListener implements Listener {
         }
     }
 
-    private void handleConfirmAction(Player player, AuctionMenuHolder holder, ActionType action) {
+    private void handleConfirmAction(Player player, ConfirmMenuHolder holder, ActionType action) {
         if (action == ActionType.CONFIRM) {
             auctionService.buy(player, holder.confirmLotId(), holder.confirmAmount(), success -> {
                 if (!success || !player.isOnline()) return;
@@ -140,18 +151,14 @@ public final class AuctionMenuListener implements Listener {
             case SELLING -> auctionMenu.openSelling(player, holder.currency(), 0);
             case EXPIRED -> auctionMenu.openExpired(player, holder.currency(), 0);
             case PREVIOUS -> {
-                if (currentPage <= 0) {
-                    return;
-                }
-
-                auctionMenu.openInventory(player, holder.viewType(), holder.currency(), currentPage - 1, holder.sort(), holder.sellerFilter(), holder.searchFilter(), holder.category());
+                if (currentPage <= 0) return;
+                auctionMenu.openInventory(player, holder.viewType(), holder.currency(), currentPage - 1,
+                        holder.sort(), holder.sellerFilter(), holder.searchFilter(), holder.category());
             }
-
             case NEXT -> {
-                if (currentPage + 1 >= totalPages) {
-                    return;
-                }
-                auctionMenu.openInventory(player, holder.viewType(), holder.currency(), currentPage + 1, holder.sort(), holder.sellerFilter(), holder.searchFilter(), holder.category());
+                if (currentPage + 1 >= totalPages) return;
+                auctionMenu.openInventory(player, holder.viewType(), holder.currency(), currentPage + 1,
+                        holder.sort(), holder.sellerFilter(), holder.searchFilter(), holder.category());
             }
             case REFRESH -> {
                 if (tryUseCooldown(player, updateCooldowns,
@@ -212,7 +219,6 @@ public final class AuctionMenuListener implements Listener {
         takeCooldowns.remove(uuid);
         cooldownMessageSkips.remove(uuid);
         quantityMessageCooldowns.remove(event.getPlayer().getName());
-        auctionMenu.removeRefreshProgress(uuid);
     }
 
     private boolean tryUseCooldown(Player player, Map<UUID, Long> cooldowns, double seconds) {
@@ -248,9 +254,6 @@ public final class AuctionMenuListener implements Listener {
 
     private String getNextCategory(String current) {
         List<String> categories = getCategoriesList();
-        if (categories.isEmpty()) return "all";
-        if (current.isEmpty()) return categories.get(0);
-
         int index = categories.indexOf(current.toLowerCase());
         if (index < 0) return categories.get(0);
         return categories.get((index + 1) % categories.size());
@@ -258,9 +261,6 @@ public final class AuctionMenuListener implements Listener {
 
     private String getPreviousCategory(String current) {
         List<String> categories = getCategoriesList();
-        if (categories.isEmpty()) return "all";
-        if (current.isEmpty()) return categories.get(categories.size() - 1);
-
         int index = categories.indexOf(current.toLowerCase());
         if (index < 0) return categories.get(categories.size() - 1);
         return categories.get((index - 1 + categories.size()) % categories.size());

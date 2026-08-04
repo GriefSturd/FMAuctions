@@ -10,7 +10,6 @@ import ru.moscow.foxkiss.economy.EconomyProvider;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
 
 public final class AuctionTransactionService {
-
     private final SchedulerService scheduler;
     private final AuctionRepository repository;
     private final EconomyProvider economyProvider;
@@ -41,15 +40,10 @@ public final class AuctionTransactionService {
         scheduler.runAsync(() -> repository.recordSale(sellerName, buyerName, currency, itemType, amount, price));
     }
 
-    public void createRemainingLot(AuctionItem originalItem, int remainingAmount) {
-        ItemStack remaining = originalItem.itemStackClone();
+    public void createRemainingLot(AuctionItem original, int remainingAmount) {
+        ItemStack remaining = original.itemStackClone();
         remaining.setAmount(remainingAmount);
-        double remainingPrice = originalItem.pricePerItem() * remainingAmount;
-        
-        scheduler.runAsync(() -> repository.create(originalItem.sellerName(), originalItem.currency(), remaining, remainingPrice));
-    }
-
-    public void restoreStatusAsync(long lotId) {
-        scheduler.runAsync(() -> repository.restoreStatus(lotId));
+        double totalPrice = original.pricePerItem() * remainingAmount;
+        scheduler.runAsync(() -> repository.create(original.sellerName(), original.currency(), remaining, totalPrice));
     }
 }

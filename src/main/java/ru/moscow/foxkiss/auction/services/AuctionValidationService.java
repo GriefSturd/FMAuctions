@@ -6,12 +6,12 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionItem;
+import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.economy.EconomyProvider;
 import ru.moscow.foxkiss.utils.ItemUtils;
 
 public final class AuctionValidationService {
-
     private final IConfigManager configManager;
     private final EconomyProvider economyProvider;
 
@@ -29,42 +29,31 @@ public final class AuctionValidationService {
     }
 
     public boolean isPriceInRange(double price, AuctionCurrency currency, boolean isDonateAuction) {
-        var priceLimits = configManager.getConfigValues().priceLimits();
-        
-        if (currency == AuctionCurrency.VAULT) {
-            if (isDonateAuction) {
-                return price >= priceLimits.minPriceMoneyDauc() && price <= priceLimits.maxPriceMoneyDauc();
-            } else {
-                return price >= priceLimits.minPriceMoneyAuc() && price <= priceLimits.maxPriceMoneyAuc();
-            }
-        } else if (currency == AuctionCurrency.PLAYER_POINTS) {
-            if (isDonateAuction) {
-                return price >= priceLimits.minPriceMoneyDauc() && price <= priceLimits.maxPriceMoneyDauc();
-            } else {
-                return price >= priceLimits.minPriceMoneyAuc() && price <= priceLimits.maxPriceMoneyAuc();
-            }
-        }
-        
-        return true;
-    }
-    
-    public double getMinPrice(AuctionCurrency currency, boolean isDonateAuction) {
-        var priceLimits = configManager.getConfigValues().priceLimits();
-        
+        var limits = configManager.getConfigValues().priceLimits();
+        double min, max;
         if (currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS) {
-            return isDonateAuction ? priceLimits.minPriceMoneyDauc() : priceLimits.minPriceMoneyAuc();
+            min = isDonateAuction ? limits.minPriceMoneyDauc() : limits.minPriceMoneyAuc();
+            max = isDonateAuction ? limits.maxPriceMoneyDauc() : limits.maxPriceMoneyAuc();
+        } else {
+            min = 0.01;
+            max = Double.MAX_VALUE;
         }
-        
+        return price >= min && price <= max;
+    }
+
+    public double getMinPrice(AuctionCurrency currency, boolean isDonateAuction) {
+        var limits = configManager.getConfigValues().priceLimits();
+        if (currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS) {
+            return isDonateAuction ? limits.minPriceMoneyDauc() : limits.minPriceMoneyAuc();
+        }
         return 0.01;
     }
-    
+
     public double getMaxPrice(AuctionCurrency currency, boolean isDonateAuction) {
-        var priceLimits = configManager.getConfigValues().priceLimits();
-        
+        var limits = configManager.getConfigValues().priceLimits();
         if (currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS) {
-            return isDonateAuction ? priceLimits.maxPriceMoneyDauc() : priceLimits.maxPriceMoneyAuc();
+            return isDonateAuction ? limits.maxPriceMoneyDauc() : limits.maxPriceMoneyAuc();
         }
-        
         return Double.MAX_VALUE;
     }
 

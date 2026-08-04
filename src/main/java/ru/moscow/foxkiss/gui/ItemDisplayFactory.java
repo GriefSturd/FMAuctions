@@ -1,6 +1,5 @@
 package ru.moscow.foxkiss.gui;
 
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -12,50 +11,38 @@ import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.auction.AuctionItem;
 import ru.moscow.foxkiss.auction.AuctionSort;
 import ru.moscow.foxkiss.config.ConfigValues;
-import ru.moscow.foxkiss.utils.TextUtils;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.enums.ActionType;
 import ru.moscow.foxkiss.utils.ItemUtils;
 import ru.moscow.foxkiss.utils.PriceFormatter;
+import ru.moscow.foxkiss.utils.TextUtils;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 public final class ItemDisplayFactory {
-
     private final IConfigManager configManager;
-    private final JavaPlugin plugin;
-
-    private final LinkedHashMap<String, ItemStack> navCache = new LinkedHashMap<>(16, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, ItemStack> eldest) {
-            return size() > 128;
-        }
-    };
+    private final NamespacedKey actionKey;
 
     public ItemDisplayFactory(JavaPlugin plugin, IConfigManager configManager) {
-        this.plugin = plugin;
         this.configManager = configManager;
+        this.actionKey = new NamespacedKey(plugin, "action");
     }
 
     public ItemStack createLotDisplay(AuctionItem item) {
         ItemStack base = item.itemStackClone();
         ItemMeta meta = base.getItemMeta();
 
-        ObjectArrayList<Component> lore = new ObjectArrayList<>();
-
-        if (meta != null && meta.hasLore()) {
-            List<Component> originalLore = meta.lore();
-            if (originalLore != null) {
-                lore.addAll(originalLore);
-            }
+        List<Component> lore = new ArrayList<>();
+        if (meta.hasLore()) {
+            List<Component> original = meta.lore();
+            if (original != null) lore.addAll(original);
         }
 
         ConfigValues config = configManager.getConfigValues();
         ConfigValues.ItemLoreConfig loreConfig = config.guiConfig().itemLore();
-
-        List<String> template = (item.amount() == 1)
-                ? loreConfig.loreOne()
-                : loreConfig.lore();
+        List<String> template = (item.amount() == 1) ? loreConfig.loreOne() : loreConfig.lore();
 
         String symbol = item.currency().symbol(config);
         String price = PriceFormatter.format(item.price());
@@ -75,29 +62,9 @@ public final class ItemDisplayFactory {
             lore.add(TextUtils.component(processed));
         }
 
-        if (meta != null) {
-            meta.lore(lore);
-            base.setItemMeta(meta);
-        }
-
+        meta.lore(lore);
+        base.setItemMeta(meta);
         return base;
-    }
-
-    public void clearCache() {
-        navCache.clear();
-    }
-
-    private ItemStack createButton(Material material, String name, List<String> lore, String skullTexture, ActionType action, Integer customModelData) {
-        ItemStack item = TextUtils.isNotBlank(skullTexture)
-                ? ItemUtils.skull(skullTexture, name, lore, customModelData)
-                : ItemUtils.named(material, name, lore, customModelData);
-
-        if (item.hasItemMeta()) {
-            ItemMeta meta = item.getItemMeta();
-            setAction(meta, action);
-            item.setItemMeta(meta);
-        }
-        return item;
     }
 
     public ItemStack createButton(ConfigValues.ButtonConfig config) {
@@ -109,8 +76,7 @@ public final class ItemDisplayFactory {
     }
 
     public ItemStack createNavigationButton(ConfigValues.NavigationButton button, List<String> lore) {
-        String key = button.slot() + "|" + button.name() + "|" + String.join("", lore) + "|" + button.customModelData();
-        return navCache.computeIfAbsent(key, k -> createButton(button.material(), button.name(), lore, button.skullTexture(), button.action(), button.customModelData())).clone();
+        return createButton(button.material(), button.name(), lore, button.skullTexture(), button.action(), button.customModelData());
     }
 
     public ItemStack createSortButton(AuctionSort selected) {
@@ -118,12 +84,11 @@ public final class ItemDisplayFactory {
         ConfigValues.SortMenuConfig sortMenu = config.guiConfig().sortMenu();
         ConfigValues.NavigationConfig nav = config.guiConfig().navigation();
 
-        ObjectArrayList<String> lore = new ObjectArrayList<>();
+        List<String> lore = new ArrayList<>();
+        Map<String, String> sortingNames = config.sortingNames();
         for (AuctionSort sort : AuctionSort.values()) {
-            String display = config.sortingNames().getOrDefault(sort.name(), sort.name());
-            String prefix = (sort == selected)
-                    ? sortMenu.selectedPrefix()
-                    : sortMenu.unselectedPrefix();
+            String display = sortingNames.getOrDefault(sort.name(), sort.name());
+            String prefix = (sort == selected) ? sortMenu.selectedPrefix() : sortMenu.unselectedPrefix();
             lore.add(TextUtils.colorize(prefix + display));
         }
         lore.add("");
@@ -137,19 +102,17 @@ public final class ItemDisplayFactory {
         ConfigValues.CategoryMenuConfig categoryMenu = config.guiConfig().categoryMenu();
         ConfigValues.NavigationConfig nav = config.guiConfig().navigation();
 
-        ObjectArrayList<String> categories = new ObjectArrayList<>(config.categories().keySet());
+        List<String> categories = new ArrayList<>(config.categories().keySet());
         if (!categories.contains("all")) {
             categories.addFirst("all");
         }
 
         String current = selectedCategory.toLowerCase();
-
-        ObjectArrayList<String> lore = new ObjectArrayList<>();
+        List<String> lore = new ArrayList<>();
+        Map<String, String> categoryNames = config.categoryNames();
         for (String category : categories) {
-            String display = config.categoryNames().getOrDefault(category.toLowerCase(), category.substring(0, 1).toUpperCase() + category.substring(1).toLowerCase());
-            String prefix = category.equalsIgnoreCase(current)
-                    ? categoryMenu.selectedPrefix()
-                    : categoryMenu.unselectedPrefix();
+            String display = categoryNames.getOrDefault(category.toLowerCase(), category.substring(0, 1).toUpperCase() + category.substring(1).toLowerCase());
+            String prefix = category.equalsIgnoreCase(current) ? categoryMenu.selectedPrefix() : categoryMenu.unselectedPrefix();
             lore.add(TextUtils.colorize(prefix + display));
         }
         lore.add("");
@@ -163,24 +126,15 @@ public final class ItemDisplayFactory {
         display.setAmount(Math.min(selectedAmount, display.getMaxStackSize()));
 
         ItemMeta meta = display.getItemMeta();
-        if (meta == null) return display;
+        meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_UNBREAKABLE, ItemFlag.HIDE_DESTROYS, ItemFlag.HIDE_PLACED_ON);
 
-        meta.addItemFlags(
-                ItemFlag.HIDE_ATTRIBUTES,
-                ItemFlag.HIDE_UNBREAKABLE,
-                ItemFlag.HIDE_DESTROYS,
-                ItemFlag.HIDE_PLACED_ON);
-
-        ObjectArrayList<Component> lore = new ObjectArrayList<>();
-
+        List<Component> lore = new ArrayList<>();
         if (meta.hasLore()) {
-            List<Component> originalLore = meta.lore();
-            if (originalLore != null) {
-                lore.addAll(originalLore);
-                lore.add(Component.empty());
-            }
+            List<Component> original = meta.lore();
+            if (original != null) lore.addAll(original);
         }
-        
+        if (!lore.isEmpty()) lore.add(Component.empty());
+
         double totalPrice = item.pricePerItem() * selectedAmount;
         String totalPriceFormatted = PriceFormatter.format(totalPrice);
 
@@ -197,9 +151,15 @@ public final class ItemDisplayFactory {
         return display;
     }
 
-    private void setAction(ItemMeta meta, ActionType action) {
-        if (meta == null) return;
-        meta.getPersistentDataContainer().set(new NamespacedKey(plugin, "action"), PersistentDataType.STRING, action.name());
+    private ItemStack createButton(Material material, String name, List<String> lore, String skullTexture, ActionType action, Integer customModelData) {
+        ItemStack item = TextUtils.isNotBlank(skullTexture)
+                ? ItemUtils.skull(skullTexture, name, lore, customModelData)
+                : ItemUtils.named(material, name, lore, customModelData);
+
+        ItemMeta meta = item.getItemMeta();
+        meta.getPersistentDataContainer().set(actionKey, PersistentDataType.STRING, action.name());
+        item.setItemMeta(meta);
+        return item;
     }
 
     private String formatDate(long timestamp) {

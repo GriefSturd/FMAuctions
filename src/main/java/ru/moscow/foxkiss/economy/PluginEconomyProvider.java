@@ -7,31 +7,22 @@ import ru.moscow.foxkiss.auction.AuctionCurrency;
 
 import java.util.EnumMap;
 import java.util.Map;
-import java.util.function.BiConsumer;
-import java.util.function.BiFunction;
-import java.util.function.BiPredicate;
 
 public final class PluginEconomyProvider implements EconomyProvider {
 
-    private final Map<AuctionCurrency, BiPredicate<Player, Double>> hasMap = new EnumMap<>(AuctionCurrency.class);
-    private final Map<AuctionCurrency, BiFunction<Player, Double, Boolean>> withdrawMap = new EnumMap<>(AuctionCurrency.class);
-    private final Map<AuctionCurrency, BiConsumer<OfflinePlayer, Double>> depositMap = new EnumMap<>(AuctionCurrency.class);
+    private final Map<AuctionCurrency, CurrencyHandler> handlers = new EnumMap<>(AuctionCurrency.class);
 
     public void init(JavaPlugin plugin) {
         try {
             VaultApi vault = new VaultApi();
-            hasMap.put(AuctionCurrency.VAULT, vault::has);
-            withdrawMap.put(AuctionCurrency.VAULT, vault::withdraw);
-            depositMap.put(AuctionCurrency.VAULT, vault::deposit);
+            handlers.put(AuctionCurrency.VAULT, new VaultHandler(vault));
         } catch (Exception e) {
             plugin.getLogger().warning("Vault недоступен: " + e.getMessage());
         }
 
         try {
             PlayerPointsApi points = new PlayerPointsApi();
-            hasMap.put(AuctionCurrency.PLAYER_POINTS, (p, a) -> points.has(p, (int) Math.ceil(a)));
-            withdrawMap.put(AuctionCurrency.PLAYER_POINTS, (p, a) -> points.withdraw(p, (int) Math.ceil(a)));
-            depositMap.put(AuctionCurrency.PLAYER_POINTS, (p, a) -> points.deposit(p, (int) Math.ceil(a)));
+            handlers.put(AuctionCurrency.PLAYER_POINTS, new PlayerPointsHandler(points));
         } catch (Exception e) {
             plugin.getLogger().warning("PlayerPoints недоступен: " + e.getMessage());
         }
@@ -39,26 +30,76 @@ public final class PluginEconomyProvider implements EconomyProvider {
 
     @Override
     public boolean available(AuctionCurrency currency) {
-        return hasMap.containsKey(currency);
+        return handlers.containsKey(currency);
     }
 
     @Override
     public boolean has(Player player, AuctionCurrency currency, double amount) {
-        BiPredicate<Player, Double> pred = hasMap.get(currency);
-        return pred != null && pred.test(player, amount);
+        CurrencyHandler handler = handlers.get(currency);
+        return handler != null && handler.has(player, amount);
     }
 
     @Override
     public boolean withdraw(Player player, AuctionCurrency currency, double amount) {
-        BiFunction<Player, Double, Boolean> func = withdrawMap.get(currency);
-        return func != null && func.apply(player, amount);
+        CurrencyHandler handler = handlers.get(currency);
+        return handler != null && handler.withdraw(player, amount);
     }
 
     @Override
     public void deposit(OfflinePlayer player, AuctionCurrency currency, double amount) {
-        BiConsumer<OfflinePlayer, Double> cons = depositMap.get(currency);
-        if (cons != null) {
-            cons.accept(player, amount);
+        CurrencyHandler handler = handlers.get(currency);
+        if (handler != null) handler.deposit(player, amount);
+    }
+
+    private interface CurrencyHandler {
+        boolean has(Player player, double amount);
+        boolean withdraw(Player player, double amount);
+        void deposit(OfflinePlayer player, double amount);
+    }
+
+    private static final class VaultHandler implements CurrencyHandler {
+        private final VaultApi vault;
+
+        VaultHandler(VaultApi vault) {
+            this.vault = vault;
+        }
+
+        @Override
+        public boolean has(Player player, double amount) {
+            return vault.has(player, amount);
+        }
+
+        @Override
+        public boolean withdraw(Player player, double amount) {
+            return vault.withdraw(player, amount);
+        }
+
+        @Override
+        public void deposit(OfflinePlayer player, double amount) {
+            vault.deposit(player, amount);
+        }
+    }
+
+    private static final class PlayerPointsHandler implements CurrencyHandler {
+        private final PlayerPointsApi points;
+
+        PlayerPointsHandler(PlayerPointsApi points) {
+            this.points = points;
+        }
+
+        @Override
+        public boolean has(Player player, double amount) {
+            return points.has(player, (int) Math.ceil(amount));
+        }
+
+        @Override
+        public boolean withdraw(Player player, double amount) {
+            return points.withdraw(player, (int) Math.ceil(amount));
+        }
+
+        @Override
+        public void deposit(OfflinePlayer player, double amount) {
+            points.deposit(player, (int) Math.ceil(amount));
         }
     }
 }

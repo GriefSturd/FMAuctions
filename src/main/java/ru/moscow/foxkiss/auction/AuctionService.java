@@ -17,7 +17,6 @@ public final class AuctionService {
     private final AuctionTakeService takeService;
 
     public AuctionService(JavaPlugin plugin, IConfigManager configManager, AuctionRepository repository, EconomyProvider economyProvider, LimitService limitService) {
-        
         SchedulerService scheduler = new SchedulerService(plugin);
         AuctionValidationService validationService = new AuctionValidationService(configManager, economyProvider);
         AuctionTransactionService transactionService = new AuctionTransactionService(scheduler, repository, economyProvider);

@@ -30,24 +30,19 @@ public final class H2LibraryLoader {
         URLClassLoader loader = getClassLoader(plugin);
         try {
             Class<?> poolClass = Class.forName("org.h2.jdbcx.JdbcConnectionPool", true, loader);
-            Object pool = poolClass.getMethod("create", String.class, String.class, String.class)
-                    .invoke(null, jdbcUrl, "SA", "");
-
-            DataSource dataSource = (DataSource) pool;
-            try (Connection ignored = dataSource.getConnection()) {
+            DataSource ds = createPool(poolClass, jdbcUrl, "SA", "");
+            try (Connection ignored = ds.getConnection()) {
                 plugin.getLogger().info("Подключение к H2 успешно установлено.");
-                return dataSource;
+                return ds;
             } catch (SQLException e) {
-                plugin.getLogger().warning("Не удалось подключиться с пользователем 'SA', пробуем пустой пользователь.");
-                dispose(pool);
-                Object fallbackPool = poolClass.getMethod("create", String.class, String.class, String.class)
-                        .invoke(null, jdbcUrl, "", "");
-                DataSource fallbackDS = (DataSource) fallbackPool;
-                try (Connection ignored2 = fallbackDS.getConnection()) {
-                    plugin.getLogger().warning("Используется пустой пользователь для совместимости.");
-                    return fallbackDS;
+                plugin.getLogger().warning("Ошибка с пользователем 'SA', пробуем пустой пользователь.");
+                dispose(ds);
+                DataSource fallback = createPool(poolClass, jdbcUrl, "", "");
+                try (Connection ignored2 = fallback.getConnection()) {
+                    plugin.getLogger().warning("Используется пустой пользователь.");
+                    return fallback;
                 } catch (SQLException e2) {
-                    dispose(fallbackPool);
+                    dispose(fallback);
                     e.addSuppressed(e2);
                     throw new IllegalStateException("Не удалось подключиться к H2", e);
                 }
@@ -57,39 +52,38 @@ public final class H2LibraryLoader {
         }
     }
 
+    private static DataSource createPool(Class<?> poolClass, String jdbcUrl, String user, String pass) throws ReflectiveOperationException {
+        return (DataSource) poolClass.getMethod("create", String.class, String.class, String.class)
+                .invoke(null, jdbcUrl, user, pass);
+    }
+
     private static void dispose(Object pool) {
         try {
             pool.getClass().getMethod("dispose").invoke(pool);
-        } catch (ReflectiveOperationException ignored) {
-        }
+        } catch (ReflectiveOperationException ignored) {}
     }
 
     private static URLClassLoader getClassLoader(JavaPlugin plugin) {
-        if (classLoader != null) {
-            return classLoader;
-        }
+        if (classLoader != null) return classLoader;
         synchronized (lock) {
-            if (classLoader != null) {
-                return classLoader;
-            }
-            Path librariesDir = plugin.getDataFolder().toPath().resolve("libraries");
-            Path libraryFile = librariesDir.resolve(library);
+            if (classLoader != null) return classLoader;
+            Path libFile = plugin.getDataFolder().toPath().resolve("libraries").resolve(library);
             try {
-                Files.createDirectories(librariesDir);
-                if (!Files.exists(libraryFile)) {
-                    plugin.getLogger().info("Загрузка H2 драйвера версии " + version + "...");
-                    downloadAndVerify(libraryFile);
+                Files.createDirectories(libFile.getParent());
+                if (!Files.exists(libFile)) {
+                    plugin.getLogger().info("Загрузка H2 " + version + "...");
+                    downloadAndVerify(libFile);
                 }
-                classLoader = new URLClassLoader(new URL[]{libraryFile.toUri().toURL()}, H2LibraryLoader.class.getClassLoader());
+                classLoader = new URLClassLoader(new URL[]{libFile.toUri().toURL()}, H2LibraryLoader.class.getClassLoader());
                 return classLoader;
             } catch (IOException | NoSuchAlgorithmException e) {
-                throw new IllegalStateException("Не удалось загрузить H2 библиотеку", e);
+                throw new IllegalStateException("Не удалось загрузить H2", e);
             }
         }
     }
 
-    private static void downloadAndVerify(Path targetPath) throws IOException, NoSuchAlgorithmException {
-        Path temp = targetPath.resolveSibling(library + ".tmp");
+    private static void downloadAndVerify(Path target) throws IOException, NoSuchAlgorithmException {
+        Path temp = target.resolveSibling(library + ".tmp");
         try (InputStream in = URI.create(base + library).toURL().openStream()) {
             Files.copy(in, temp, StandardCopyOption.REPLACE_EXISTING);
         }
@@ -100,9 +94,9 @@ public final class H2LibraryLoader {
         String actual = sha1(temp);
         if (!expected.equalsIgnoreCase(actual)) {
             Files.deleteIfExists(temp);
-            throw new IOException("Контрольная сумма скачанного H2 драйвера не совпадает с Maven Central");
+            throw new IOException("Контрольная сумма H2 не совпадает");
         }
-        Files.move(temp, targetPath, StandardCopyOption.REPLACE_EXISTING);
+        Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
     }
 
     private static String sha1(Path file) throws IOException, NoSuchAlgorithmException {
@@ -110,9 +104,7 @@ public final class H2LibraryLoader {
         try (InputStream in = Files.newInputStream(file)) {
             byte[] buf = new byte[8192];
             int read;
-            while ((read = in.read(buf)) != -1) {
-                digest.update(buf, 0, read);
-            }
+            while ((read = in.read(buf)) != -1) digest.update(buf, 0, read);
         }
         return HexFormat.of().formatHex(digest.digest());
     }

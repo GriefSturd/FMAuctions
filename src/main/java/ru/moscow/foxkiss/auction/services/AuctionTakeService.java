@@ -6,113 +6,62 @@ import ru.moscow.foxkiss.auction.AuctionItem;
 import ru.moscow.foxkiss.auction.AuctionRepository;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
-import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
 import java.util.function.Consumer;
 
-public final class AuctionTakeService {
-
-    private final SchedulerService scheduler;
-    private final IConfigManager configManager;
-    private final AuctionRepository repository;
+public final class AuctionTakeService extends ru.moscow.foxkiss.auction.services.BaseAuctionService {
     private final AuctionValidationService validationService;
-    private final AuctionTransactionService transactionService;
 
     public AuctionTakeService(SchedulerService scheduler, IConfigManager configManager, AuctionRepository repository, AuctionValidationService validationService, AuctionTransactionService transactionService) {
-        this.scheduler = scheduler;
-        this.configManager = configManager;
-        this.repository = repository;
+        super(scheduler, configManager, repository, transactionService);
         this.validationService = validationService;
-        this.transactionService = transactionService;
     }
 
     public void take(Player player, long lotId, Consumer<Boolean> callback) {
-        scheduler.runAsyncThenSync(
-            () -> {
-                if (!repository.markAsSelling(lotId)) {
-                    return null;
-                }
-                AuctionItem item = repository.findById(lotId).orElse(null);
-                if (item == null) {
-                    repository.restoreStatus(lotId);
-                }
-                return item;
-            },
-            item -> {
-                if (item == null) {
-                    finish(player, callback, false, configManager.getConfigValues().messages().noId());
-                    return;
-                }
-                processTake(player, item, lotId, callback);
-            }
-        );
-    }
-
-    private void processTake(Player player, AuctionItem item, long lotId, Consumer<Boolean> callback) {
-        if (!player.isOnline()) {
-            transactionService.restoreStatusAsync(lotId);
-            callback.accept(false);
-            return;
-        }
-
-        if (!validationService.isOwner(player, item)) {
-            restoreAndFinish(player, lotId, callback, false, configManager.getConfigValues().messages().noOwn());
-            return;
-        }
-
-        ItemStack returned = item.itemStackClone();
-        if (!validationService.canFit(player, returned)) {
-            restoreAndFinish(player, lotId, callback, false, configManager.getConfigValues().messages().inventoryFull());
-            return;
-        }
-
-        scheduler.runAsyncThenSync(
-            () -> repository.delete(lotId),
-            deleted -> completeTake(player, item, returned, deleted, callback)
-        );
-    }
-
-    private void completeTake(Player player, AuctionItem item, ItemStack returned, boolean deleted, Consumer<Boolean> callback) {
-        if (!player.isOnline()) {
-            callback.accept(false);
-            return;
-        }
-        
-        if (!deleted) {
-            transactionService.restoreStatusAsync(item.id());
-            player.sendMessage(PlaceholderUtils.applypapi(player,
-                    configManager.getConfigValues().messages().noId(), configManager));
-            callback.accept(false);
-            return;
-        }
-        
-        transactionService.giveItem(player, returned);
-        
-        String message = validationService.isExpired(item)
-                ? configManager.getConfigValues().messages().takeExpired()
-                : configManager.getConfigValues().messages().takeSelling();
-        
-        player.sendMessage(PlaceholderUtils.applypapi(player, message, configManager));
-        callback.accept(true);
-    }
-
-    private void finish(Player player, Consumer<Boolean> callback, boolean result, String message) {
-        scheduler.runSync(() -> {
-            if (player.isOnline()) {
-                player.sendMessage(PlaceholderUtils.applypapi(player, message, configManager));
-            }
-            callback.accept(result);
-        });
-    }
-
-    private void restoreAndFinish(Player player, long lotId, Consumer<Boolean> callback, boolean result, String message) {
         scheduler.runAsync(() -> {
-            repository.restoreStatus(lotId);
+            if (!repository.markAsSelling(lotId)) {
+                finishWithMessage(player, config().messages().noId(), false, callback);
+                return;
+            }
+
+            AuctionItem item = repository.findById(lotId).orElse(null);
+            if (item == null) {
+                repository.restoreStatus(lotId);
+                finishWithMessage(player, config().messages().noId(), false, callback);
+                return;
+            }
+
+            if (!player.isOnline()) {
+                restoreStatusAsync(lotId);
+                if (callback != null) callback.accept(false);
+                return;
+            }
+
+            if (!validationService.isOwner(player, item)) {
+                restoreAndFinish(player, lotId, config().messages().noOwn(), callback);
+                return;
+            }
+
+            ItemStack returned = item.itemStackClone();
+            if (!validationService.canFit(player, returned)) {
+                restoreAndFinish(player, lotId, config().messages().inventoryFull(), callback);
+                return;
+            }
+
+            boolean deleted = repository.delete(lotId);
+            if (!deleted) {
+                restoreStatusAsync(lotId);
+                finishWithMessage(player, config().messages().noId(), false, callback);
+                return;
+            }
+
             scheduler.runSync(() -> {
-                if (player.isOnline()) {
-                    player.sendMessage(PlaceholderUtils.applypapi(player, message, configManager));
-                }
-                callback.accept(result);
+                transactionService.giveItem(player, returned);
+                String msg = validationService.isExpired(item)
+                        ? config().messages().takeExpired()
+                        : config().messages().takeSelling();
+                sendMessage(player, msg);
+                if (callback != null) callback.accept(true);
             });
         });
     }
