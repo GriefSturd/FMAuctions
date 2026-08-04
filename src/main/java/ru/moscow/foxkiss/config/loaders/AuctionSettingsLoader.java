@@ -35,7 +35,7 @@ public final class AuctionSettingsLoader {
         Set<String> all = new HashSet<>();
 
         for (String key : section.getKeys(false)) {
-            String category = key.toLowerCase(Locale.ROOT);
+            String category = key.toLowerCase();
             Set<Material> mats = EnumSet.noneOf(Material.class);
             for (String raw : section.getStringList(key)) {
                 raw = raw.trim();
@@ -54,6 +54,7 @@ public final class AuctionSettingsLoader {
         }
         return new CategoryData(Map.copyOf(materials), Set.copyOf(all));
     }
+
     private ConfigValues.ButtonConfig loadButtonConfig(ConfigurationSection section) {
         MaterialParser.ParsedMaterial parsed = MaterialParser.parse(section, false);
         String name = section.getString("name", "");
@@ -71,7 +72,6 @@ public final class AuctionSettingsLoader {
 
     private ActionType loadAction(ConfigurationSection section) {
         List<String> actions = section.getStringList("actions");
-        if (actions.isEmpty()) return null;
         String first = actions.get(0).trim();
         if (first.startsWith("[") && first.endsWith("]")) {
             first = first.substring(1, first.length() - 1);

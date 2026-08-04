@@ -4,13 +4,15 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionRepository;
+import ru.moscow.foxkiss.auction.services.base.BaseAuctionService;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.permissions.LimitService;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 import ru.moscow.foxkiss.utils.PriceFormatter;
 
-public final class AuctionSellService extends ru.moscow.foxkiss.auction.services.BaseAuctionService {
+public final class AuctionSellService extends BaseAuctionService {
+
     private final LimitService limitService;
     private final AuctionValidationService validationService;
 
@@ -25,17 +27,22 @@ public final class AuctionSellService extends ru.moscow.foxkiss.auction.services
             sendMessage(player, config().messages().economyUnavailable());
             return;
         }
+
         if (!validationService.isValidPrice(price)) {
             sendMessage(player, config().messages().noPrice());
             return;
         }
 
         boolean isDonate = currency == AuctionCurrency.PLAYER_POINTS;
+
         if (!validationService.isPriceInRange(price, currency, isDonate)) {
+
             String symbol = currency.symbol(config());
             double min = validationService.getMinPrice(currency, isDonate);
             double max = validationService.getMaxPrice(currency, isDonate);
+
             String msg;
+
             if (price < min) {
                 msg = config().messages().priceTooLow()
                         .replace("{min_price}", String.valueOf((long) min))
@@ -45,11 +52,13 @@ public final class AuctionSellService extends ru.moscow.foxkiss.auction.services
                         .replace("{max_price}", String.valueOf((long) max))
                         .replace("{symbol_value}", symbol);
             }
+
             sendMessage(player, msg);
             return;
         }
 
         ItemStack hand = player.getInventory().getItemInMainHand();
+
         if (!validationService.isSellableItem(hand)) {
             sendMessage(player, config().messages().air());
             return;
@@ -60,23 +69,29 @@ public final class AuctionSellService extends ru.moscow.foxkiss.auction.services
         ItemStack soldItem = hand.clone();
 
         scheduler.runAsync(() -> {
+
             int active = repository.countActiveBySellerSince(playerName, currency, 0);
+
             if (active >= limit) {
-                sendMessage(player, config().messages().limitReached());
+                scheduler.runSync(() -> sendMessage(player, config().messages().limitReached()));
                 return;
             }
 
             long id = repository.create(playerName, currency, soldItem, price);
+
             if (id <= 0) {
-                sendMessage(player, config().messages().databaseError());
+                scheduler.runSync(() -> sendMessage(player, config().messages().databaseError()));
                 return;
             }
 
             scheduler.runSync(() -> {
                 transactionService.removeItemFromHand(player);
+
                 String symbol = currency.symbol(config());
                 String formatted = PriceFormatter.format(price) + " " + symbol;
+
                 String msg = config().messages().sellSuccess().replace("{symbol_value}", formatted);
+
                 player.sendMessage(PlaceholderUtils.applypapi(player, msg, configManager));
             });
         });

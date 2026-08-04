@@ -12,24 +12,12 @@ public final class TextUtils {
     private static final Pattern HEX_PATTERN = Pattern.compile("&#([a-fA-F\\d]{6})");
     public static final char COLOR_CHAR = '§';
 
-    /**
-     * Проверяет что строка не пустая (не null и не пустая строка).
-     * 
-     * @param str проверяемая строка
-     * @return true если строка содержит хотя бы один символ
-     */
     public static boolean isNotBlank(String str) {
-        return str != null && !str.isEmpty();
+        return !str.isEmpty();
     }
 
-    /**
-     * Проверяет что строка пустая (null или пустая строка).
-     * 
-     * @param str проверяемая строка
-     * @return true если строка null или пустая
-     */
     public static boolean isBlank(String str) {
-        return str == null || str.isEmpty();
+        return str.isEmpty();
     }
 
     public static String colorize(String message) {

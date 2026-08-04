@@ -4,12 +4,13 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import ru.moscow.foxkiss.auction.AuctionItem;
 import ru.moscow.foxkiss.auction.AuctionRepository;
+import ru.moscow.foxkiss.auction.services.base.BaseAuctionService;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
 
 import java.util.function.Consumer;
 
-public final class AuctionTakeService extends ru.moscow.foxkiss.auction.services.BaseAuctionService {
+public final class AuctionTakeService extends BaseAuctionService {
     private final AuctionValidationService validationService;
 
     public AuctionTakeService(SchedulerService scheduler, IConfigManager configManager, AuctionRepository repository, AuctionValidationService validationService, AuctionTransactionService transactionService) {

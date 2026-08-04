@@ -157,7 +157,6 @@ public final class AuctionMenuListener implements Listener {
             case CATEGORIES -> "openMain(CATEGORIES)";
             default -> "unknown";
         };
-
         int currentPage = holder.page();
         int totalPages = holder.totalPages();
 
