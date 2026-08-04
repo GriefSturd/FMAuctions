@@ -22,7 +22,7 @@ public final class AuctionSettingsLoader {
         return new ConfigValues.AuctionData(
                 auction.getInt("max-storage-days"),
                 auction.getInt("menu-size"),
-                Set.copyOf(auction.getIntegerList("active-slots")),
+                List.copyOf(auction.getIntegerList("active-slots")),
                 categories.materials(),
                 categories.allCategories(),
                 exit.getInt("slot"),
@@ -54,11 +54,11 @@ public final class AuctionSettingsLoader {
         }
         return new CategoryData(Map.copyOf(materials), Set.copyOf(all));
     }
-
     private ConfigValues.ButtonConfig loadButtonConfig(ConfigurationSection section) {
         MaterialParser.ParsedMaterial parsed = MaterialParser.parse(section, false);
         String name = section.getString("name", "");
         String title = section.getString("title", name);
+
         return new ConfigValues.ButtonConfig(
                 parsed.material(),
                 title.isEmpty() ? name : title,
@@ -66,8 +66,7 @@ public final class AuctionSettingsLoader {
                 parsed.skullTexture(),
                 loadAction(section),
                 SlotLoader.loadSlots(section),
-                loadModelData(section)
-        );
+                loadModelData(section));
     }
 
     private ActionType loadAction(ConfigurationSection section) {

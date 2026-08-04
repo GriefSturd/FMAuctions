@@ -20,7 +20,7 @@ public record ConfigValues(
         Map<String, Integer> playerPointsPriorityLimits,
         int maxAuctionStorageDays,
         int menuSize,
-        Set<Integer> auctionSlots,
+        List<Integer> auctionSlots,
         Map<String, Set<Material>> categories,
         Set<String> allMaterialCategories,
         Map<Integer, GlassPane> sellingGlassPanes,
@@ -45,7 +45,7 @@ public record ConfigValues(
     public record AuctionData(
             int maxStorageDays,
             int menuSize,
-            Set<Integer> activeSlots,
+            List<Integer> auctionSlots,
             Map<String, Set<Material>> categories,
             Set<String> allCategories,
             int exitSlot,
@@ -72,8 +72,8 @@ public record ConfigValues(
             ItemLoreConfig itemLore,
             QuantityMenuConfig quantityMenu,
             NavigationConfig navigation,
-            CategoryMenuConfig categoryMenu
-    ) {}
+            CategoryMenuConfig categoryMenu,
+            ButtonConfig buttonConfig) {}
 
     public record TitlesConfig(
             String main,

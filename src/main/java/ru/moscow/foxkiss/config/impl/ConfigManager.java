@@ -9,7 +9,9 @@ import ru.moscow.foxkiss.config.loaders.*;
 import ru.moscow.foxkiss.utils.ItemUtils;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class ConfigManager implements IConfigManager {
@@ -87,6 +89,11 @@ public final class ConfigManager implements IConfigManager {
         boolean enableBstats = config.getBoolean("enable-bstats");
         boolean usePapi = config.getBoolean("use-papi");
 
+        List<Integer> activeSlots = new ArrayList<>(auctionSection.getIntegerList("active-slots"));
+        if (activeSlots.isEmpty()) {
+            for (int i = 0; i < 36; i++) activeSlots.add(i);
+        }
+
         this.configValues = new ConfigValues(
                 db.host(), db.port(), db.username(), db.password(), db.database(),
                 prefix,
@@ -94,7 +101,7 @@ public final class ConfigManager implements IConfigManager {
                 ppGroups, ppPriorities,
                 auctionSettings.maxStorageDays(),
                 auctionSettings.menuSize(),
-                auctionSettings.activeSlots(),
+                activeSlots,
                 auctionSettings.categories(),
                 auctionSettings.allCategories(),
                 sellingGlass, expiredGlass, vaultGlass, ppGlass,

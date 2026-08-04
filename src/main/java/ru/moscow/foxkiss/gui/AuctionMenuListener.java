@@ -1,5 +1,6 @@
 package ru.moscow.foxkiss.gui;
 
+import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -118,7 +119,9 @@ public final class AuctionMenuListener implements Listener {
             long now = System.currentTimeMillis();
             long last = quantityMessageCooldowns.getOrDefault(nick, 0L);
             if (now - last >= 5000L) {
-                player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().quantityExceeded().replace("{max}", String.valueOf(holder.maxAmount())), configManager));
+                player.sendMessage(PlaceholderUtils.applypapi(player,
+                        configManager.getConfigValues().messages().quantityExceeded().replace("{max}", String.valueOf(holder.maxAmount())),
+                        configManager));
                 quantityMessageCooldowns.put(nick, now);
             }
             amount = holder.maxAmount();
@@ -143,6 +146,18 @@ public final class AuctionMenuListener implements Listener {
     }
 
     private void handleNavigationAction(Player player, AuctionMenuHolder holder, ActionType action, boolean rightClick) {
+        String methodName = switch (action) {
+            case MAIN -> "openMain";
+            case SELLING -> "openSelling";
+            case EXPIRED -> "openExpired";
+            case PREVIOUS -> "openInventory(PREVIOUS)";
+            case NEXT -> "openInventory(NEXT)";
+            case REFRESH -> "refreshInventory";
+            case SORT -> "openMain(SORT)";
+            case CATEGORIES -> "openMain(CATEGORIES)";
+            default -> "unknown";
+        };
+
         int currentPage = holder.page();
         int totalPages = holder.totalPages();
 

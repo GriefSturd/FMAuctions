@@ -103,7 +103,7 @@ public final class AuctionMenu {
 
         scheduler.runAsyncThenSync(
                 () -> {
-                    AuctionRepository.MenuData data = repository.loadMenuData(currency, playerName, maxStorageDays, page, pageSize, fSort, fCategory, fSeller, fSearch);
+                    AuctionRepository.MenuData data = repository.loadMenuData(currency, playerName, maxStorageDays, page, pageSize, fSort, fCategory, fSeller, fSearch, viewType);
                     return new LoadResult(data.items(), data.totalCount(), data.sellingCount(), data.expiredCount());
                 },
                 result -> {
@@ -140,7 +140,7 @@ public final class AuctionMenu {
 
         scheduler.runAsyncThenSync(
                 () -> {
-                    AuctionRepository.MenuData data = repository.loadMenuData(currency, playerName, maxStorageDays, page, pageSize, fSort, fCategory, fSeller, fSearch);
+                    AuctionRepository.MenuData data = repository.loadMenuData(currency, playerName, maxStorageDays, page, pageSize, fSort, fCategory, fSeller, fSearch, viewType);
                     return new LoadResult(data.items(), data.totalCount(), data.sellingCount(), data.expiredCount());
                 },
                 result -> {

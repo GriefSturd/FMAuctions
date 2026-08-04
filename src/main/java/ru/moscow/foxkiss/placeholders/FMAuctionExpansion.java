@@ -15,7 +15,6 @@ import ru.moscow.foxkiss.economy.VaultPermissionApi;
 import ru.moscow.foxkiss.utils.PriceFormatter;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 public final class FMAuctionExpansion extends PlaceholderExpansion {
 

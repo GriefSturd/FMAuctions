@@ -11,7 +11,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-public abstract sealed class AuctionMenuHolder implements InventoryHolder permits MainMenuHolder, QuantityMenuHolder, ConfirmMenuHolder {
+public sealed abstract class AuctionMenuHolder implements InventoryHolder
+        permits MainMenuHolder, QuantityMenuHolder, ConfirmMenuHolder {
 
     protected final AuctionViewType viewType;
     protected final AuctionCurrency currency;
@@ -38,71 +39,26 @@ public abstract sealed class AuctionMenuHolder implements InventoryHolder permit
         this.category = category;
     }
 
-    public long incrementAndGetRequestVersion() {
-        return ++requestVersion;
-    }
-    public long getRequestVersion() {
-        return requestVersion;
-    }
-
-    public int totalPages() {
-        return totalPages;
-    }
-
-    public void setTotalPages(int totalPages) {
-        this.totalPages = totalPages;
-    }
+    public long incrementAndGetRequestVersion() { return ++requestVersion; }
+    public long getRequestVersion() { return requestVersion; }
+    public int totalPages() { return totalPages; }
+    public void setTotalPages(int totalPages) { this.totalPages = totalPages; }
 
     @Override
-    public @NotNull Inventory getInventory() {
-        return inventory;
-    }
+    public @NotNull Inventory getInventory() { return inventory; }
+    public void setInventory(Inventory inventory) { this.inventory = inventory; }
 
-    public void setInventory(Inventory inventory) {
-        this.inventory = inventory;
-    }
-
-    public AuctionViewType viewType() {
-        return viewType;
-
-    }
-
-    public AuctionCurrency currency() {
-        return currency;
-
-    }
-
-    public AuctionSort sort() {
-        return sort;
-    }
-
-    public String sellerFilter() {
-        return sellerFilter;
-    }
-
-    public String searchFilter() {
-        return searchFilter;
-    }
-
-    public String category() {
-        return category;
-    }
-
-    public int page() {
-        return page;
-    }
+    public AuctionViewType viewType() { return viewType; }
+    public AuctionCurrency currency() { return currency; }
+    public AuctionSort sort() { return sort; }
+    public String sellerFilter() { return sellerFilter; }
+    public String searchFilter() { return searchFilter; }
+    public String category() { return category; }
+    public int page() { return page; }
 
     public void addLot(int slot, long id, int amount) {
         lotsBySlot.put(slot, id);
         lotsAmountBySlot.put(slot, amount);
-    }
-
-    public void refreshLotsFrom(AuctionMenuHolder source) {
-        lotsBySlot.clear();
-        lotsBySlot.putAll(source.lotsBySlot);
-        lotsAmountBySlot.clear();
-        lotsAmountBySlot.putAll(source.lotsAmountBySlot);
-        this.totalPages = source.totalPages;
     }
 
     public void clearLots() {
@@ -110,10 +66,6 @@ public abstract sealed class AuctionMenuHolder implements InventoryHolder permit
         lotsAmountBySlot.clear();
     }
 
-    public Long getLot(int slot) {
-        return lotsBySlot.get(slot);
-    }
-    public Integer getLotAmount(int slot) {
-        return lotsAmountBySlot.get(slot);
-    }
+    public Long getLot(int slot) { return lotsBySlot.get(slot); }
+    public Integer getLotAmount(int slot) { return lotsAmountBySlot.get(slot); }
 }

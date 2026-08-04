@@ -9,6 +9,7 @@ import ru.moscow.foxkiss.gui.enums.ActionType;
 import java.util.List;
 
 public final class GuiLoader {
+
     private final FileConfiguration rootConfig;
 
     public GuiLoader(FileConfiguration rootConfig) {
@@ -22,12 +23,15 @@ public final class GuiLoader {
                 loadItemLore(),
                 loadQuantityMenu(auction),
                 loadNavigation(auction),
-                loadCategoryMenu(auction)
+                loadCategoryMenu(auction),
+                loadButton(auction.getConfigurationSection("exit-action"))
         );
     }
 
+
     public ConfigValues.ConfirmMenuConfig loadConfirmMenu(ConfigurationSection auction) {
         ConfigurationSection sec = auction.getConfigurationSection("confirm-menu");
+
         return new ConfigValues.ConfirmMenuConfig(
                 sec.getBoolean("enable-confirm-menu", true),
                 sec.getInt("item-slot"),
@@ -38,8 +42,10 @@ public final class GuiLoader {
         );
     }
 
+
     private ConfigValues.TitlesConfig loadTitles(ConfigurationSection auction) {
         ConfigurationSection titles = auction.getConfigurationSection("titles");
+
         return new ConfigValues.TitlesConfig(
                 titles.getString("main"),
                 titles.getString("selling"),
@@ -49,8 +55,10 @@ public final class GuiLoader {
         );
     }
 
+
     private ConfigValues.SortMenuConfig loadSortMenu(ConfigurationSection auction) {
         ConfigurationSection s = auction.getConfigurationSection("sort-menu");
+
         return new ConfigValues.SortMenuConfig(
                 Material.matchMaterial(s.getString("material")),
                 s.getString("name"),
@@ -60,8 +68,10 @@ public final class GuiLoader {
         );
     }
 
+
     private ConfigValues.ItemLoreConfig loadItemLore() {
         ConfigurationSection symbol = rootConfig.getConfigurationSection("symbol_value");
+
         return new ConfigValues.ItemLoreConfig(
                 symbol.getConfigurationSection("item-lore").getStringList("lore"),
                 symbol.getConfigurationSection("item-lore_one").getStringList("lore"),
@@ -69,8 +79,10 @@ public final class GuiLoader {
         );
     }
 
+
     private ConfigValues.QuantityMenuConfig loadQuantityMenu(ConfigurationSection auction) {
         ConfigurationSection q = auction.getConfigurationSection("quantity-menu");
+
         return new ConfigValues.QuantityMenuConfig(
                 q.getInt("slot-amount"),
                 q.getInt("size-menu"),
@@ -83,8 +95,10 @@ public final class GuiLoader {
         );
     }
 
+
     private ConfigValues.NavigationConfig loadNavigation(ConfigurationSection auction) {
         ConfigurationSection nav = auction.getConfigurationSection("navigation");
+
         return new ConfigValues.NavigationConfig(
                 loadNavButton(nav.getConfigurationSection("previous")),
                 loadNavButton(nav.getConfigurationSection("refresh")),
@@ -96,10 +110,12 @@ public final class GuiLoader {
         );
     }
 
+
     private ConfigValues.CategoryMenuConfig loadCategoryMenu(ConfigurationSection auction) {
         ConfigurationSection c = auction.getConfigurationSection("category-menu");
+
         return new ConfigValues.CategoryMenuConfig(
-                Material.matchMaterial(c.getString("material", "HOPPER")),
+                Material.matchMaterial(c.getString("material")),
                 c.getString("name"),
                 c.getString("selected-prefix"),
                 c.getString("unselected-prefix"),
@@ -107,8 +123,10 @@ public final class GuiLoader {
         );
     }
 
+
     private ConfigValues.ConfirmButtonConfig loadConfirmButton(ConfigurationSection section) {
         MaterialParser.ParsedMaterial parsed = MaterialParser.parse(section, true);
+
         return new ConfigValues.ConfirmButtonConfig(
                 parsed.material(),
                 section.getString("name", ""),
@@ -120,13 +138,12 @@ public final class GuiLoader {
         );
     }
 
+
     private ConfigValues.ButtonConfig loadButton(ConfigurationSection section) {
         MaterialParser.ParsedMaterial parsed = MaterialParser.parse(section, false);
-        String name = section.getString("name", "");
-        String title = section.getString("title", name);
         return new ConfigValues.ButtonConfig(
                 parsed.material(),
-                title.isEmpty() ? name : title,
+                section.getString("name", ""),
                 List.copyOf(section.getStringList("lore")),
                 parsed.skullTexture(),
                 loadAction(section),
@@ -135,8 +152,10 @@ public final class GuiLoader {
         );
     }
 
+
     private ConfigValues.NavigationButton loadNavButton(ConfigurationSection section) {
         MaterialParser.ParsedMaterial parsed = MaterialParser.parse(section, false);
+
         return new ConfigValues.NavigationButton(
                 section.getInt("slot"),
                 parsed.material(),
@@ -148,16 +167,61 @@ public final class GuiLoader {
         );
     }
 
+
     private ActionType loadAction(ConfigurationSection section) {
-        List<String> actions = section.getStringList("actions");
-        String first = actions.get(0).trim();
-        if (first.startsWith("[") && first.endsWith("]")) {
-            first = first.substring(1, first.length() - 1);
+
+        List<String> actions =
+                section.getStringList("actions");
+
+
+        if (actions.isEmpty()) {
+
+            throw new IllegalArgumentException(
+                    "Missing actions at "
+                            + section.getCurrentPath()
+            );
         }
-        return ActionType.get(first);
+
+
+        String first =
+                actions.getFirst()
+                        .trim();
+
+
+        if (first.startsWith("[")
+                && first.endsWith("]")) {
+
+            first =
+                    first.substring(
+                            1,
+                            first.length() - 1
+                    );
+        }
+
+
+        ActionType action =
+                ActionType.get(first);
+
+
+        if (action == null) {
+
+            throw new IllegalArgumentException(
+                    "Unknown action "
+                            + first
+                            + " at "
+                            + section.getCurrentPath()
+            );
+        }
+
+
+        return action;
     }
 
+
     private Integer loadModelData(ConfigurationSection section) {
-        return section.isSet("custom-model-data") ? section.getInt("custom-model-data") : null;
+
+        return section.isSet("custom-model-data")
+                ? section.getInt("custom-model-data")
+                : null;
     }
 }

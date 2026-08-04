@@ -3,6 +3,7 @@ package ru.moscow.foxkiss.auction;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.database.H2LibraryLoader;
+import ru.moscow.foxkiss.gui.AuctionViewType;
 import ru.moscow.foxkiss.utils.TextUtils;
 
 import javax.sql.DataSource;
@@ -12,8 +13,8 @@ import java.util.*;
 import java.util.logging.Level;
 
 public final class H2AuctionRepository implements AuctionRepository {
-    private static final int ACTIVE = 0;
-    private static final int PROCESSING = 1;
+    private static final int active = 0;
+    private static final int processing = 1;
 
     private final JavaPlugin plugin;
     private final String jdbcUrl;
@@ -149,7 +150,7 @@ public final class H2AuctionRepository implements AuctionRepository {
             ps.setString(3, serialize(itemStack));
             ps.setDouble(4, price);
             ps.setLong(5, System.currentTimeMillis());
-            ps.setInt(6, ACTIVE);
+            ps.setInt(6, active);
             ps.setString(7, itemStack.getType().name());
             ps.setInt(8, amount);
             ps.setDouble(9, pricePerItem);
@@ -167,7 +168,8 @@ public final class H2AuctionRepository implements AuctionRepository {
     @Override
     public List<AuctionItem> findPage(AuctionCurrency currency, int page, int pageSize, AuctionSort sort, String category, String sellerFilter, String searchFilter) {
         try (Connection conn = open()) {
-            return findPageWithConnection(conn, currency, page, pageSize, sort, category, sellerFilter, searchFilter);
+            return findPageWithConnection(conn, currency, page, pageSize, sort, category,
+                    sellerFilter, searchFilter, AuctionViewType.MAIN, -1L, null);
         } catch (SQLException e) {
             plugin.getLogger().log(Level.WARNING, "Ошибка поиска страницы", e);
             return List.of();
@@ -175,55 +177,109 @@ public final class H2AuctionRepository implements AuctionRepository {
     }
 
     @Override
-    public MenuData loadMenuData(AuctionCurrency currency, String playerName, int maxDays, int page, int pageSize, AuctionSort sort, String category, String sellerFilter, String searchFilter) {
+    public MenuData loadMenuData(AuctionCurrency currency, String playerName, int maxDays, int page, int pageSize, AuctionSort sort, String category, String sellerFilter, String searchFilter, AuctionViewType viewType) {
         long cutoff = System.currentTimeMillis() - maxDays * 86_400_000L;
         try (Connection conn = open()) {
-            List<AuctionItem> items = findPageWithConnection(conn, currency, page, pageSize, sort, category, sellerFilter, searchFilter);
-            int totalCount = countActive(conn, currency, category, sellerFilter, searchFilter);
+            List<AuctionItem> items = findPageWithConnection(conn, currency, page, pageSize, sort, category,
+                    sellerFilter, searchFilter, viewType, cutoff, playerName);
+            int totalCount = countTotal(conn, currency, viewType, category, sellerFilter, searchFilter, playerName, cutoff);
 
             int sellingCount = 0, expiredCount = 0;
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "SELECT COUNT(CASE WHEN status=? THEN 1 END) as selling, " +
-                            "COUNT(CASE WHEN status=? AND created_at<? THEN 1 END) as expired " +
-                            "FROM auction_items WHERE currency=? AND seller_name=?")) {
-                ps.setInt(1, ACTIVE);
-                ps.setInt(2, ACTIVE);
-                ps.setLong(3, cutoff);
-                ps.setString(4, currency.name());
-                ps.setString(5, playerName);
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next()) {
-                        sellingCount = rs.getInt("selling");
-                        expiredCount = rs.getInt("expired");
+            if (viewType == AuctionViewType.MAIN) {
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "SELECT COUNT(CASE WHEN status=? THEN 1 END) as selling, " +
+                                "COUNT(CASE WHEN status=? AND created_at<? THEN 1 END) as expired " +
+                                "FROM auction_items WHERE currency=? AND seller_name=?")) {
+                    ps.setInt(1, active);
+                    ps.setInt(2, active);
+                    ps.setLong(3, cutoff);
+                    ps.setString(4, currency.name());
+                    ps.setString(5, playerName);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (rs.next()) {
+                            sellingCount = rs.getInt("selling");
+                            expiredCount = rs.getInt("expired");
+                        }
                     }
                 }
             }
             return new MenuData(items, totalCount, sellingCount, expiredCount);
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Ошибка загрузки данных меню", e);
+            plugin.getLogger().log(Level.WARNING, "Ошибка загрузки меню", e);
             return new MenuData(List.of(), 0, 0, 0);
         }
     }
 
-    private List<AuctionItem> findPageWithConnection(Connection conn, AuctionCurrency currency, int page, int pageSize, AuctionSort sort, String category, String sellerFilter, String searchFilter) throws SQLException {
+    private int countTotal(Connection conn, AuctionCurrency currency, AuctionViewType viewType,
+                           String category, String sellerFilter, String searchFilter,
+                           String playerName, long cutoff) throws SQLException {
         List<Object> params = new ArrayList<>();
         params.add(currency.name());
-        params.add(ACTIVE);
+        params.add(active);
+        StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM auction_items WHERE currency=? AND status=?");
 
+        if (viewType == AuctionViewType.MAIN) {
+            if (TextUtils.isNotBlank(category) && !category.equalsIgnoreCase("all")) {
+                sql.append(" AND material=?");
+                params.add(category.toUpperCase(Locale.ROOT));
+            }
+            if (TextUtils.isNotBlank(sellerFilter)) {
+                sql.append(" AND seller_name LIKE ?");
+                params.add("%" + sellerFilter + "%");
+            }
+            if (TextUtils.isNotBlank(searchFilter)) {
+                sql.append(" AND (material LIKE ? OR seller_name LIKE ?)");
+                params.add("%" + searchFilter + "%");
+                params.add("%" + searchFilter + "%");
+            }
+        } else if (viewType == AuctionViewType.SELLING) {
+            sql.append(" AND seller_name = ?");
+            params.add(playerName);
+        } else if (viewType == AuctionViewType.EXPIRED) {
+            sql.append(" AND seller_name = ?");
+            params.add(playerName);
+            sql.append(" AND created_at < ?");
+            params.add(cutoff);
+        }
+
+        try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+            for (int i = 0; i < params.size(); i++) {
+                ps.setObject(i + 1, params.get(i));
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        }
+    }
+
+    private List<AuctionItem> findPageWithConnection(Connection conn, AuctionCurrency currency, int page, int pageSize, AuctionSort sort, String category, String sellerFilter, String searchFilter, AuctionViewType viewType, long cutoff, String playerName) throws SQLException {
+        List<Object> params = new ArrayList<>();
+        params.add(currency.name());
+        params.add(active);
         StringBuilder sql = new StringBuilder("SELECT * FROM auction_items WHERE currency=? AND status=?");
 
-        if (TextUtils.isNotBlank(category) && !category.equalsIgnoreCase("all")) {
-            sql.append(" AND material=?");
-            params.add(category.toUpperCase(Locale.ROOT));
-        }
-        if (TextUtils.isNotBlank(sellerFilter)) {
-            sql.append(" AND seller_name LIKE ?");
-            params.add("%" + sellerFilter + "%");
-        }
-        if (TextUtils.isNotBlank(searchFilter)) {
-            sql.append(" AND (material LIKE ? OR seller_name LIKE ?)");
-            params.add("%" + searchFilter + "%");
-            params.add("%" + searchFilter + "%");
+        if (viewType == AuctionViewType.MAIN) {
+            if (TextUtils.isNotBlank(category) && !category.equalsIgnoreCase("all")) {
+                sql.append(" AND material=?");
+                params.add(category.toUpperCase(Locale.ROOT));
+            }
+            if (TextUtils.isNotBlank(sellerFilter)) {
+                sql.append(" AND seller_name LIKE ?");
+                params.add("%" + sellerFilter + "%");
+            }
+            if (TextUtils.isNotBlank(searchFilter)) {
+                sql.append(" AND (material LIKE ? OR seller_name LIKE ?)");
+                params.add("%" + searchFilter + "%");
+                params.add("%" + searchFilter + "%");
+            }
+        } else if (viewType == AuctionViewType.SELLING) {
+            sql.append(" AND seller_name = ?");
+            params.add(playerName);
+        } else if (viewType == AuctionViewType.EXPIRED) {
+            sql.append(" AND seller_name = ?");
+            params.add(playerName);
+            sql.append(" AND created_at < ?");
+            params.add(cutoff);
         }
 
         String orderBy = switch (sort) {
@@ -236,47 +292,25 @@ public final class H2AuctionRepository implements AuctionRepository {
         };
         sql.append(" ORDER BY ").append(orderBy);
         sql.append(" LIMIT ? OFFSET ?");
-        params.add(pageSize);
-        params.add(page * pageSize);
+        int safePage = Math.max(0, page);
+        int safePageSize = Math.max(1, pageSize);
+        params.add(safePageSize);
+        params.add(safePage * safePageSize);
 
         List<AuctionItem> items = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
-            for (int i = 0; i < params.size(); i++) ps.setObject(i + 1, params.get(i));
+            for (int i = 0; i < params.size(); i++) {
+                ps.setObject(i + 1, params.get(i));
+            }
             try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) items.add(readItem(rs));
+                while (rs.next()) {
+                    items.add(readItem(rs));
+                }
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         }
         return items;
-    }
-
-    private int countActive(Connection conn, AuctionCurrency currency, String category, String sellerFilter, String searchFilter) throws SQLException {
-        List<Object> params = new ArrayList<>();
-        params.add(currency.name());
-        params.add(ACTIVE);
-
-        StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM auction_items WHERE currency=? AND status=?");
-        if (TextUtils.isNotBlank(category) && !category.equalsIgnoreCase("all")) {
-            sql.append(" AND material=?");
-            params.add(category.toUpperCase(Locale.ROOT));
-        }
-        if (TextUtils.isNotBlank(sellerFilter)) {
-            sql.append(" AND seller_name LIKE ?");
-            params.add("%" + sellerFilter + "%");
-        }
-        if (TextUtils.isNotBlank(searchFilter)) {
-            sql.append(" AND (material LIKE ? OR seller_name LIKE ?)");
-            params.add("%" + searchFilter + "%");
-            params.add("%" + searchFilter + "%");
-        }
-
-        try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
-            for (int i = 0; i < params.size(); i++) ps.setObject(i + 1, params.get(i));
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? rs.getInt(1) : 0;
-            }
-        }
     }
 
     @Override
@@ -288,7 +322,7 @@ public final class H2AuctionRepository implements AuctionRepository {
                 return rs.next() ? Optional.of(readItem(rs)) : Optional.empty();
             }
         } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "Ошибка поиска лота", e);
+            plugin.getLogger().log(Level.WARNING, "Ошибка поиска лота по ID", e);
             return Optional.empty();
         }
     }
@@ -306,7 +340,8 @@ public final class H2AuctionRepository implements AuctionRepository {
     }
 
     @Override
-    public void recordSale(String sellerName, String buyerName, AuctionCurrency currency, String itemType, int amount, double price) {
+    public void recordSale(String sellerName, String buyerName, AuctionCurrency currency,
+                           String itemType, int amount, double price) {
         try (Connection conn = open();
              PreparedStatement ps = conn.prepareStatement("INSERT INTO sales_history(seller_name,buyer_name,currency,item_type,amount,price,sold_at) VALUES(?,?,?,?,?,?,?)")) {
             ps.setString(1, sellerName);
@@ -326,12 +361,12 @@ public final class H2AuctionRepository implements AuctionRepository {
     public boolean markAsSelling(long id) {
         try (Connection conn = open();
              PreparedStatement ps = conn.prepareStatement("UPDATE auction_items SET status=? WHERE id=? AND status=?")) {
-            ps.setInt(1, PROCESSING);
+            ps.setInt(1, processing);
             ps.setLong(2, id);
-            ps.setInt(3, ACTIVE);
+            ps.setInt(3, active);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Ошибка пометки лота", e);
+            plugin.getLogger().log(Level.WARNING, "Ошибка пометки лота как продающегося", e);
             return false;
         }
     }
@@ -340,12 +375,12 @@ public final class H2AuctionRepository implements AuctionRepository {
     public void restoreStatus(long id) {
         try (Connection conn = open();
              PreparedStatement ps = conn.prepareStatement("UPDATE auction_items SET status=? WHERE id=? AND status=?")) {
-            ps.setInt(1, ACTIVE);
+            ps.setInt(1, active);
             ps.setLong(2, id);
-            ps.setInt(3, PROCESSING);
+            ps.setInt(3, processing);
             ps.executeUpdate();
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Ошибка восстановления статуса", e);
+            plugin.getLogger().log(Level.WARNING, "Ошибка восстановления статуса лота", e);
         }
     }
 
@@ -370,14 +405,16 @@ public final class H2AuctionRepository implements AuctionRepository {
     @Override
     public PlayerStats getPlayerStats(String playerName, AuctionCurrency currency) {
         try (Connection conn = open();
-             PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) AS sold, COALESCE(SUM(price),0) AS earned FROM sales_history WHERE seller_name=? AND currency=?")) {
+             PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) AS sold, COALESCE(SUM(price),0) AS earned " + "FROM sales_history WHERE seller_name=? AND currency=?")) {
             ps.setString(1, playerName);
             ps.setString(2, currency.name());
             try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) return new PlayerStats(rs.getInt("sold"), rs.getDouble("earned"));
+                if (rs.next()) {
+                    return new PlayerStats(rs.getInt("sold"), rs.getDouble("earned"));
+                }
             }
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Ошибка статистики игрока", e);
+            plugin.getLogger().log(Level.WARNING, "Ошибка получения статистики игрока", e);
         }
         return new PlayerStats(0, 0);
     }
@@ -388,12 +425,14 @@ public final class H2AuctionRepository implements AuctionRepository {
         try (Connection conn = open();
              PreparedStatement ps = conn.prepareStatement("SELECT DISTINCT material FROM auction_items WHERE currency=? AND status=? AND material IS NOT NULL")) {
             ps.setString(1, currency.name());
-            ps.setInt(2, ACTIVE);
+            ps.setInt(2, active);
             try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) names.add(rs.getString("material"));
+                while (rs.next()) {
+                    names.add(rs.getString("material"));
+                }
             }
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Ошибка получения материалов", e);
+            plugin.getLogger().log(Level.WARNING, "Ошибка получения уникальных материалов", e);
         }
         return names;
     }
@@ -405,12 +444,12 @@ public final class H2AuctionRepository implements AuctionRepository {
             ps.setString(1, sellerName);
             ps.setString(2, currency.name());
             ps.setLong(3, since);
-            ps.setInt(4, ACTIVE);
+            ps.setInt(4, active);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? rs.getInt(1) : 0;
             }
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Ошибка подсчёта активных лотов", e);
+            plugin.getLogger().log(Level.WARNING, "Ошибка подсчёта активных лотов продавца", e);
             return 0;
         }
     }
@@ -421,14 +460,16 @@ public final class H2AuctionRepository implements AuctionRepository {
         try {
             dataSource.getClass().getMethod("dispose").invoke(dataSource);
         } catch (ReflectiveOperationException e) {
-            plugin.getLogger().log(Level.WARNING, "Ошибка закрытия пула", e);
+            plugin.getLogger().log(Level.WARNING, "Ошибка закрытия пула подключений", e);
         }
     }
 
     private AuctionItem readItem(ResultSet rs) throws Exception {
         ItemStack item = deserialize(rs.getString("item"));
         int amount = rs.getInt("amount");
-        if (amount > 0) item.setAmount(amount);
+        if (amount > 0) {
+            item.setAmount(amount);
+        }
         return new AuctionItem(
                 rs.getLong("id"),
                 rs.getString("seller_name"),
@@ -441,7 +482,9 @@ public final class H2AuctionRepository implements AuctionRepository {
     }
 
     private Connection open() throws SQLException {
-        if (dataSource == null) throw new SQLException("DataSource не инициализирован");
+        if (dataSource == null) {
+            throw new SQLException("DataSource не инициализирован");
+        }
         return dataSource.getConnection();
     }
 
