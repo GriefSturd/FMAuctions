@@ -27,8 +27,4 @@ public class AuctionItem {
         long diff = System.currentTimeMillis() - createdAt;
         return diff / 86_400_000L > maxDays;
     }
-
-    public ItemStack itemStackClone() {
-        return itemStack.clone();
-    }
 }

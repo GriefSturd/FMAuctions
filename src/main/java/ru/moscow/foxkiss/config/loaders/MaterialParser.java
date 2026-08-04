@@ -5,8 +5,6 @@ import org.bukkit.configuration.ConfigurationSection;
 
 public final class MaterialParser {
 
-    private static final String BASEHEAD_PREFIX = "basehead-";
-
     public record ParsedMaterial(Material material, String skullTexture) {}
 
     public static ParsedMaterial parse(ConfigurationSection section) {
@@ -18,8 +16,8 @@ public final class MaterialParser {
             raw = section.getString("item");
         }
 
-        if (raw.startsWith(BASEHEAD_PREFIX)) {
-            return new ParsedMaterial(Material.PLAYER_HEAD, raw.substring(BASEHEAD_PREFIX.length()));
+        if (raw.startsWith("basehead-")) {
+            return new ParsedMaterial(Material.PLAYER_HEAD, raw.substring("basehead-".length()));
         }
 
         Material material = Material.matchMaterial(raw);

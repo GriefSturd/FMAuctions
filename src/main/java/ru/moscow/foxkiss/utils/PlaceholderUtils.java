@@ -22,11 +22,4 @@ public final class PlaceholderUtils {
         String processed = apply(sender, message, configManager);
         return TextUtils.component(processed);
     }
-
-    public static Component applypapi(CommandSender sender, String message) {
-        if (!(sender instanceof Player player) || !Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-            return TextUtils.component(message);
-        }
-        return TextUtils.component(PlaceholderAPI.setPlaceholders(player, message));
-    }
 }

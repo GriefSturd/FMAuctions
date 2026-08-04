@@ -10,10 +10,10 @@ import java.util.List;
 
 public final class GuiLoader {
 
-    private final FileConfiguration rootConfig;
+    private final FileConfiguration config;
 
-    public GuiLoader(FileConfiguration rootConfig) {
-        this.rootConfig = rootConfig;
+    public GuiLoader(FileConfiguration config) {
+        this.config = config;
     }
 
     public ConfigValues.GuiConfig load(ConfigurationSection auction) {
@@ -70,7 +70,7 @@ public final class GuiLoader {
 
 
     private ConfigValues.ItemLoreConfig loadItemLore() {
-        ConfigurationSection symbol = rootConfig.getConfigurationSection("symbol_value");
+        ConfigurationSection symbol = config.getConfigurationSection("symbol_value");
 
         return new ConfigValues.ItemLoreConfig(
                 symbol.getConfigurationSection("item-lore").getStringList("lore"),
@@ -152,7 +152,6 @@ public final class GuiLoader {
         );
     }
 
-
     private ConfigValues.NavigationButton loadNavButton(ConfigurationSection section) {
         MaterialParser.ParsedMaterial parsed = MaterialParser.parse(section);
 
@@ -167,12 +166,10 @@ public final class GuiLoader {
         );
     }
 
-
     private ActionType loadAction(ConfigurationSection section) {
         List<String> actions = section.getStringList("actions");
 
         String first = actions.getFirst().trim();
-
 
         if (first.startsWith("[") && first.endsWith("]")) {
             first = first.substring(1, first.length() - 1);
@@ -185,7 +182,6 @@ public final class GuiLoader {
 
 
     private Integer loadModelData(ConfigurationSection section) {
-
         return section.isSet("custom-model-data")
                 ? section.getInt("custom-model-data")
                 : null;

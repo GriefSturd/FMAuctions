@@ -35,9 +35,7 @@ public abstract class AuctionMenuHolder implements InventoryHolder {
     private long requestVersion = 0;
     private Inventory inventory;
 
-    public AuctionMenuHolder(AuctionViewType viewType, AuctionCurrency currency, UUID viewer,
-                             int page, AuctionSort sort, String sellerFilter,
-                             String searchFilter, String category) {
+    public AuctionMenuHolder(AuctionViewType viewType, AuctionCurrency currency, UUID viewer, int page, AuctionSort sort, String sellerFilter, String searchFilter, String category) {
         this.viewType = viewType;
         this.currency = currency;
         this.viewer = viewer;
@@ -61,14 +59,6 @@ public abstract class AuctionMenuHolder implements InventoryHolder {
 
     public ActionType getAction(int slot) {
         return actionsBySlot.get(slot);
-    }
-
-    public void refreshLotsFrom(AuctionMenuHolder source) {
-        lotsBySlot.clear();
-        lotsBySlot.putAll(source.lotsBySlot);
-        lotsAmountBySlot.clear();
-        lotsAmountBySlot.putAll(source.lotsAmountBySlot);
-        this.totalPages = source.totalPages;
     }
 
     public void clearLots() {

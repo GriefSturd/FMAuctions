@@ -48,10 +48,6 @@ public final class ItemUtils {
         return item;
     }
 
-    public static ItemStack skull(String base64, String name, List<String> lore) {
-        return skull(base64, name, lore, null);
-    }
-
     public static ItemStack skull(String base64, String name, List<String> lore, Integer customModelData) {
         if (base64 == null || base64.isBlank()) {
             return named(Material.PLAYER_HEAD, name, lore, customModelData);

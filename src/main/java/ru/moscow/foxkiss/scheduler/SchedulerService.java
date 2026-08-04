@@ -63,31 +63,6 @@ public final class SchedulerService {
         });
     }
 
-    public <T> void runAsyncThenSync(Supplier<T> asyncTask, Consumer<T> syncCallback, Consumer<Throwable> errorCallback) {
-        dbExecutor.execute(() -> {
-            T result = null;
-            Throwable error = null;
-            try {
-                result = asyncTask.get();
-            } catch (Throwable t) {
-                error = t;
-            }
-            final T finalResult = result;
-            final Throwable finalError = error;
-            runSync(() -> {
-                if (finalError != null) {
-                    if (errorCallback != null) {
-                        errorCallback.accept(finalError);
-                    } else {
-                        plugin.getLogger().log(Level.SEVERE, "Ошибка в асинхронной части", finalError);
-                    }
-                } else {
-                    syncCallback.accept(finalResult);
-                }
-            });
-        });
-    }
-
     public void shutdown() {
         dbExecutor.shutdown();
     }

@@ -219,10 +219,6 @@ public final class AuctionMenu {
                                     ? values.sellingGlassPanes()
                                     : values.expiredGlassPanes();
                             builder.fillGlass(holder.getInventory(), panes);
-
-                            ConfigValues.NavigationConfig nav = values.guiConfig().navigation();
-                            holder.getInventory().setItem(nav.sort().slot(), null);
-                            holder.getInventory().setItem(nav.categories().slot(), null);
                         }
                     } finally {
                         requestInProgress.remove(uuid);

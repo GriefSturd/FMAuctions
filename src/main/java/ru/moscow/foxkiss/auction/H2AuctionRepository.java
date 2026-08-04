@@ -333,8 +333,7 @@ public final class H2AuctionRepository implements AuctionRepository {
     }
 
     @Override
-    public void recordSale(String sellerName, String buyerName, AuctionCurrency currency,
-                           String itemType, int amount, double price) {
+    public void recordSale(String sellerName, String buyerName, AuctionCurrency currency, String itemType, int amount, double price) {
         try (Connection conn = open();
              PreparedStatement ps = conn.prepareStatement("INSERT INTO sales_history(seller_name,buyer_name,currency,item_type,amount,price,sold_at) VALUES(?,?,?,?,?,?,?)")) {
             ps.setString(1, sellerName);

@@ -45,13 +45,6 @@ public final class MenuBuilder {
         fillAuctionItems(inv, filtered, values.auctionSlots(), holder);
         addNavigationButtons(inv, viewType, sort, category, sellingCount, expiredCount, pageDisplay, holder);
         addExitButton(inv, viewType, pageDisplay, values, holder);
-
-        if (viewType != AuctionViewType.MAIN) {
-            ConfigValues.NavigationConfig nav = configManager.getConfigValues().guiConfig().navigation();
-            inv.setItem(nav.sort().slot(), null);
-            inv.setItem(nav.categories().slot(), null);
-        }
-
         return inv;
     }
 

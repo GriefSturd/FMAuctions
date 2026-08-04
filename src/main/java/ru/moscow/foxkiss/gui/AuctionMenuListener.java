@@ -29,7 +29,6 @@ public final class AuctionMenuListener implements Listener {
     private final IConfigManager configManager;
     private final AuctionMenu auctionMenu;
     private final AuctionService auctionService;
-    private final NamespacedKey actionKey;
     private final int quantitySlot;
 
     private List<String> cats;
@@ -42,7 +41,6 @@ public final class AuctionMenuListener implements Listener {
         this.configManager = configManager;
         this.auctionMenu = auctionMenu;
         this.auctionService = auctionService;
-        this.actionKey = new NamespacedKey(plugin, "action");
         this.quantitySlot = configManager.getConfigValues().guiConfig().quantityMenu().slotAmount();
         reloadCategories();
     }

@@ -37,6 +37,7 @@ public final class FMAuction extends JavaPlugin {
     private AuctionCommand donateAuctionCommand;
     private AuctionMenuListener auctionMenuListener;
     private SchedulerService schedulerService;
+    private ItemDisplayFactory itemDisplayFactory;
 
     @Override
     public void onEnable() {
@@ -62,6 +63,9 @@ public final class FMAuction extends JavaPlugin {
             placeholderExpansion.disable();
             placeholderExpansion.unregister();
         }
+        if (schedulerService != null) {
+            schedulerService.shutdown();
+        }
     }
 
     private void setupMetrics() {
@@ -72,8 +76,6 @@ public final class FMAuction extends JavaPlugin {
         int pluginId = 33068;
         new Metrics(this, pluginId);
     }
-
-    private ItemDisplayFactory itemDisplayFactory;
 
     public void initializeManager() {
         configManager = new ConfigManager(this);
@@ -90,7 +92,7 @@ public final class FMAuction extends JavaPlugin {
         schedulerService = new SchedulerService(this);
         itemDisplayFactory = new ItemDisplayFactory(this, configManager);
 
-        auctionService = AuctionService.create(this, configManager, auctionRepository, economyProvider, limitService, itemDisplayFactory);
+        auctionService = AuctionService.create(this, configManager, auctionRepository, economyProvider, limitService, itemDisplayFactory, schedulerService);
 
         playerPreferences = new PlayerPreferences();
         auctionMenu = new AuctionMenu(this, configManager, auctionRepository, playerPreferences, itemDisplayFactory);
