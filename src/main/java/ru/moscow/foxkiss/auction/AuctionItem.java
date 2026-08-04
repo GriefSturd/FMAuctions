@@ -1,13 +1,12 @@
 package ru.moscow.foxkiss.auction;
 
-import org.bukkit.Material;
+import lombok.Data;
+import lombok.AllArgsConstructor;
 import org.bukkit.inventory.ItemStack;
-import ru.moscow.foxkiss.gui.AuctionViewType;
 
-import java.util.concurrent.TimeUnit;
-
-public final class AuctionItem {
-
+@Data
+@AllArgsConstructor
+public class AuctionItem {
     private final long id;
     private final String sellerName;
     private final AuctionCurrency currency;
@@ -16,60 +15,20 @@ public final class AuctionItem {
     private final long createdAt;
     private final AuctionStatus status;
 
-    public AuctionItem(long id, String sellerName, AuctionCurrency currency, ItemStack itemStack, double price, long createdAt, AuctionStatus status) {
-        this.id = id;
-        this.sellerName = sellerName;
-        this.currency = currency;
-        this.itemStack = itemStack;
-        this.price = price;
-        this.createdAt = createdAt;
-        this.status = status;
-    }
-
-    public long id() {
-        return id;
-    }
-
-    public String sellerName() {
-        return sellerName;
-    }
-
-    public AuctionCurrency currency() {
-        return currency;
-    }
-
-    public ItemStack itemStackClone() {
-        return itemStack.clone();
-    }
-
-    public Material material() {
-        return itemStack.getType();
-    }
-
     public int amount() {
         return itemStack.getAmount();
     }
 
-    public double price() {
-        return price;
-    }
-
-    public long createdAt() {
-        return createdAt;
-    }
-
-    public AuctionStatus status() {
-        return status;
-    }
-
     public double pricePerItem() {
-        int amount = itemStack.getAmount();
-        if (amount <= 0) return price;
-        return price / amount;
+        return price / Math.max(1, amount());
     }
 
     public boolean expired(int maxDays) {
-        long expireTime = createdAt + TimeUnit.DAYS.toMillis(maxDays);
-        return System.currentTimeMillis() >= expireTime;
+        long diff = System.currentTimeMillis() - createdAt;
+        return diff / 86_400_000L > maxDays;
+    }
+
+    public ItemStack itemStackClone() {
+        return itemStack.clone();
     }
 }

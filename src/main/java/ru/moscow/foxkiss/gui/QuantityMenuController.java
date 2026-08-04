@@ -27,7 +27,7 @@ public final class QuantityMenuController {
         ConfigValues values = configManager.getConfigValues();
         ConfigValues.QuantityMenuConfig qm = values.guiConfig().quantityMenu();
 
-        QuantityMenuHolder holder = new QuantityMenuHolder(currency, player.getUniqueId(), item.id(), selectedAmount, item.amount(), item);
+        QuantityMenuHolder holder = new QuantityMenuHolder(currency, player.getUniqueId(), item.getId(), selectedAmount, item.amount(), item);
         Inventory inv = Bukkit.createInventory(holder, qm.sizeMenu(), TextUtils.component(values.guiConfig().titles().quantity()));
         holder.setInventory(inv);
 
@@ -42,7 +42,7 @@ public final class QuantityMenuController {
     }
 
     public void updateQuantityDisplay(Inventory inv, QuantityMenuHolder holder, AuctionItem item) {
-        int amount = holder.selectedAmount();
+        int amount = holder.getSelectedAmount();
         ItemStack display = itemFactory.createBuyItem(item, amount);
         inv.setItem(configManager.getConfigValues().guiConfig().quantityMenu().slotAmount(), display);
     }

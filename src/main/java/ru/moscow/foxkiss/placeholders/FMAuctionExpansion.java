@@ -1,5 +1,6 @@
 package ru.moscow.foxkiss.placeholders;
 
+import lombok.RequiredArgsConstructor;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
@@ -12,27 +13,29 @@ import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionRepository;
 import ru.moscow.foxkiss.economy.VaultChatApi;
 import ru.moscow.foxkiss.economy.VaultPermissionApi;
+import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.PriceFormatter;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class FMAuctionExpansion extends PlaceholderExpansion {
-
     private final JavaPlugin plugin;
     private final AuctionRepository repository;
-    private final VaultChatApi vaultChat;
-    private final VaultPermissionApi vaultPerm;
+    private final SchedulerService scheduler;
 
-    private volatile List<TopPlayerInfo> cachedTop = new ArrayList<>();
-    private final Map<UUID, CachedPlayerStats> statsCache = new HashMap<>();
-    private final Map<String, String> prefixCache = new HashMap<>();
+    private final VaultChatApi vaultChat = new VaultChatApi();
+    private final VaultPermissionApi vaultPerm = new VaultPermissionApi();
 
-    public FMAuctionExpansion(JavaPlugin plugin, AuctionRepository repository) {
+    private List<TopPlayerInfo> cachedTop = new ArrayList<>();
+    private final Map<UUID, CachedPlayerStats> statsCache = new ConcurrentHashMap<>();
+    private final Set<UUID> loadingStats = ConcurrentHashMap.newKeySet();
+    private final Map<String, String> prefixCache = new ConcurrentHashMap<>();
+
+    public FMAuctionExpansion(JavaPlugin plugin, AuctionRepository repository, SchedulerService scheduler) {
         this.plugin = plugin;
         this.repository = repository;
-        this.vaultChat = new VaultChatApi();
-        this.vaultPerm = new VaultPermissionApi();
-
+        this.scheduler = scheduler;
         new BukkitRunnable() {
             @Override
             public void run() {
@@ -67,7 +70,7 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
     @Override
     @Nullable
     public String onRequest(OfflinePlayer player, @NotNull String params) {
-        String[] parts = params.toLowerCase(Locale.ROOT).split("_");
+        String[] parts = params.toLowerCase().split("_");
 
         if (parts.length == 3 && "my".equals(parts[0]) && "top".equals(parts[1])) {
             if (player == null) return "0";
@@ -93,10 +96,21 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
             return field.equals("sold") ? String.valueOf(cached.sold) : formatMoney(cached.money);
         }
 
-        AuctionRepository.PlayerStats stats = repository.getPlayerStats(name, AuctionCurrency.VAULT);
-        statsCache.put(uuid, new CachedPlayerStats(stats.soldCount(), stats.totalEarned(), now));
+        if (!loadingStats.contains(uuid)) {
+            scheduler.runAsync(() -> loadStatsAsync(uuid, name));
+        }
 
-        return field.equals("sold") ? String.valueOf(stats.soldCount()) : formatMoney(stats.totalEarned());
+        return "0";
+    }
+
+    private void loadStatsAsync(UUID uuid, String name) {
+        if (!loadingStats.add(uuid)) return;
+        try {
+            AuctionRepository.PlayerStats stats = repository.getPlayerStats(name, AuctionCurrency.VAULT);
+            statsCache.put(uuid, new CachedPlayerStats(stats.soldCount(), stats.totalEarned(), System.currentTimeMillis()));
+        } finally {
+            loadingStats.remove(uuid);
+        }
     }
 
     private String getTop(String posStr, String field) {
@@ -126,10 +140,6 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
     }
 
     public void disable() {
-        clearCache();
-    }
-
-    public void clearCache() {
         statsCache.clear();
         prefixCache.clear();
         cachedTop = new ArrayList<>();
@@ -143,7 +153,11 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
 
             List<TopPlayerInfo> result = new ArrayList<>();
             for (AuctionRepository.TopSeller seller : list) {
-                String prefix = prefixCache.computeIfAbsent(seller.name(), this::getPrefixForPlayer);
+                String prefix = prefixCache.get(seller.name());
+                if (prefix == null) {
+                    prefix = getPrefixForPlayer(seller.name());
+                    prefixCache.put(seller.name(), prefix);
+                }
                 result.add(new TopPlayerInfo(seller.name(), seller.soldCount(), seller.totalEarned(), prefix));
             }
             cachedTop = result;

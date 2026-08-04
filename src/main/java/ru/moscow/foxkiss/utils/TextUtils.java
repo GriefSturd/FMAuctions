@@ -13,11 +13,11 @@ public final class TextUtils {
     public static final char COLOR_CHAR = '§';
 
     public static boolean isNotBlank(String str) {
-        return !str.isEmpty();
+        return str != null && !str.isEmpty();
     }
 
     public static boolean isBlank(String str) {
-        return str.isEmpty();
+        return str == null || str.isEmpty();
     }
 
     public static String colorize(String message) {
@@ -40,6 +40,7 @@ public final class TextUtils {
     }
 
     public static String translateAlternateColorCodes(char altColorChar, String text) {
+        if (text == null) return "";
         char[] b = text.toCharArray();
         for (int i = 0; i < b.length - 1; i++) {
             if (b[i] == altColorChar && isValidColorCharacter(b[i + 1])) {
@@ -61,14 +62,8 @@ public final class TextUtils {
     public static Component component(String message) {
         if (message == null) return Component.empty();
         String colored = colorize(message);
-
         return LegacyComponentSerializer.legacySection()
                 .deserialize(colored)
                 .decoration(TextDecoration.ITALIC, false);
-    }
-
-    public static String plain(Component component) {
-        if (component == null) return "";
-        return PlainTextComponentSerializer.plainText().serialize(component);
     }
 }

@@ -1,35 +1,94 @@
 package ru.moscow.foxkiss.scheduler;
 
-import org.bukkit.Bukkit;
+import lombok.RequiredArgsConstructor;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitRunnable;
 
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.logging.Level;
 
 public final class SchedulerService {
-
     private final JavaPlugin plugin;
+    private final ExecutorService dbExecutor = Executors.newFixedThreadPool(2);
 
     public SchedulerService(JavaPlugin plugin) {
         this.plugin = plugin;
     }
 
     public void runAsync(Runnable task) {
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, task);
+        dbExecutor.execute(() -> {
+            try {
+                task.run();
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.SEVERE, "Ошибка в асинхронной задаче", e);
+            }
+        });
     }
 
     public void runSync(Runnable task) {
-        if (Bukkit.isPrimaryThread()) {
-            task.run();
-        } else {
-            Bukkit.getScheduler().runTask(plugin, task);
-        }
+        BukkitRunnable runnable = new BukkitRunnable() {
+            @Override
+            public void run() {
+                try {
+                    task.run();
+                } catch (Exception e) {
+                    plugin.getLogger().log(Level.SEVERE, "Ошибка в синхронной задаче", e);
+                }
+            }
+        };
+        runnable.runTask(plugin);
     }
 
     public <T> void runAsyncThenSync(Supplier<T> asyncTask, Consumer<T> syncCallback) {
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            T result = asyncTask.get();
-            Bukkit.getScheduler().runTask(plugin, () -> syncCallback.accept(result));
+        dbExecutor.execute(() -> {
+            T result = null;
+            Throwable error = null;
+            try {
+                result = asyncTask.get();
+            } catch (Throwable t) {
+                error = t;
+            }
+            final T finalResult = result;
+            final Throwable finalError = error;
+            runSync(() -> {
+                if (finalError != null) {
+                    plugin.getLogger().log(Level.SEVERE, "Ошибка в асинхронной части", finalError);
+                } else {
+                    syncCallback.accept(finalResult);
+                }
+            });
         });
+    }
+
+    public <T> void runAsyncThenSync(Supplier<T> asyncTask, Consumer<T> syncCallback, Consumer<Throwable> errorCallback) {
+        dbExecutor.execute(() -> {
+            T result = null;
+            Throwable error = null;
+            try {
+                result = asyncTask.get();
+            } catch (Throwable t) {
+                error = t;
+            }
+            final T finalResult = result;
+            final Throwable finalError = error;
+            runSync(() -> {
+                if (finalError != null) {
+                    if (errorCallback != null) {
+                        errorCallback.accept(finalError);
+                    } else {
+                        plugin.getLogger().log(Level.SEVERE, "Ошибка в асинхронной части", finalError);
+                    }
+                } else {
+                    syncCallback.accept(finalResult);
+                }
+            });
+        });
+    }
+
+    public void shutdown() {
+        dbExecutor.shutdown();
     }
 }

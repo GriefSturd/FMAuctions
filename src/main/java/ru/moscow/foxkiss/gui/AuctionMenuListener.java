@@ -1,6 +1,6 @@
 package ru.moscow.foxkiss.gui;
 
-import org.bukkit.Bukkit;
+import lombok.RequiredArgsConstructor;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -9,9 +9,8 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
+import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionItem;
 import ru.moscow.foxkiss.auction.AuctionService;
 import ru.moscow.foxkiss.auction.AuctionSort;
@@ -25,13 +24,15 @@ import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
 import java.util.*;
 
+@RequiredArgsConstructor
 public final class AuctionMenuListener implements Listener {
     private final IConfigManager configManager;
     private final AuctionMenu auctionMenu;
     private final AuctionService auctionService;
     private final NamespacedKey actionKey;
-    private List<String> cats;
+    private final int quantitySlot;
 
+    private List<String> cats;
     private final Map<String, Long> quantityMessageCooldowns = new HashMap<>();
     private final Map<UUID, Long> updateCooldowns = new HashMap<>();
     private final Map<UUID, Long> takeCooldowns = new HashMap<>();
@@ -42,6 +43,7 @@ public final class AuctionMenuListener implements Listener {
         this.auctionMenu = auctionMenu;
         this.auctionService = auctionService;
         this.actionKey = new NamespacedKey(plugin, "action");
+        this.quantitySlot = configManager.getConfigValues().guiConfig().quantityMenu().slotAmount();
         reloadCategories();
     }
 
@@ -54,16 +56,10 @@ public final class AuctionMenuListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onClick(InventoryClickEvent event) {
-        if (event.getInventory().getType() != InventoryType.CHEST) {
-            return;
-        }
+        if (event.getInventory().getType() != InventoryType.CHEST) return;
 
-        if (!(event.getInventory().getHolder() instanceof AuctionMenuHolder holder)) {
-            return;
-        }
-        if (!(event.getWhoClicked() instanceof Player player)) {
-            return;
-        }
+        if (!(event.getInventory().getHolder() instanceof AuctionMenuHolder holder)) return;
+        if (!(event.getWhoClicked() instanceof Player player)) return;
 
         event.setCancelled(true);
 
@@ -76,22 +72,15 @@ public final class AuctionMenuListener implements Listener {
             return;
         }
 
-        if (holder instanceof QuantityMenuHolder qh && slot == configManager.getConfigValues().guiConfig().quantityMenu().slotAmount()) {
-            auctionService.buy(player, qh.lotId(), qh.selectedAmount(), success -> {
+        if (holder instanceof QuantityMenuHolder qh && slot == quantitySlot) {
+            auctionService.buy(player, qh.getLotId(), qh.getSelectedAmount(), success -> {
                 if (!success || !player.isOnline()) return;
-                auctionMenu.openMain(player, qh.currency(), 0, null, null, null, null);
+                auctionMenu.openMain(player, qh.getCurrency(), 0, null, null, null, null);
             });
             return;
         }
 
-        ItemStack clicked = event.getCurrentItem();
-        if (clicked == null || !clicked.hasItemMeta()) return;
-
-        ItemMeta meta = clicked.getItemMeta();
-        if (meta == null) return;
-
-        String actionName = meta.getPersistentDataContainer().get(actionKey, PersistentDataType.STRING);
-        ActionType action = ActionType.get(actionName);
+        ActionType action = holder.getAction(slot);
 
         if (holder instanceof QuantityMenuHolder qh) {
             handleQuantityAction(player, qh, action);
@@ -103,7 +92,7 @@ public final class AuctionMenuListener implements Listener {
     }
 
     private void handleQuantityAction(Player player, QuantityMenuHolder holder, ActionType action) {
-        int amount = holder.selectedAmount();
+        int amount = holder.getSelectedAmount();
         switch (action) {
             case DECREASE_10 -> amount -= 10;
             case DECREASE_1 -> amount--;
@@ -114,20 +103,20 @@ public final class AuctionMenuListener implements Listener {
 
         if (amount < 1) amount = 1;
 
-        if (amount > holder.maxAmount()) {
+        if (amount > holder.getMaxAmount()) {
             String nick = player.getName();
             long now = System.currentTimeMillis();
             long last = quantityMessageCooldowns.getOrDefault(nick, 0L);
             if (now - last >= 5000L) {
                 player.sendMessage(PlaceholderUtils.applypapi(player,
-                        configManager.getConfigValues().messages().quantityExceeded().replace("{max}", String.valueOf(holder.maxAmount())),
+                        configManager.getConfigValues().messages().quantityExceeded().replace("{max}", String.valueOf(holder.getMaxAmount())),
                         configManager));
                 quantityMessageCooldowns.put(nick, now);
             }
-            amount = holder.maxAmount();
+            amount = holder.getMaxAmount();
         }
 
-        holder.selectedAmount(amount);
+        holder.setSelectedAmount(amount);
         AuctionItem auctionItem = holder.getAuctionItem();
         if (auctionItem != null) {
             auctionMenu.updateQuantityDisplay(holder.getInventory(), holder, auctionItem);
@@ -136,9 +125,9 @@ public final class AuctionMenuListener implements Listener {
 
     private void handleConfirmAction(Player player, ConfirmMenuHolder holder, ActionType action) {
         if (action == ActionType.CONFIRM) {
-            auctionService.buy(player, holder.confirmLotId(), holder.confirmAmount(), success -> {
+            auctionService.buy(player, holder.getConfirmLotId(), holder.getConfirmAmount(), success -> {
                 if (!success || !player.isOnline()) return;
-                auctionMenu.openMain(player, holder.currency(), 0, null, null, null, null);
+                auctionMenu.openMain(player, holder.getCurrency(), 0, null, null, null, null);
             });
         } else if (action == ActionType.CANCEL) {
             player.closeInventory();
@@ -146,60 +135,58 @@ public final class AuctionMenuListener implements Listener {
     }
 
     private void handleNavigationAction(Player player, AuctionMenuHolder holder, ActionType action, boolean rightClick) {
-        String methodName = switch (action) {
-            case MAIN -> "openMain";
-            case SELLING -> "openSelling";
-            case EXPIRED -> "openExpired";
-            case PREVIOUS -> "openInventory(PREVIOUS)";
-            case NEXT -> "openInventory(NEXT)";
-            case REFRESH -> "refreshInventory";
-            case SORT -> "openMain(SORT)";
-            case CATEGORIES -> "openMain(CATEGORIES)";
-            default -> "unknown";
-        };
-        int currentPage = holder.page();
-        int totalPages = holder.totalPages();
+        if (action == ActionType.REFRESH) {
+            if (!tryUseCooldown(player, updateCooldowns,
+                    configManager.getConfigValues().cooldowns().updateAuctionSeconds())) {
+                return;
+            }
+        }
+
+        int currentPage = holder.getPage();
+        int totalPages = holder.getTotalPages();
 
         switch (action) {
-            case MAIN -> auctionMenu.openMain(player, holder.currency(), 0, null, null, null, null);
-            case SELLING -> auctionMenu.openSelling(player, holder.currency(), 0);
-            case EXPIRED -> auctionMenu.openExpired(player, holder.currency(), 0);
+            case MAIN -> auctionMenu.openMain(player, holder.getCurrency(), 0, null, null, null, null);
+
+            case SELLING -> auctionMenu.openSelling(player, holder.getCurrency(), 0);
+
+            case EXPIRED -> auctionMenu.openExpired(player, holder.getCurrency(), 0);
+
             case PREVIOUS -> {
                 if (currentPage <= 0) return;
-                auctionMenu.openInventory(player, holder.viewType(), holder.currency(), currentPage - 1,
-                        holder.sort(), holder.sellerFilter(), holder.searchFilter(), holder.category());
+                holder.setPage(currentPage - 1);
+                auctionMenu.refreshInventory(player, holder);
             }
             case NEXT -> {
                 if (currentPage + 1 >= totalPages) return;
-                auctionMenu.openInventory(player, holder.viewType(), holder.currency(), currentPage + 1,
-                        holder.sort(), holder.sellerFilter(), holder.searchFilter(), holder.category());
+                holder.setPage(currentPage + 1);
+                auctionMenu.refreshInventory(player, holder);
             }
-            case REFRESH -> {
-                if (tryUseCooldown(player, updateCooldowns,
-                        configManager.getConfigValues().cooldowns().updateAuctionSeconds())) {
-                    auctionMenu.refreshInventory(player, holder);
-                }
-            }
+            case REFRESH -> auctionMenu.refreshInventory(player, holder);
+
             case SORT -> {
-                AuctionSort sort = rightClick ? holder.sort().previous() : holder.sort().next();
-                auctionMenu.openMain(player, holder.currency(), holder.page(), sort,
-                        holder.sellerFilter(), holder.searchFilter(), holder.category());
+                AuctionSort newSort = rightClick ? holder.getSort().previous() : holder.getSort().next();
+                holder.setSort(newSort);
+                holder.setPage(0);
+                auctionMenu.refreshInventory(player, holder);
             }
             case CATEGORIES -> {
-                String currentCat = holder.category();
+                String currentCat = holder.getCategory();
                 String newCat = rightClick ? getPreviousCategory(currentCat) : getNextCategory(currentCat);
-                auctionMenu.openMain(player, holder.currency(), holder.page(), holder.sort(),
-                        holder.sellerFilter(), holder.searchFilter(), newCat);
+                holder.setCategory(newCat);
+                holder.setPage(0);
+                auctionMenu.refreshInventory(player, holder);
             }
             default -> {}
         }
     }
 
     private void handleLotClick(Player player, AuctionMenuHolder holder, int slot, long lotId, boolean rightClick) {
-        if (holder.viewType() == AuctionViewType.SELLING || holder.viewType() == AuctionViewType.EXPIRED) {
+        if (holder.getViewType() == AuctionViewType.SELLING || holder.getViewType() == AuctionViewType.EXPIRED) {
             if (!tryUseCooldown(player, takeCooldowns, configManager.getConfigValues().cooldowns().takeItemSeconds())) {
                 return;
             }
+
             auctionService.take(player, lotId, success -> {
                 if (!success || !player.isOnline()) return;
                 auctionMenu.refreshInventory(player, holder);
@@ -211,12 +198,12 @@ public final class AuctionMenuListener implements Listener {
         if (amount == null || amount <= 0) return;
 
         if (rightClick && amount > 1) {
-            auctionMenu.openQuantity(player, holder.currency(), lotId);
+            auctionMenu.openQuantity(player, holder.getCurrency(), lotId);
             return;
         }
 
         if (configManager.getConfigValues().confirmMenu().enabled() && !rightClick) {
-            auctionMenu.openConfirm(player, holder.currency(), lotId, amount);
+            auctionMenu.openConfirm(player, holder.getCurrency(), lotId, amount);
             return;
         }
 

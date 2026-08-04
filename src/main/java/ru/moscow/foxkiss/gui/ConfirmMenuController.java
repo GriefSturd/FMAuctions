@@ -26,7 +26,7 @@ public final class ConfirmMenuController {
         ConfigValues.ConfirmMenuConfig config = configManager.getConfigValues().confirmMenu();
         int finalAmount = (amount == Integer.MAX_VALUE) ? item.amount() : amount;
 
-        ConfirmMenuHolder holder = new ConfirmMenuHolder(currency, player.getUniqueId(), item.id(), finalAmount);
+        ConfirmMenuHolder holder = new ConfirmMenuHolder(currency, player.getUniqueId(), item.getId(), finalAmount);
         Inventory inv = Bukkit.createInventory(holder, config.size(), TextUtils.component(configManager.getConfigValues().guiConfig().titles().confirmBuy()));
         holder.setInventory(inv);
 

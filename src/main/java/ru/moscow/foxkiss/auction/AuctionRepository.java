@@ -1,7 +1,7 @@
 package ru.moscow.foxkiss.auction;
 
 import org.bukkit.inventory.ItemStack;
-import ru.moscow.foxkiss.gui.AuctionViewType;  // <-- добавлен импорт
+import ru.moscow.foxkiss.gui.AuctionViewType;
 
 import java.util.List;
 import java.util.Optional;

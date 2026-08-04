@@ -14,9 +14,11 @@ import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.economy.PluginEconomyProvider;
 import ru.moscow.foxkiss.gui.AuctionMenu;
 import ru.moscow.foxkiss.gui.AuctionMenuListener;
+import ru.moscow.foxkiss.gui.ItemDisplayFactory;
 import ru.moscow.foxkiss.gui.PlayerPreferences;
 import ru.moscow.foxkiss.permissions.LimitService;
 import ru.moscow.foxkiss.placeholders.FMAuctionExpansion;
+import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.ItemUtils;
 
 import java.io.File;
@@ -34,6 +36,7 @@ public final class FMAuction extends JavaPlugin {
     private AuctionCommand auctionCommand;
     private AuctionCommand donateAuctionCommand;
     private AuctionMenuListener auctionMenuListener;
+    private SchedulerService schedulerService;
 
     @Override
     public void onEnable() {
@@ -70,18 +73,27 @@ public final class FMAuction extends JavaPlugin {
         new Metrics(this, pluginId);
     }
 
+    private ItemDisplayFactory itemDisplayFactory;
+
     public void initializeManager() {
         configManager = new ConfigManager(this);
         auctionRepository = new H2AuctionRepository(this);
         ItemUtils.loadTranslations(new File(getDataFolder(), "items.yml"));
         auctionRepository.init();
+
         economyProvider = new PluginEconomyProvider();
         economyProvider.init(this);
+
         limitService = new LimitService(configManager);
         limitService.init();
-        auctionService = new AuctionService(this, configManager, auctionRepository, economyProvider, limitService);
+
+        schedulerService = new SchedulerService(this);
+        itemDisplayFactory = new ItemDisplayFactory(this, configManager);
+
+        auctionService = AuctionService.create(this, configManager, auctionRepository, economyProvider, limitService, itemDisplayFactory);
+
         playerPreferences = new PlayerPreferences();
-        auctionMenu = new AuctionMenu(this, configManager, auctionRepository, playerPreferences);
+        auctionMenu = new AuctionMenu(this, configManager, auctionRepository, playerPreferences, itemDisplayFactory);
     }
 
     public void reloadAll() {
@@ -89,6 +101,9 @@ public final class FMAuction extends JavaPlugin {
         configManager.reload();
         limitService.init();
 
+        if (auctionMenu != null) {
+            auctionMenu.reload();
+        }
         if (auctionMenuListener != null) {
             auctionMenuListener.reloadCategories();
         }
@@ -127,7 +142,7 @@ public final class FMAuction extends JavaPlugin {
 
     private void registerPlaceholders() {
         if (getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-            placeholderExpansion = new FMAuctionExpansion(this, auctionRepository);
+            placeholderExpansion = new FMAuctionExpansion(this, auctionRepository, schedulerService);
             if (placeholderExpansion.register()) {
                 getLogger().info("PlaceholderAPI expansion registered successfully.");
             } else {

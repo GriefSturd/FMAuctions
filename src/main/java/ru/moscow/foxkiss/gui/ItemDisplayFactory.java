@@ -1,6 +1,8 @@
 package ru.moscow.foxkiss.gui;
 
+import lombok.RequiredArgsConstructor;
 import net.kyori.adventure.text.Component;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.ItemFlag;
@@ -17,13 +19,17 @@ import ru.moscow.foxkiss.utils.ItemUtils;
 import ru.moscow.foxkiss.utils.PriceFormatter;
 import ru.moscow.foxkiss.utils.TextUtils;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
+@RequiredArgsConstructor
 public final class ItemDisplayFactory {
     private final IConfigManager configManager;
     private final NamespacedKey actionKey;
+
+    private final Map<String, ItemStack> lotDisplayCache = new HashMap<>();
+    private final Map<String, ItemStack> navCache = new HashMap<>();
+    private final Map<AuctionSort, ItemStack> sortButtonCache = new HashMap<>();
+    private final Map<String, ItemStack> categoryButtonCache = new HashMap<>();
 
     public ItemDisplayFactory(JavaPlugin plugin, IConfigManager configManager) {
         this.configManager = configManager;
@@ -31,7 +37,12 @@ public final class ItemDisplayFactory {
     }
 
     public ItemStack createLotDisplay(AuctionItem item) {
-        ItemStack base = item.itemStackClone();
+        String key = item.getId() + "|" + item.amount() + "|" + item.getPrice() + "|" + item.getCreatedAt();
+        return lotDisplayCache.computeIfAbsent(key, k -> buildLotDisplay(item)).clone();
+    }
+
+    private ItemStack buildLotDisplay(AuctionItem item) {
+        ItemStack base = item.getItemStack().clone();
         ItemMeta meta = base.getItemMeta();
 
         List<Component> lore = new ArrayList<>();
@@ -44,21 +55,23 @@ public final class ItemDisplayFactory {
         ConfigValues.ItemLoreConfig loreConfig = config.guiConfig().itemLore();
         List<String> template = (item.amount() == 1) ? loreConfig.loreOne() : loreConfig.lore();
 
-        String symbol = item.currency().symbol(config);
-        String price = PriceFormatter.format(item.price());
+        String symbol = item.getCurrency().symbol(config);
+        String price = PriceFormatter.format(item.getPrice());
         String pricePerItem = PriceFormatter.format(item.pricePerItem());
         String amount = String.valueOf(item.amount());
-        long daysLeft = Math.max(config.maxAuctionStorageDays() - (System.currentTimeMillis() - item.createdAt()) / 86_400_000L, 0);
+        long daysLeft = Math.max(config.maxAuctionStorageDays() - (System.currentTimeMillis() - item.getCreatedAt()) / 86_400_000L, 0);
+        String daysLeftText = String.valueOf(daysLeft);
+        String listedDate = formatDate(item.getCreatedAt());
 
         for (String line : template) {
             String processed = line
                     .replace("{price}", price)
                     .replace("{pricePerItem}", pricePerItem)
-                    .replace("{seller}", item.sellerName())
+                    .replace("{seller}", item.getSellerName())
                     .replace("{amount}", amount)
-                    .replace("{daysLeft}", String.valueOf(daysLeft))
+                    .replace("{daysLeft}", daysLeftText)
                     .replace("{symbol_value}", symbol)
-                    .replace("{listedDate}", formatDate(item.createdAt()));
+                    .replace("{listedDate}", listedDate);
             lore.add(TextUtils.component(processed));
         }
 
@@ -67,19 +80,28 @@ public final class ItemDisplayFactory {
         return base;
     }
 
+    public void invalidateLotCache(long lotId) {
+        lotDisplayCache.entrySet().removeIf(entry -> entry.getKey().startsWith(lotId + "|"));
+    }
+
     public ItemStack createButton(ConfigValues.ButtonConfig config) {
-        return createButton(config.material(), config.name(), config.lore(), config.skullTexture(), config.action(), config.customModelData());
+        return createButtonInternal(config.material(), config.name(), config.lore(), config.skullTexture(), config.action(), config.customModelData());
     }
 
     public ItemStack createButton(ConfigValues.ConfirmButtonConfig config) {
-        return createButton(config.material(), config.name(), config.lore(), config.skullTexture(), config.action(), config.customModelData());
+        return createButtonInternal(config.material(), config.name(), config.lore(), config.skullTexture(), config.action(), config.customModelData());
     }
 
     public ItemStack createNavigationButton(ConfigValues.NavigationButton button, List<String> lore) {
-        return createButton(button.material(), button.name(), lore, button.skullTexture(), button.action(), button.customModelData());
+        String key = button.slot() + "|" + button.name() + "|" + String.join("", lore) + "|" + button.customModelData();
+        return navCache.computeIfAbsent(key, k -> createButtonInternal(button.material(), button.name(), lore, button.skullTexture(), button.action(), button.customModelData())).clone();
     }
 
     public ItemStack createSortButton(AuctionSort selected) {
+        return sortButtonCache.computeIfAbsent(selected, this::buildSortButton).clone();
+    }
+
+    private ItemStack buildSortButton(AuctionSort selected) {
         ConfigValues config = configManager.getConfigValues();
         ConfigValues.SortMenuConfig sortMenu = config.guiConfig().sortMenu();
         ConfigValues.NavigationConfig nav = config.guiConfig().navigation();
@@ -98,6 +120,14 @@ public final class ItemDisplayFactory {
     }
 
     public ItemStack createCategoryButton(String selectedCategory) {
+        if (selectedCategory == null) {
+            selectedCategory = "all";
+        }
+        String key = selectedCategory.toLowerCase();
+        return categoryButtonCache.computeIfAbsent(key, this::buildCategoryButton).clone();
+    }
+
+    private ItemStack buildCategoryButton(String selectedCategory) {
         ConfigValues config = configManager.getConfigValues();
         ConfigValues.CategoryMenuConfig categoryMenu = config.guiConfig().categoryMenu();
         ConfigValues.NavigationConfig nav = config.guiConfig().navigation();
@@ -122,7 +152,7 @@ public final class ItemDisplayFactory {
     }
 
     public ItemStack createBuyItem(AuctionItem item, int selectedAmount) {
-        ItemStack display = item.itemStackClone();
+        ItemStack display = item.getItemStack().clone();
         display.setAmount(Math.min(selectedAmount, display.getMaxStackSize()));
 
         ItemMeta meta = display.getItemMeta();
@@ -141,7 +171,7 @@ public final class ItemDisplayFactory {
         for (String line : configManager.getConfigValues().guiConfig().itemLore().buyLore()) {
             String processed = line
                     .replace("{total_price}", totalPriceFormatted)
-                    .replace("{seller}", item.sellerName())
+                    .replace("{seller}", item.getSellerName())
                     .replace("{amount}", String.valueOf(selectedAmount));
             lore.add(TextUtils.component(processed));
         }
@@ -151,13 +181,19 @@ public final class ItemDisplayFactory {
         return display;
     }
 
-    private ItemStack createButton(Material material, String name, List<String> lore, String skullTexture, ActionType action, Integer customModelData) {
+    private ItemStack createButtonInternal(Material material, String name, List<String> lore, String skullTexture, ActionType action, Integer customModelData) {
+        if (material == null) {
+            material = Material.STONE;
+            Bukkit.getLogger().warning("ItemDisplayFactory: материал null, заменён на STONE для кнопки " + name);
+        }
         ItemStack item = TextUtils.isNotBlank(skullTexture)
                 ? ItemUtils.skull(skullTexture, name, lore, customModelData)
                 : ItemUtils.named(material, name, lore, customModelData);
 
         ItemMeta meta = item.getItemMeta();
-        meta.getPersistentDataContainer().set(actionKey, PersistentDataType.STRING, action.name());
+        if (action != null) {
+            meta.getPersistentDataContainer().set(actionKey, PersistentDataType.STRING, action.name());
+        }
         item.setItemMeta(meta);
         return item;
     }
@@ -169,5 +205,12 @@ public final class ItemDisplayFactory {
         long hours = diff / 3_600_000L;
         if (hours < 24) return hours + " ч. назад";
         return diff / 86_400_000L + " дн. назад";
+    }
+
+    public void clearCache() {
+        lotDisplayCache.clear();
+        navCache.clear();
+        sortButtonCache.clear();
+        categoryButtonCache.clear();
     }
 }

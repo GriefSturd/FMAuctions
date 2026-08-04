@@ -1,5 +1,7 @@
 package ru.moscow.foxkiss.economy;
 
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -8,21 +10,20 @@ import ru.moscow.foxkiss.auction.AuctionCurrency;
 import java.util.EnumMap;
 import java.util.Map;
 
+@RequiredArgsConstructor
 public final class PluginEconomyProvider implements EconomyProvider {
 
     private final Map<AuctionCurrency, CurrencyHandler> handlers = new EnumMap<>(AuctionCurrency.class);
 
     public void init(JavaPlugin plugin) {
         try {
-            VaultApi vault = new VaultApi();
-            handlers.put(AuctionCurrency.VAULT, new VaultHandler(vault));
+            handlers.put(AuctionCurrency.VAULT, new VaultHandler());
         } catch (Exception e) {
             plugin.getLogger().warning("Vault недоступен: " + e.getMessage());
         }
 
         try {
-            PlayerPointsApi points = new PlayerPointsApi();
-            handlers.put(AuctionCurrency.PLAYER_POINTS, new PlayerPointsHandler(points));
+            handlers.put(AuctionCurrency.PLAYER_POINTS, new PlayerPointsHandler());
         } catch (Exception e) {
             plugin.getLogger().warning("PlayerPoints недоступен: " + e.getMessage());
         }
@@ -51,18 +52,9 @@ public final class PluginEconomyProvider implements EconomyProvider {
         if (handler != null) handler.deposit(player, amount);
     }
 
-    private interface CurrencyHandler {
-        boolean has(Player player, double amount);
-        boolean withdraw(Player player, double amount);
-        void deposit(OfflinePlayer player, double amount);
-    }
-
+    @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
     private static final class VaultHandler implements CurrencyHandler {
-        private final VaultApi vault;
-
-        VaultHandler(VaultApi vault) {
-            this.vault = vault;
-        }
+        private final VaultApi vault = new VaultApi();
 
         @Override
         public boolean has(Player player, double amount) {
@@ -80,12 +72,9 @@ public final class PluginEconomyProvider implements EconomyProvider {
         }
     }
 
+    @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
     private static final class PlayerPointsHandler implements CurrencyHandler {
-        private final PlayerPointsApi points;
-
-        PlayerPointsHandler(PlayerPointsApi points) {
-            this.points = points;
-        }
+        private final PlayerPointsApi points = new PlayerPointsApi();
 
         @Override
         public boolean has(Player player, double amount) {
@@ -101,5 +90,11 @@ public final class PluginEconomyProvider implements EconomyProvider {
         public void deposit(OfflinePlayer player, double amount) {
             points.deposit(player, (int) Math.ceil(amount));
         }
+    }
+
+    private interface CurrencyHandler {
+        boolean has(Player player, double amount);
+        boolean withdraw(Player player, double amount);
+        void deposit(OfflinePlayer player, double amount);
     }
 }

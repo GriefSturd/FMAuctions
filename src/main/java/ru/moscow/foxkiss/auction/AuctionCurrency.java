@@ -1,25 +1,21 @@
 package ru.moscow.foxkiss.auction;
 
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import ru.moscow.foxkiss.config.ConfigValues;
 
+import java.util.function.Function;
+
+@Getter
+@RequiredArgsConstructor
 public enum AuctionCurrency {
-    VAULT("vault"),
-    PLAYER_POINTS("playerpoints");
+    VAULT("vault", ConfigValues::symbolVault),
+    PLAYER_POINTS("playerpoints", ConfigValues::symbolPlayerPoints);
 
     private final String configKey;
-
-    AuctionCurrency(String configKey) {
-        this.configKey = configKey;
-    }
-
-    public String configKey() {
-        return configKey;
-    }
+    private final Function<ConfigValues, String> symbolExtractor;
 
     public String symbol(ConfigValues values) {
-        return switch (this) {
-            case VAULT -> values.symbolVault();
-            case PLAYER_POINTS -> values.symbolPlayerPoints();
-        };
+        return symbolExtractor.apply(values);
     }
 }

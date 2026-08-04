@@ -125,7 +125,7 @@ public final class GuiLoader {
 
 
     private ConfigValues.ConfirmButtonConfig loadConfirmButton(ConfigurationSection section) {
-        MaterialParser.ParsedMaterial parsed = MaterialParser.parse(section, true);
+        MaterialParser.ParsedMaterial parsed = MaterialParser.parse(section);
 
         return new ConfigValues.ConfirmButtonConfig(
                 parsed.material(),
@@ -140,7 +140,7 @@ public final class GuiLoader {
 
 
     private ConfigValues.ButtonConfig loadButton(ConfigurationSection section) {
-        MaterialParser.ParsedMaterial parsed = MaterialParser.parse(section, false);
+        MaterialParser.ParsedMaterial parsed = MaterialParser.parse(section);
         return new ConfigValues.ButtonConfig(
                 parsed.material(),
                 section.getString("name", ""),
@@ -154,7 +154,7 @@ public final class GuiLoader {
 
 
     private ConfigValues.NavigationButton loadNavButton(ConfigurationSection section) {
-        MaterialParser.ParsedMaterial parsed = MaterialParser.parse(section, false);
+        MaterialParser.ParsedMaterial parsed = MaterialParser.parse(section);
 
         return new ConfigValues.NavigationButton(
                 section.getInt("slot"),
@@ -169,50 +169,16 @@ public final class GuiLoader {
 
 
     private ActionType loadAction(ConfigurationSection section) {
+        List<String> actions = section.getStringList("actions");
 
-        List<String> actions =
-                section.getStringList("actions");
+        String first = actions.getFirst().trim();
 
 
-        if (actions.isEmpty()) {
-
-            throw new IllegalArgumentException(
-                    "Missing actions at "
-                            + section.getCurrentPath()
-            );
+        if (first.startsWith("[") && first.endsWith("]")) {
+            first = first.substring(1, first.length() - 1);
         }
 
-
-        String first =
-                actions.getFirst()
-                        .trim();
-
-
-        if (first.startsWith("[")
-                && first.endsWith("]")) {
-
-            first =
-                    first.substring(
-                            1,
-                            first.length() - 1
-                    );
-        }
-
-
-        ActionType action =
-                ActionType.get(first);
-
-
-        if (action == null) {
-
-            throw new IllegalArgumentException(
-                    "Unknown action "
-                            + first
-                            + " at "
-                            + section.getCurrentPath()
-            );
-        }
-
+        ActionType action = ActionType.get(first);
 
         return action;
     }

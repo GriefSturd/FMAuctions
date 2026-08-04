@@ -138,9 +138,7 @@ public final class H2AuctionRepository implements AuctionRepository {
     @Override
     public long create(String sellerName, AuctionCurrency currency, ItemStack itemStack, double price) {
         try (Connection conn = open();
-             PreparedStatement ps = conn.prepareStatement(
-                     "INSERT INTO auction_items(seller_name,currency,item,price,created_at,status,material,amount,price_per_item) " +
-                             "VALUES(?,?,?,?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS)) {
+             PreparedStatement ps = conn.prepareStatement("INSERT INTO auction_items(seller_name,currency,item,price,created_at,status,material,amount,price_per_item) " + "VALUES(?,?,?,?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS)) {
 
             int amount = itemStack.getAmount();
             double pricePerItem = (amount > 0) ? price / amount : price;
@@ -180,16 +178,13 @@ public final class H2AuctionRepository implements AuctionRepository {
     public MenuData loadMenuData(AuctionCurrency currency, String playerName, int maxDays, int page, int pageSize, AuctionSort sort, String category, String sellerFilter, String searchFilter, AuctionViewType viewType) {
         long cutoff = System.currentTimeMillis() - maxDays * 86_400_000L;
         try (Connection conn = open()) {
-            List<AuctionItem> items = findPageWithConnection(conn, currency, page, pageSize, sort, category,
-                    sellerFilter, searchFilter, viewType, cutoff, playerName);
+            List<AuctionItem> items = findPageWithConnection(conn, currency, page, pageSize, sort, category, sellerFilter, searchFilter, viewType, cutoff, playerName);
             int totalCount = countTotal(conn, currency, viewType, category, sellerFilter, searchFilter, playerName, cutoff);
 
             int sellingCount = 0, expiredCount = 0;
             if (viewType == AuctionViewType.MAIN) {
                 try (PreparedStatement ps = conn.prepareStatement(
-                        "SELECT COUNT(CASE WHEN status=? THEN 1 END) as selling, " +
-                                "COUNT(CASE WHEN status=? AND created_at<? THEN 1 END) as expired " +
-                                "FROM auction_items WHERE currency=? AND seller_name=?")) {
+                        "SELECT COUNT(CASE WHEN status=? THEN 1 END) as selling, " + "COUNT(CASE WHEN status=? AND created_at<? THEN 1 END) as expired " + "FROM auction_items WHERE currency=? AND seller_name=?")) {
                     ps.setInt(1, active);
                     ps.setInt(2, active);
                     ps.setLong(3, cutoff);
@@ -210,9 +205,7 @@ public final class H2AuctionRepository implements AuctionRepository {
         }
     }
 
-    private int countTotal(Connection conn, AuctionCurrency currency, AuctionViewType viewType,
-                           String category, String sellerFilter, String searchFilter,
-                           String playerName, long cutoff) throws SQLException {
+    private int countTotal(Connection conn, AuctionCurrency currency, AuctionViewType viewType, String category, String sellerFilter, String searchFilter, String playerName, long cutoff) throws SQLException {
         List<Object> params = new ArrayList<>();
         params.add(currency.name());
         params.add(active);
@@ -440,7 +433,8 @@ public final class H2AuctionRepository implements AuctionRepository {
     @Override
     public int countActiveBySellerSince(String sellerName, AuctionCurrency currency, long since) {
         try (Connection conn = open();
-             PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM auction_items WHERE seller_name=? AND currency=? AND created_at>? AND status=?")) {
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT COUNT(*) FROM auction_items WHERE seller_name=? AND currency=? AND created_at>? AND status=?")) {
             ps.setString(1, sellerName);
             ps.setString(2, currency.name());
             ps.setLong(3, since);

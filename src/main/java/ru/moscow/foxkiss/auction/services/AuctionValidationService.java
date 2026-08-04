@@ -98,6 +98,6 @@ public final class AuctionValidationService {
     }
 
     public boolean isOwner(Player player,AuctionItem item){
-        return player.getName().equalsIgnoreCase(item.sellerName());
+        return player.getName().equalsIgnoreCase(item.getSellerName());
     }
 }

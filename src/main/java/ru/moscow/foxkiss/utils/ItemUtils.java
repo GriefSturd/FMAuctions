@@ -21,10 +21,6 @@ public final class ItemUtils {
     private static final Map<String, ItemStack> cacheSkull = new HashMap<>();
     private static final Map<String, String> perevod = new HashMap<>();
 
-    public static ItemStack named(Material material, String name, List<String> lore) {
-        return named(material, name, lore, null);
-    }
-
     public static ItemStack named(Material material, String name, List<String> lore, Integer customModelData) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
