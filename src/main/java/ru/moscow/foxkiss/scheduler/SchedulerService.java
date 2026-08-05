@@ -1,6 +1,5 @@
 package ru.moscow.foxkiss.scheduler;
 
-import lombok.RequiredArgsConstructor;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 
@@ -12,7 +11,7 @@ import java.util.logging.Level;
 
 public final class SchedulerService {
     private final JavaPlugin plugin;
-    private final ExecutorService dbExecutor = Executors.newFixedThreadPool(2);
+    private final ExecutorService dbExecutor = Executors.newCachedThreadPool();
 
     public SchedulerService(JavaPlugin plugin) {
         this.plugin = plugin;
