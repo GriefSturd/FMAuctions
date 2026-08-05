@@ -84,7 +84,7 @@ public final class FMAuction extends JavaPlugin {
         auctionRepository.init();
 
         economyProvider = new PluginEconomyProvider();
-        economyProvider.init(this);
+        economyProvider.init();
 
         limitService = new LimitService(configManager);
         limitService.init();

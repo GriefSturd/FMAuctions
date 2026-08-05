@@ -123,7 +123,7 @@ public final class MenuBuilder {
 
     private void addExitButton(Inventory inv, AuctionViewType viewType, String pageDisplay, ConfigValues values, AuctionMenuHolder holder) {
         ConfigValues.ButtonConfig exit = values.exitButton();
-        if (exit == null || (viewType != AuctionViewType.SELLING && viewType != AuctionViewType.EXPIRED)) return;
+        if (viewType != AuctionViewType.SELLING && viewType != AuctionViewType.EXPIRED) return;
 
         List<String> replacedLore = new ArrayList<>();
         for (String line : exit.lore()) {
@@ -174,8 +174,7 @@ public final class MenuBuilder {
         holder.addAction(button.slot(), button.action());
     }
 
-    private void setNavButtonWithCount(Inventory inv, ConfigValues.NavigationButton button, String pageDisplay,
-                                       int count, AuctionMenuHolder holder) {
+    private void setNavButtonWithCount(Inventory inv, ConfigValues.NavigationButton button, String pageDisplay, int count, AuctionMenuHolder holder) {
         List<String> lore = new ArrayList<>();
         for (String line : button.lore()) {
             lore.add(line.replace("{page}", pageDisplay).replace("{count}", String.valueOf(count)));

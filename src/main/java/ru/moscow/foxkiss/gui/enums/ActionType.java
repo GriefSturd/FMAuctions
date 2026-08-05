@@ -18,9 +18,6 @@ public enum ActionType {
     BUY;
 
     public static ActionType get(String string) {
-        if (string == null || string.isEmpty()) {
-            return null;
-        }
         try {
             return valueOf(string.toUpperCase());
         } catch (IllegalArgumentException ex) {

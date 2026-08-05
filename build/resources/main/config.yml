@@ -149,6 +149,7 @@ auction:
       name: "&r&eКоличество: &f{amount}"
       lore:
         - "&x&f&f&c&5&0&0▸ &fНажмите, чтобы &x&f&f&c&5&0&0купить"
+      slot: 13
     increase-1:
       actions:
         - "[INCREASE_1]"

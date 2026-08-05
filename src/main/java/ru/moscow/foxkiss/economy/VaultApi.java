@@ -19,9 +19,6 @@ public final class VaultApi {
 
         this.economy = provider.getProvider();
 
-        if (economy == null) {
-            throw new IllegalStateException("Vault economy is unavailable");
-        }
     }
 
     public boolean has(Player player, double amount) {
