@@ -11,7 +11,7 @@ import java.util.logging.Level;
 
 public final class SchedulerService {
     private final JavaPlugin plugin;
-    private final ExecutorService dbExecutor = Executors.newCachedThreadPool();
+    private final ExecutorService dbExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     public SchedulerService(JavaPlugin plugin) {
         this.plugin = plugin;

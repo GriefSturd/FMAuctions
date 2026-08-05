@@ -8,20 +8,17 @@ public final class MaterialParser {
     public record ParsedMaterial(Material material, String skullTexture) {}
 
     public static ParsedMaterial parse(ConfigurationSection section) {
-        String raw;
-
-        if (section.isString("material")) {
-            raw = section.getString("material");
-        } else {
+        String raw = section.getString("material");
+        if (raw == null) {
             raw = section.getString("item");
         }
-
+        if (raw == null) {
+            return new ParsedMaterial(null, null);
+        }
         if (raw.startsWith("basehead-")) {
             return new ParsedMaterial(Material.PLAYER_HEAD, raw.substring("basehead-".length()));
         }
-
         Material material = Material.matchMaterial(raw);
-
         return new ParsedMaterial(material, null);
     }
 }

@@ -24,24 +24,29 @@ public final class ConfirmMenuController {
 
     public void openConfirm(Player player, AuctionCurrency currency, AuctionItem item, int amount) {
         ConfigValues.ConfirmMenuConfig config = configManager.getConfigValues().confirmMenu();
+
         int finalAmount = (amount == Integer.MAX_VALUE) ? item.amount() : amount;
 
         ConfirmMenuHolder holder = new ConfirmMenuHolder(currency, player.getUniqueId(), item.getId(), finalAmount);
         Inventory inv = Bukkit.createInventory(holder, config.size(), TextUtils.component(configManager.getConfigValues().guiConfig().titles().confirmBuy()));
+
         holder.setInventory(inv);
 
         menuBuilder.fillGlass(inv, config.glassPanes());
+
         inv.setItem(config.itemSlot(), itemFactory.createBuyItem(item, finalAmount));
-        setButton(inv, config.confirm());
-        setButton(inv, config.cancel());
+
+        setButton(inv, holder, config.confirm());
+        setButton(inv, holder, config.cancel());
 
         player.openInventory(inv);
     }
 
-    private void setButton(Inventory inv, ConfigValues.ConfirmButtonConfig config) {
+    private void setButton(Inventory inv, ConfirmMenuHolder holder, ConfigValues.ConfirmButtonConfig config) {
         for (int slot : config.slots()) {
             if (slot >= 0 && slot < inv.getSize()) {
                 inv.setItem(slot, itemFactory.createButton(config));
+                holder.addAction(slot, config.action());
             }
         }
     }
