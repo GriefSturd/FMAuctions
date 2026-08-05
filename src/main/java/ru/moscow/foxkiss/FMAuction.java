@@ -92,7 +92,7 @@ public final class FMAuction extends JavaPlugin {
         schedulerService = new SchedulerService(this);
         itemDisplayFactory = new ItemDisplayFactory(this, configManager);
 
-        auctionService = AuctionService.create(this, configManager, auctionRepository, economyProvider, limitService, itemDisplayFactory, schedulerService);
+        auctionService = AuctionService.create(configManager, auctionRepository, economyProvider, limitService, itemDisplayFactory, schedulerService);
 
         playerPreferences = new PlayerPreferences();
         auctionMenu = new AuctionMenu(this, configManager, auctionRepository, playerPreferences, itemDisplayFactory);

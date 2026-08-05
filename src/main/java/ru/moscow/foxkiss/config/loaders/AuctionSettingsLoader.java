@@ -57,8 +57,8 @@ public final class AuctionSettingsLoader {
 
     private ConfigValues.ButtonConfig loadButtonConfig(ConfigurationSection section) {
         MaterialParser.ParsedMaterial parsed = MaterialParser.parse(section);
-        String name = section.getString("name", "");
-        String title = section.getString("title", name);
+        String name = section.getString("name");
+        String title = section.getString("title");
 
         return new ConfigValues.ButtonConfig(
                 parsed.material(),

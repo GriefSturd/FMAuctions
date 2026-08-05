@@ -111,8 +111,7 @@ public final class AuctionBuyService extends BaseAuctionService {
 
         OfflinePlayer seller = Bukkit.getOfflinePlayer(item.getSellerName());
         transactionService.depositMoney(seller, item.getCurrency(), totalPrice);
-        transactionService.recordSale(item.getSellerName(), buyer.getName(), item.getCurrency(),
-                bought.getType().name(), buyAmount, totalPrice);
+        transactionService.recordSale(item.getSellerName(), buyer.getName(), item.getCurrency(), bought.getType().name(), buyAmount, totalPrice);
 
         String itemName = ItemUtils.getItemDisplayName(bought);
         String priceStr = PriceFormatter.format(totalPrice);

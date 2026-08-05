@@ -19,7 +19,7 @@ public final class AuctionService {
     private final AuctionBuyService buyService;
     private final AuctionTakeService takeService;
 
-    public static AuctionService create(JavaPlugin plugin, IConfigManager configManager, AuctionRepository repository, EconomyProvider economyProvider, LimitService limitService, ItemDisplayFactory itemFactory, SchedulerService scheduler) {
+    public static AuctionService create(IConfigManager configManager, AuctionRepository repository, EconomyProvider economyProvider, LimitService limitService, ItemDisplayFactory itemFactory, SchedulerService scheduler) {
         AuctionValidationService validationService = new AuctionValidationService(configManager, economyProvider);
         AuctionTransactionService transactionService = new AuctionTransactionService(scheduler, repository, economyProvider, itemFactory);
 
