@@ -7,6 +7,7 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionItem;
+import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.economy.EconomyProvider;
 import ru.moscow.foxkiss.utils.ItemUtils;
@@ -27,15 +28,15 @@ public final class AuctionValidationService {
 
     public boolean isPriceInRange(double price,AuctionCurrency currency,boolean donate){
 
-        var limits = configManager.getConfigValues().priceLimits();
+        ConfigValues.PriceLimits limits = configManager.getConfigValues().priceLimits();
 
         double min;
         double max;
 
-        if(currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS){
+        if (currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS){
             min = donate ? limits.minPriceMoneyDauc() : limits.minPriceMoneyAuc();
             max = donate ? limits.maxPriceMoneyDauc() : limits.maxPriceMoneyAuc();
-        }else{
+        } else {
             min = 0.01;
             max = Double.MAX_VALUE;
         }
@@ -44,15 +45,14 @@ public final class AuctionValidationService {
     }
 
     public double getMinPrice(AuctionCurrency currency,boolean donate) {
-        if(currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS)
+        if (currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS)
             return donate ? configManager.getConfigValues().priceLimits().minPriceMoneyDauc() : configManager.getConfigValues().priceLimits().minPriceMoneyAuc();
 
         return 0.01;
     }
 
     public double getMaxPrice(AuctionCurrency currency,boolean donate) {
-
-        if(currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS)
+        if (currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS)
             return donate ? configManager.getConfigValues().priceLimits().maxPriceMoneyDauc() : configManager.getConfigValues().priceLimits().maxPriceMoneyAuc();
 
         return Double.MAX_VALUE;
@@ -68,7 +68,7 @@ public final class AuctionValidationService {
         int needed = item.getAmount();
         int emptySlots = 0;
 
-        for(ItemStack slot : inv.getStorageContents()){
+        for (ItemStack slot : inv.getStorageContents()){
             if (slot == null || slot.getType() == Material.AIR){
                 emptySlots++;
                 continue;
@@ -79,7 +79,7 @@ public final class AuctionValidationService {
                 int free = slot.getMaxStackSize() - slot.getAmount();
                 if (free > 0){
                     needed -= Math.min(free,needed);
-                    if(needed <= 0) return true;
+                    if (needed <= 0) return true;
                 }
             }
         }

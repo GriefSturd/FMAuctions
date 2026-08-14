@@ -17,9 +17,7 @@ import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.AuctionMenu;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
-import java.sql.SQLException;
 import java.util.*;
-import java.util.logging.Level;
 
 public final class AuctionCommand implements CommandExecutor, TabCompleter {
 
