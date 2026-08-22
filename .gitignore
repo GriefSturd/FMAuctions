@@ -1,4 +1,3 @@
-
 .gradle/
 gradle/
 build/
@@ -16,4 +15,3 @@ gradlew.bat
 
 *.class
 *.jar
-*.log

@@ -3,7 +3,6 @@ package ru.moscow.foxkiss.gui.holders;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
-import lombok.Value;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionItem;
 import ru.moscow.foxkiss.gui.AuctionViewType;

@@ -24,10 +24,7 @@ public final class ItemUtils {
     public static ItemStack named(Material material, String name, List<String> lore, Integer customModelData) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
-
-        if (meta == null) {
-            return item;
-        }
+        if (meta == null) return item;
 
         meta.displayName(TextUtils.component(name).decoration(TextDecoration.ITALIC, false));
 
@@ -35,12 +32,11 @@ public final class ItemUtils {
             meta.setCustomModelData(customModelData);
         }
 
-        if (!lore.isEmpty()) {
+        if (lore != null && !lore.isEmpty()) {
             List<Component> loreComponents = new ArrayList<>(lore.size());
             for (String line : lore) {
                 loreComponents.add(TextUtils.component(line).decoration(TextDecoration.ITALIC, false));
             }
-
             meta.lore(loreComponents);
         }
 
@@ -71,6 +67,10 @@ public final class ItemUtils {
         return item;
     }
 
+    public static boolean isSellable(ItemStack item) {
+        return item.getType() != Material.AIR && item.getAmount() > 0;
+    }
+
     public static void loadTranslations(File itemsFile) {
         perevod.clear();
         if (itemsFile == null || !itemsFile.exists()) {
@@ -93,15 +93,13 @@ public final class ItemUtils {
         return perevod.getOrDefault(materialName, materialName.toLowerCase(Locale.ROOT).replace('_', ' '));
     }
 
-    public static boolean isSellable(ItemStack item) {
-        return item.getType() != Material.AIR && item.getAmount() > 0;
+    public static String getTranslation(Material material) {
+        if (material == null) return null;
+        return perevod.get(material.name());
     }
 
-    private static PlayerProfile createSkullProfile(String texture) {
-        UUID uuid = UUID.nameUUIDFromBytes(texture.getBytes(StandardCharsets.UTF_8));
-        PlayerProfile profile = Bukkit.createProfile(uuid);
-        profile.setProperty(new ProfileProperty("textures", texture));
-        return profile;
+    public static Set<String> getAllTranslatedMaterials() {
+        return Collections.unmodifiableSet(perevod.keySet());
     }
 
     public static void clearCache() {
@@ -109,8 +107,10 @@ public final class ItemUtils {
         profileSkull.clear();
     }
 
-    public static String getTranslation(Material material) {
-        if (material == null) return null;
-        return perevod.get(material.name());
+    private static PlayerProfile createSkullProfile(String texture) {
+        UUID uuid = UUID.nameUUIDFromBytes(texture.getBytes(StandardCharsets.UTF_8));
+        PlayerProfile profile = Bukkit.createProfile(uuid);
+        profile.setProperty(new ProfileProperty("textures", texture));
+        return profile;
     }
 }

@@ -1,5 +1,5 @@
 name: FMAuction
-version: '1.0.1'
+version: '1.0.3'
 main: ru.moscow.foxkiss.FMAuction
 api-version: '1.21'
 softdepend:
@@ -16,4 +16,7 @@ commands:
 permissions:
   fmauction.admin:
     description: Право на выдачу админ права
+    default: op
+  fmauction.update:
+    description: Update notification permission
     default: op

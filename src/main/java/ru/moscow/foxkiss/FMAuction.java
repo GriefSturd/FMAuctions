@@ -20,8 +20,7 @@ import ru.moscow.foxkiss.permissions.LimitService;
 import ru.moscow.foxkiss.placeholders.FMAuctionExpansion;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.ItemUtils;
-
-import java.io.File;
+import ru.moscow.foxkiss.update.UpdateChecker;
 
 public final class FMAuction extends JavaPlugin {
 
@@ -38,6 +37,7 @@ public final class FMAuction extends JavaPlugin {
     private AuctionMenuListener auctionMenuListener;
     private SchedulerService schedulerService;
     private ItemDisplayFactory itemDisplayFactory;
+    private UpdateChecker updateChecker;
 
     @Override
     public void onEnable() {
@@ -49,6 +49,7 @@ public final class FMAuction extends JavaPlugin {
         registerCommands();
         registerListeners();
         registerPlaceholders();
+        updateChecker.checkForUpdates();
 
         long endTime = System.currentTimeMillis();
         getLogger().info("Plugin enabled in " + (endTime - startTime) + " ms");
@@ -80,7 +81,6 @@ public final class FMAuction extends JavaPlugin {
     public void initializeManager() {
         configManager = new ConfigManager(this);
         auctionRepository = new H2AuctionRepository(this);
-        ItemUtils.loadTranslations(new File(getDataFolder(), "items.yml"));
         auctionRepository.init();
 
         economyProvider = new PluginEconomyProvider();
@@ -99,7 +99,6 @@ public final class FMAuction extends JavaPlugin {
     }
 
     public void reloadAll() {
-        ItemUtils.loadTranslations(new File(getDataFolder(), "items.yml"));
         configManager.reload();
         limitService.init();
 
@@ -140,6 +139,9 @@ public final class FMAuction extends JavaPlugin {
     private void registerListeners() {
         auctionMenuListener = new AuctionMenuListener(configManager, auctionMenu, auctionService, this);
         getServer().getPluginManager().registerEvents(auctionMenuListener, this);
+
+        updateChecker = new UpdateChecker(this);
+        getServer().getPluginManager().registerEvents(updateChecker, this);
     }
 
     private void registerPlaceholders() {

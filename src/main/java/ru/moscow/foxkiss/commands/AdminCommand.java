@@ -1,12 +1,13 @@
 package ru.moscow.foxkiss.commands;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectList;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
-import org.bukkit.entity.Player;
+import org.bukkit.util.StringUtil;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import ru.moscow.foxkiss.FMAuction;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
@@ -55,15 +56,30 @@ public final class AdminCommand implements CommandExecutor, TabCompleter {
     }
 
     @Override
-    public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
+    public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, String[] args) {
         if (!sender.hasPermission("fmauction.admin")) {
             return List.of();
         }
 
-        if (args.length == 1 && "reload".startsWith(args[0].toLowerCase())) {
-            return List.of("reload");
+        final ObjectList<String> completions = new ObjectArrayList<>();
+        if (args.length == 1) {
+            completions.add("reload");
         }
 
-        return List.of();
+        return getResult(args, completions);
+    }
+
+    private ObjectList<String> getResult(String[] args, ObjectList<String> completions) {
+        if (completions.isEmpty()) {
+            return completions;
+        }
+        final ObjectList<String> result = new ObjectArrayList<>();
+        for (int i = 0; i < completions.size(); i++) {
+            String c = completions.get(i);
+            if (StringUtil.startsWithIgnoreCase(c, args[args.length - 1])) {
+                result.add(c);
+            }
+        }
+        return result;
     }
 }

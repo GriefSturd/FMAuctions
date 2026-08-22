@@ -1,6 +1,9 @@
 package ru.moscow.foxkiss.placeholders;
 
-import lombok.RequiredArgsConstructor;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectList;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
@@ -17,7 +20,6 @@ import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.PriceFormatter;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 public final class FMAuctionExpansion extends PlaceholderExpansion {
     private final JavaPlugin plugin;
@@ -27,10 +29,11 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
     private final VaultChatApi vaultChat = new VaultChatApi();
     private final VaultPermissionApi vaultPerm = new VaultPermissionApi();
 
-    private List<TopPlayerInfo> cachedTop = new ArrayList<>();
-    private final Map<UUID, CachedPlayerStats> statsCache = new ConcurrentHashMap<>();
-    private final Set<UUID> loadingStats = ConcurrentHashMap.newKeySet();
-    private final Map<String, String> prefixCache = new ConcurrentHashMap<>();
+    private ObjectList<TopPlayerInfo> cachedTop = new ObjectArrayList<>();
+
+    private final Object2ObjectOpenHashMap<UUID, CachedPlayerStats> statsCache = new Object2ObjectOpenHashMap<>();
+    private final ObjectOpenHashSet<UUID> loadingStats = new ObjectOpenHashSet<>();
+    private final Object2ObjectOpenHashMap<String, String> prefixCache = new Object2ObjectOpenHashMap<>();
 
     public FMAuctionExpansion(JavaPlugin plugin, AuctionRepository repository, SchedulerService scheduler) {
         this.plugin = plugin;
@@ -91,25 +94,36 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
         UUID uuid = player.getUniqueId();
         long now = System.currentTimeMillis();
 
-        CachedPlayerStats cached = statsCache.get(uuid);
+        CachedPlayerStats cached;
+        synchronized (statsCache) {
+            cached = statsCache.get(uuid);
+        }
         if (cached != null && (now - cached.timestamp) < 60000) {
             return field.equals("sold") ? String.valueOf(cached.sold) : formatMoney(cached.money);
         }
 
-        if (!loadingStats.contains(uuid)) {
-            scheduler.runAsync(() -> loadStatsAsync(uuid, name));
+        synchronized (loadingStats) {
+            if (!loadingStats.contains(uuid)) {
+                scheduler.runAsync(() -> loadStatsAsync(uuid, name));
+            }
         }
 
         return "0";
     }
 
     private void loadStatsAsync(UUID uuid, String name) {
-        if (!loadingStats.add(uuid)) return;
+        synchronized (loadingStats) {
+            if (!loadingStats.add(uuid)) return;
+        }
         try {
             AuctionRepository.PlayerStats stats = repository.getPlayerStats(name, AuctionCurrency.VAULT);
-            statsCache.put(uuid, new CachedPlayerStats(stats.soldCount(), stats.totalEarned(), System.currentTimeMillis()));
+            synchronized (statsCache) {
+                statsCache.put(uuid, new CachedPlayerStats(stats.soldCount(), stats.totalEarned(), System.currentTimeMillis()));
+            }
         } finally {
-            loadingStats.remove(uuid);
+            synchronized (loadingStats) {
+                loadingStats.remove(uuid);
+            }
         }
     }
 
@@ -122,7 +136,7 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
         }
         if (pos < 1 || pos > 5) return null;
 
-        List<TopPlayerInfo> top = cachedTop;
+        ObjectList<TopPlayerInfo> top = cachedTop;
         if (pos > top.size()) {
             if (field.equals("nick") || field.equals("prefix")) return "&7[&c-&7]";
             if (field.equals("sold") || field.equals("money")) return "0";
@@ -140,9 +154,10 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
     }
 
     public void disable() {
-        statsCache.clear();
-        prefixCache.clear();
-        cachedTop = new ArrayList<>();
+        synchronized (statsCache) { statsCache.clear(); }
+        synchronized (prefixCache) { prefixCache.clear(); }
+        cachedTop = new ObjectArrayList<>();
+        synchronized (loadingStats) { loadingStats.clear(); }
     }
 
     private void updateCache() {
@@ -151,12 +166,17 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
             list.sort((a, b) -> Double.compare(b.totalEarned(), a.totalEarned()));
             if (list.size() > 5) list = list.subList(0, 5);
 
-            List<TopPlayerInfo> result = new ArrayList<>();
+            ObjectList<TopPlayerInfo> result = new ObjectArrayList<>();
             for (AuctionRepository.TopSeller seller : list) {
-                String prefix = prefixCache.get(seller.name());
+                String prefix;
+                synchronized (prefixCache) {
+                    prefix = prefixCache.get(seller.name());
+                }
                 if (prefix == null) {
                     prefix = getPrefixForPlayer(seller.name());
-                    prefixCache.put(seller.name(), prefix);
+                    synchronized (prefixCache) {
+                        prefixCache.put(seller.name(), prefix);
+                    }
                 }
                 result.add(new TopPlayerInfo(seller.name(), seller.soldCount(), seller.totalEarned(), prefix));
             }

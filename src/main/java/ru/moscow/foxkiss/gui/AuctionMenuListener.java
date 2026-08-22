@@ -1,14 +1,16 @@
 package ru.moscow.foxkiss.gui;
 
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectList;
 import lombok.RequiredArgsConstructor;
-import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionItem;
@@ -31,11 +33,11 @@ public final class AuctionMenuListener implements Listener {
     private final AuctionService auctionService;
     private final int quantitySlot;
 
-    private List<String> cats;
-    private final Map<String, Long> quantityMessageCooldowns = new HashMap<>();
-    private final Map<UUID, Long> updateCooldowns = new HashMap<>();
-    private final Map<UUID, Long> takeCooldowns = new HashMap<>();
-    private final Map<UUID, Integer> cooldownMessageSkips = new HashMap<>();
+    private ObjectList<String> cats;
+    private final Object2LongOpenHashMap<String> quantityMessageCooldowns = new Object2LongOpenHashMap<>();
+    private final Object2LongOpenHashMap<UUID> updateCooldowns = new Object2LongOpenHashMap<>();
+    private final Object2LongOpenHashMap<UUID> takeCooldowns = new Object2LongOpenHashMap<>();
+    private final Object2IntOpenHashMap<UUID> cooldownMessageSkips = new Object2IntOpenHashMap<>();
 
     public AuctionMenuListener(IConfigManager configManager, AuctionMenu auctionMenu, AuctionService auctionService, JavaPlugin plugin) {
         this.configManager = configManager;
@@ -46,7 +48,7 @@ public final class AuctionMenuListener implements Listener {
     }
 
     public void reloadCategories() {
-        cats = new ArrayList<>(configManager.getConfigValues().categories().keySet());
+        cats = new ObjectArrayList<>(configManager.getConfigValues().categories().keySet());
         if (!cats.contains("all")) {
             cats.add(0, "all");
         }
@@ -104,7 +106,7 @@ public final class AuctionMenuListener implements Listener {
         if (amount > holder.getMaxAmount()) {
             String nick = player.getName();
             long now = System.currentTimeMillis();
-            long last = quantityMessageCooldowns.getOrDefault(nick, 0L);
+            long last = quantityMessageCooldowns.getLong(nick);
             if (now - last >= 5000L) {
                 player.sendMessage(PlaceholderUtils.applypapi(player,
                         configManager.getConfigValues().messages().quantityExceeded().replace("{max}", String.valueOf(holder.getMaxAmount())),
@@ -220,7 +222,7 @@ public final class AuctionMenuListener implements Listener {
         quantityMessageCooldowns.remove(event.getPlayer().getName());
     }
 
-    private boolean tryUseCooldown(Player player, Map<UUID, Long> cooldowns, double seconds) {
+    private boolean tryUseCooldown(Player player, Object2LongOpenHashMap<UUID> cooldowns, double seconds) {
         ConfigValues.Cooldowns settings = configManager.getConfigValues().cooldowns();
         if (!settings.cooldownEnabled()) return true;
 
@@ -229,7 +231,7 @@ public final class AuctionMenuListener implements Listener {
 
         long now = System.currentTimeMillis();
         UUID playerId = player.getUniqueId();
-        long lastUse = cooldowns.getOrDefault(playerId, 0L);
+        long lastUse = cooldowns.getLong(playerId);
 
         if (now - lastUse >= cooldownMillis) {
             cooldowns.put(playerId, now);
@@ -237,7 +239,7 @@ public final class AuctionMenuListener implements Listener {
             return true;
         }
 
-        int skips = cooldownMessageSkips.getOrDefault(playerId, 0);
+        int skips = cooldownMessageSkips.getInt(playerId);
         if (settings.cooldownMessageEnabled() && skips == 0) {
             player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().cooldownItem(), configManager));
             cooldownMessageSkips.put(playerId, 2);
@@ -247,19 +249,19 @@ public final class AuctionMenuListener implements Listener {
         return false;
     }
 
-    private List<String> getCategoriesList() {
+    private ObjectList<String> getCategoriesList() {
         return cats;
     }
 
     private String getNextCategory(String current) {
-        List<String> categories = getCategoriesList();
+        ObjectList<String> categories = getCategoriesList();
         int index = categories.indexOf(current.toLowerCase());
         if (index < 0) return categories.get(0);
         return categories.get((index + 1) % categories.size());
     }
 
     private String getPreviousCategory(String current) {
-        List<String> categories = getCategoriesList();
+        ObjectList<String> categories = getCategoriesList();
         int index = categories.indexOf(current.toLowerCase());
         if (index < 0) return categories.get(categories.size() - 1);
         return categories.get((index - 1 + categories.size()) % categories.size());

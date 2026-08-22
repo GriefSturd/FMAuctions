@@ -1,5 +1,8 @@
 package ru.moscow.foxkiss.gui.builder;
 
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectList;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
@@ -21,7 +24,7 @@ import java.util.*;
 public final class MenuBuilder {
     private final IConfigManager configManager;
     private final ItemDisplayFactory itemFactory;
-    private final Map<ConfigValues.GlassPane, ItemStack> glassPaneCache = new HashMap<>();
+    private final Object2ObjectOpenHashMap<ConfigValues.GlassPane, ItemStack> glassPaneCache = new Object2ObjectOpenHashMap<>();
 
     public MenuBuilder(IConfigManager configManager, ItemDisplayFactory itemFactory) {
         this.configManager = configManager;
@@ -125,7 +128,7 @@ public final class MenuBuilder {
         ConfigValues.ButtonConfig exit = values.exitButton();
         if (viewType != AuctionViewType.SELLING && viewType != AuctionViewType.EXPIRED) return;
 
-        List<String> replacedLore = new ArrayList<>();
+        ObjectList<String> replacedLore = new ObjectArrayList<>();
         for (String line : exit.lore()) {
             replacedLore.add(line.replace("{page}", pageDisplay));
         }
@@ -165,7 +168,7 @@ public final class MenuBuilder {
     }
 
     private void setNavButton(Inventory inv, ConfigValues.NavigationButton button, String pageDisplay, AuctionMenuHolder holder) {
-        List<String> lore = new ArrayList<>();
+        ObjectList<String> lore = new ObjectArrayList<>();
         for (String line : button.lore()) {
             lore.add(line.replace("{page}", pageDisplay));
         }
@@ -175,7 +178,7 @@ public final class MenuBuilder {
     }
 
     private void setNavButtonWithCount(Inventory inv, ConfigValues.NavigationButton button, String pageDisplay, int count, AuctionMenuHolder holder) {
-        List<String> lore = new ArrayList<>();
+        ObjectList<String> lore = new ObjectArrayList<>();
         for (String line : button.lore()) {
             lore.add(line.replace("{page}", pageDisplay).replace("{count}", String.valueOf(count)));
         }

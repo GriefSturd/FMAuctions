@@ -74,7 +74,7 @@ public final class AuctionSellService extends BaseAuctionService {
             scheduler.runSync(() -> {
                 transactionService.removeItemFromHand(player);
                 String symbol = currency.symbol(configManager.getConfigValues());
-                String formatted = PriceFormatter.format(price) + " " + symbol;
+                String formatted = PriceFormatter.format(price) + symbol;
                 String msg = configManager.getConfigValues().messages().sellSuccess().replace("{symbol_value}", formatted);
                 player.sendMessage(PlaceholderUtils.applypapi(player, msg, configManager));
             });

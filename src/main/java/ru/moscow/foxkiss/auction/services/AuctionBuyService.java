@@ -63,10 +63,10 @@ public final class AuctionBuyService extends BaseAuctionService {
         }
 
         int buyAmount = Math.max(1, Math.min(amount, item.amount()));
-        ItemStack bought = item.getItemStack().clone();
-        bought.setAmount(buyAmount);
+        ItemStack b = item.getItemStack().clone();
+        b.setAmount(buyAmount);
 
-        if (!validationService.canFit(buyer, bought)) {
+        if (!validationService.canFit(buyer, b)) {
             restoreAndFinish(buyer, lotId, configManager.getConfigValues().messages().inventoryFull(), callback);
             return;
         }
@@ -97,9 +97,9 @@ public final class AuctionBuyService extends BaseAuctionService {
     }
 
     private void completePurchase(Player buyer, AuctionItem item, int buyAmount, double totalPrice, Consumer<Boolean> callback) {
-        ItemStack bought = item.getItemStack().clone();
-        bought.setAmount(buyAmount);
-        transactionService.giveItem(buyer, bought);
+        ItemStack b = item.getItemStack().clone();
+        b.setAmount(buyAmount);
+        transactionService.giveItem(buyer, b);
 
         int left = item.amount() - buyAmount;
         if (left > 0) {
@@ -109,25 +109,26 @@ public final class AuctionBuyService extends BaseAuctionService {
 
         itemFactory.invalidateLotCache(item.getId());
 
-        OfflinePlayer seller = Bukkit.getOfflinePlayer(item.getSellerName());
-        transactionService.depositMoney(seller, item.getCurrency(), totalPrice);
-        transactionService.recordSale(item.getSellerName(), buyer.getName(), item.getCurrency(), bought.getType().name(), buyAmount, totalPrice);
+        OfflinePlayer sellerOffline = Bukkit.getOfflinePlayer(item.getSellerName());
+        transactionService.depositMoney(sellerOffline, item.getCurrency(), totalPrice);
+        transactionService.recordSale(item.getSellerName(), buyer.getName(), item.getCurrency(), b.getType().name(), buyAmount, totalPrice);
 
-        String itemName = ItemUtils.getItemDisplayName(bought);
-        String priceStr = PriceFormatter.format(totalPrice);
-        String symbol = item.getCurrency().symbol(configManager.getConfigValues());
+        String i = ItemUtils.getItemDisplayName(b);
 
-        buyer.sendMessage(PlaceholderUtils.applypapi(buyer, configManager.getConfigValues().messages().yspex().replace("{symbol_value}", priceStr + " " + symbol), configManager));
+        String str = PriceFormatter.format(totalPrice);
+        String ys = item.getCurrency().symbol(configManager.getConfigValues());
 
-        Player onlineSeller = Bukkit.getPlayer(item.getSellerName());
-        if (onlineSeller != null) {
-            onlineSeller.sendMessage(PlaceholderUtils.applypapi(onlineSeller,
+        buyer.sendMessage(PlaceholderUtils.applypapi(buyer, configManager.getConfigValues().messages().yspex().replace("{item_name}", i).replace("{symbol_value}", str + ys), configManager));
+
+        Player seller = Bukkit.getPlayer(item.getSellerName());
+        if (seller != null) {
+            seller.sendMessage(PlaceholderUtils.applypapi(seller,
                     configManager.getConfigValues().messages().buySeller()
                             .replace("{buyer}", buyer.getName())
-                            .replace("{item_name}", itemName)
+                            .replace("{item_name}", i)
                             .replace("{amount}", String.valueOf(buyAmount))
-                            .replace("{price}", priceStr)
-                            .replace("{symbol_value}", symbol),
+                            .replace("{price}", str)
+                            .replace("{symbol_value}", ys),
                     configManager));
         }
 

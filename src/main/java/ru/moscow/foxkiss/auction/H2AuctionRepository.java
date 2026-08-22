@@ -1,5 +1,7 @@
 package ru.moscow.foxkiss.auction;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectList;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.database.H2LibraryLoader;
@@ -164,17 +166,6 @@ public final class H2AuctionRepository implements AuctionRepository {
     }
 
     @Override
-    public List<AuctionItem> findPage(AuctionCurrency currency, int page, int pageSize, AuctionSort sort, String category, String sellerFilter, String searchFilter) {
-        try (Connection conn = open()) {
-            return findPageWithConnection(conn, currency, page, pageSize, sort, category,
-                    sellerFilter, searchFilter, AuctionViewType.MAIN, -1L, null);
-        } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Ошибка поиска страницы", e);
-            return List.of();
-        }
-    }
-
-    @Override
     public MenuData loadMenuData(AuctionCurrency currency, String playerName, int maxDays, int page, int pageSize, AuctionSort sort, String category, String sellerFilter, String searchFilter, AuctionViewType viewType) {
         long cutoff = System.currentTimeMillis() - maxDays * 86_400_000L;
         try (Connection conn = open()) {
@@ -212,6 +203,8 @@ public final class H2AuctionRepository implements AuctionRepository {
         StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM auction_items WHERE currency=? AND status=?");
 
         if (viewType == AuctionViewType.MAIN) {
+            sql.append(" AND created_at >= ?");
+            params.add(cutoff);
             if (TextUtils.isNotBlank(category) && !category.equalsIgnoreCase("all")) {
                 sql.append(" AND material=?");
                 params.add(category.toUpperCase(Locale.ROOT));
@@ -252,6 +245,8 @@ public final class H2AuctionRepository implements AuctionRepository {
         StringBuilder sql = new StringBuilder("SELECT * FROM auction_items WHERE currency=? AND status=?");
 
         if (viewType == AuctionViewType.MAIN) {
+            sql.append(" AND created_at >= ?");
+            params.add(cutoff);
             if (TextUtils.isNotBlank(category) && !category.equalsIgnoreCase("all")) {
                 sql.append(" AND material=?");
                 params.add(category.toUpperCase(Locale.ROOT));
@@ -290,7 +285,7 @@ public final class H2AuctionRepository implements AuctionRepository {
         params.add(safePageSize);
         params.add(safePage * safePageSize);
 
-        List<AuctionItem> items = new ArrayList<>();
+        ObjectList<AuctionItem> items = new ObjectArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
             for (int i = 0; i < params.size(); i++) {
                 ps.setObject(i + 1, params.get(i));
@@ -378,7 +373,7 @@ public final class H2AuctionRepository implements AuctionRepository {
 
     @Override
     public List<TopSeller> getTopSellers(AuctionCurrency currency, int limit) {
-        List<TopSeller> sellers = new ArrayList<>();
+        ObjectList<TopSeller> sellers = new ObjectArrayList<>();
         try (Connection conn = open();
              PreparedStatement ps = conn.prepareStatement("SELECT seller_name, COUNT(*) AS sold, COALESCE(SUM(price),0) AS earned " + "FROM sales_history WHERE currency=? GROUP BY seller_name ORDER BY sold DESC LIMIT ?")) {
             ps.setString(1, currency.name());
@@ -413,7 +408,7 @@ public final class H2AuctionRepository implements AuctionRepository {
 
     @Override
     public List<String> getUniqueMaterialNames(AuctionCurrency currency) {
-        List<String> names = new ArrayList<>();
+        ObjectList<String> names = new ObjectArrayList<>();
         try (Connection conn = open();
              PreparedStatement ps = conn.prepareStatement("SELECT DISTINCT material FROM auction_items WHERE currency=? AND status=? AND material IS NOT NULL")) {
             ps.setString(1, currency.name());

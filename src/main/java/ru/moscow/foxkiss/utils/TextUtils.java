@@ -15,10 +15,6 @@ public final class TextUtils {
         return str != null && !str.isEmpty();
     }
 
-    public static boolean isBlank(String str) {
-        return str == null || str.isEmpty();
-    }
-
     public static String colorize(String message) {
         if (message == null || message.isEmpty()) return message;
 

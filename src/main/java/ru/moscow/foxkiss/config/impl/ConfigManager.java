@@ -1,5 +1,7 @@
 package ru.moscow.foxkiss.config.impl;
 
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectList;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -27,6 +29,7 @@ public final class ConfigManager implements IConfigManager {
     public void reload() {
         plugin.saveDefaultConfig();
         plugin.reloadConfig();
+
         loadItemsYml();
 
         FileConfiguration config = plugin.getConfig();
@@ -89,7 +92,7 @@ public final class ConfigManager implements IConfigManager {
         boolean enableBstats = config.getBoolean("enable-bstats");
         boolean usePapi = config.getBoolean("use-papi");
 
-        List<Integer> activeSlots = new ArrayList<>(auctionSection.getIntegerList("active-slots"));
+        ObjectList<Integer> activeSlots = new ObjectArrayList<>(auctionSection.getIntegerList("active-slots"));
         if (activeSlots.isEmpty()) {
             for (int i = 0; i < 36; i++) activeSlots.add(i);
         }

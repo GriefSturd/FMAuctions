@@ -1,5 +1,6 @@
 package ru.moscow.foxkiss.gui;
 
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import lombok.RequiredArgsConstructor;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
@@ -19,11 +20,8 @@ import ru.moscow.foxkiss.utils.PlaceholderUtils;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
-@RequiredArgsConstructor
 public final class AuctionMenu {
-    private final JavaPlugin plugin;
     private final IConfigManager configManager;
     private final AuctionRepository repository;
     private final PlayerPreferences playerPreferences;
@@ -32,10 +30,10 @@ public final class AuctionMenu {
     private final ConfirmMenuController confirmController;
     private final ItemDisplayFactory itemFactory;
     private final SchedulerService scheduler;
-    private final Map<UUID, Boolean> requestInProgress = new ConcurrentHashMap<>();
+
+    private final Object2ObjectOpenHashMap<UUID, Boolean> requestInProgress = new Object2ObjectOpenHashMap<>();
 
     public AuctionMenu(JavaPlugin plugin, IConfigManager configManager, AuctionRepository repository, PlayerPreferences playerPreferences, ItemDisplayFactory itemFactory) {
-        this.plugin = plugin;
         this.configManager = configManager;
         this.repository = repository;
         this.playerPreferences = playerPreferences;
@@ -106,10 +104,12 @@ public final class AuctionMenu {
 
     public void refreshInventory(Player player, AuctionMenuHolder holder) {
         UUID uuid = player.getUniqueId();
-        if (requestInProgress.getOrDefault(uuid, false)) {
-            return;
+        synchronized (requestInProgress) {
+            if (requestInProgress.getOrDefault(uuid, false)) {
+                return;
+            }
+            requestInProgress.put(uuid, true);
         }
-        requestInProgress.put(uuid, true);
         long requestVersion = holder.incrementAndGetRequestVersion();
         renderRefresh(player, holder, requestVersion);
     }
@@ -125,10 +125,12 @@ public final class AuctionMenu {
 
     private void renderNew(Player player, AuctionViewType viewType, AuctionCurrency currency, int page, AuctionSort sort, String sellerFilter, String searchFilter, String category) {
         UUID uuid = player.getUniqueId();
-        if (requestInProgress.getOrDefault(uuid, false)) {
-            return;
+        synchronized (requestInProgress) {
+            if (requestInProgress.getOrDefault(uuid, false)) {
+                return;
+            }
+            requestInProgress.put(uuid, true);
         }
-        requestInProgress.put(uuid, true);
 
         int pageSize = configManager.getConfigValues().auctionSlots().size();
         String playerName = player.getName();
@@ -164,7 +166,9 @@ public final class AuctionMenu {
                         );
                         player.openInventory(inv);
                     } finally {
-                        requestInProgress.remove(uuid);
+                        synchronized (requestInProgress) {
+                            requestInProgress.remove(uuid);
+                        }
                     }
                 }
         );
@@ -221,7 +225,9 @@ public final class AuctionMenu {
                             builder.fillGlass(holder.getInventory(), panes);
                         }
                     } finally {
-                        requestInProgress.remove(uuid);
+                        synchronized (requestInProgress) {
+                            requestInProgress.remove(uuid);
+                        }
                     }
                 }
         );

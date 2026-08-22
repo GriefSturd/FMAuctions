@@ -11,8 +11,6 @@ public interface AuctionRepository {
 
     long create(String sellerName, AuctionCurrency currency, ItemStack itemStack, double price);
 
-    List<AuctionItem> findPage(AuctionCurrency currency, int page, int size, AuctionSort sort, String category, String sellerFilter, String searchFilter);
-
     Optional<AuctionItem> findById(long id);
 
     MenuData loadMenuData(AuctionCurrency currency, String playerName, int maxDays, int page, int pageSize, AuctionSort sort, String category, String sellerFilter, String searchFilter, AuctionViewType viewType);

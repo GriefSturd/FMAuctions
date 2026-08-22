@@ -1,5 +1,8 @@
 package ru.moscow.foxkiss.gui;
 
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import it.unimi.dsi.fastutil.objects.ObjectList;
 import lombok.RequiredArgsConstructor;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
@@ -26,10 +29,10 @@ public final class ItemDisplayFactory {
     private final IConfigManager configManager;
     private final NamespacedKey actionKey;
 
-    private final Map<String, ItemStack> lotDisplayCache = new HashMap<>();
-    private final Map<String, ItemStack> navCache = new HashMap<>();
-    private final Map<AuctionSort, ItemStack> sortButtonCache = new HashMap<>();
-    private final Map<String, ItemStack> categoryButtonCache = new HashMap<>();
+    private final Object2ObjectOpenHashMap<String, ItemStack> lotDisplayCache = new Object2ObjectOpenHashMap<>();
+    private final Object2ObjectOpenHashMap<String, ItemStack> navCache = new Object2ObjectOpenHashMap<>();
+    private final Object2ObjectOpenHashMap<AuctionSort, ItemStack> sortButtonCache = new Object2ObjectOpenHashMap<>();
+    private final Object2ObjectOpenHashMap<String, ItemStack> categoryButtonCache = new Object2ObjectOpenHashMap<>();
 
     public ItemDisplayFactory(JavaPlugin plugin, IConfigManager configManager) {
         this.configManager = configManager;
@@ -45,7 +48,7 @@ public final class ItemDisplayFactory {
         ItemStack base = item.getItemStack().clone();
         ItemMeta meta = base.getItemMeta();
 
-        List<Component> lore = new ArrayList<>();
+        ObjectList<Component> lore = new ObjectArrayList<>();
         if (meta.hasLore()) {
             List<Component> original = meta.lore();
             if (original != null) lore.addAll(original);
@@ -106,7 +109,7 @@ public final class ItemDisplayFactory {
         ConfigValues.SortMenuConfig sortMenu = config.guiConfig().sortMenu();
         ConfigValues.NavigationConfig nav = config.guiConfig().navigation();
 
-        List<String> lore = new ArrayList<>();
+        ObjectList<String> lore = new ObjectArrayList<>();
         Map<String, String> sortingNames = config.sortingNames();
         for (AuctionSort sort : AuctionSort.values()) {
             String display = sortingNames.getOrDefault(sort.name(), sort.name());
@@ -132,13 +135,13 @@ public final class ItemDisplayFactory {
         ConfigValues.CategoryMenuConfig categoryMenu = config.guiConfig().categoryMenu();
         ConfigValues.NavigationConfig nav = config.guiConfig().navigation();
 
-        List<String> categories = new ArrayList<>(config.categories().keySet());
+        ObjectList<String> categories = new ObjectArrayList<>(config.categories().keySet());
         if (!categories.contains("all")) {
-            categories.addFirst("all");
+            categories.add(0, "all");
         }
 
         String current = selectedCategory.toLowerCase();
-        List<String> lore = new ArrayList<>();
+        ObjectList<String> lore = new ObjectArrayList<>();
         Map<String, String> categoryNames = config.categoryNames();
         for (String category : categories) {
             String display = categoryNames.getOrDefault(category.toLowerCase(), category.substring(0, 1).toUpperCase() + category.substring(1).toLowerCase());
@@ -158,7 +161,7 @@ public final class ItemDisplayFactory {
         ItemMeta meta = display.getItemMeta();
         meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_UNBREAKABLE, ItemFlag.HIDE_DESTROYS, ItemFlag.HIDE_PLACED_ON);
 
-        List<Component> lore = new ArrayList<>();
+        ObjectList<Component> lore = new ObjectArrayList<>();
         if (meta.hasLore()) {
             List<Component> original = meta.lore();
             if (original != null) lore.addAll(original);
