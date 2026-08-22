@@ -4,6 +4,10 @@
 *.war
 *.ear
 
+.idea/
+*.iml
+out/
+
 target/
 out/
 build/
