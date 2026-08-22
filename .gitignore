@@ -1,19 +1,9 @@
-# Compiled files
-*.class
-*.jar
-*.war
-*.ear
 
-.idea/
-*.iml
-out/
-
-target/
-out/
-build/
-bin/
 .gradle/
 gradle/
+build/
+gradlew
+gradlew.bat
 
 .idea/
 *.iml
@@ -23,9 +13,7 @@ gradle/
 .project
 .settings/
 *.swp
-*.swo
-*~
 
-# Logs
-logs/
+*.class
+*.jar
 *.log
