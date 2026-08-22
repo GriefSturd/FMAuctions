@@ -32,8 +32,8 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
     private final AuctionService service;
     private final AuctionRepository repo;
 
-    private static ObjectList<String> names = new ObjectArrayList<>();
-    private static Object2ObjectOpenHashMap<String, String> toMat = new Object2ObjectOpenHashMap<>();
+    private final ObjectList<String> names = new ObjectArrayList<>();
+    private final Object2ObjectOpenHashMap<String, String> toMat = new Object2ObjectOpenHashMap<>();
     private final Map<AuctionCurrency, List<String>> matCache = new HashMap<>();
     private final Map<AuctionCurrency, Long> timeCache = new HashMap<>();
 
@@ -123,6 +123,14 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, String[] args) {
+        if (args.length == 0) {
+            return Collections.emptyList();
+        }
+
+        if (!sender.hasPermission("fmauction.admin")) {
+            return List.of();
+        }
+
         final ObjectList<String> completions = new ObjectArrayList<>();
         if (args.length == 1) {
             completions.add("sell");
@@ -155,6 +163,7 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
 
         for (String matName : all) {
             Material m = Material.getMaterial(matName);
+            if (m == null) continue;
             String trans = ItemUtils.getTranslation(m);
             if (trans != null && !trans.isEmpty()) {
                 names.add(trans);
