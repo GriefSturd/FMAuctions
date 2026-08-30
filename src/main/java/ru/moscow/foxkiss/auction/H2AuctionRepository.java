@@ -2,6 +2,7 @@ package ru.moscow.foxkiss.auction;
 
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
+import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.database.H2LibraryLoader;
@@ -45,7 +46,9 @@ public final class H2AuctionRepository implements AuctionRepository {
                     status INTEGER DEFAULT 0,
                     material TEXT,
                     amount INTEGER DEFAULT 1,
-                    price_per_item REAL
+                    price_per_item REAL,
+                    lot_type VARCHAR DEFAULT 'ITEM',
+                    inventory_data TEXT
                 )
                 """);
 
@@ -100,6 +103,20 @@ public final class H2AuctionRepository implements AuctionRepository {
             if (!rs.next()) {
                 try (Statement st = conn.createStatement()) {
                     st.executeUpdate("ALTER TABLE auction_items ADD COLUMN price_per_item REAL");
+                }
+            }
+        }
+        try (ResultSet rs = meta.getColumns(null, null, "AUCTION_ITEMS", "LOT_TYPE")) {
+            if (!rs.next()) {
+                try (Statement st = conn.createStatement()) {
+                    st.executeUpdate("ALTER TABLE auction_items ADD COLUMN lot_type VARCHAR DEFAULT 'ITEM'");
+                }
+            }
+        }
+        try (ResultSet rs = meta.getColumns(null, null, "AUCTION_ITEMS", "INVENTORY_DATA")) {
+            if (!rs.next()) {
+                try (Statement st = conn.createStatement()) {
+                    st.executeUpdate("ALTER TABLE auction_items ADD COLUMN inventory_data TEXT");
                 }
             }
         }
@@ -163,6 +180,55 @@ public final class H2AuctionRepository implements AuctionRepository {
             plugin.getLogger().log(Level.WARNING, "Ошибка создания лота", e);
             return -1L;
         }
+    }
+
+    @Override
+    public long createInventory(String sellerName, AuctionCurrency currency, ItemStack displayItem, List<ItemStack> contents, double price) {
+        try (Connection conn = open();
+             PreparedStatement ps = conn.prepareStatement("INSERT INTO auction_items(seller_name,currency,item,price,created_at,status,material,amount,price_per_item,lot_type,inventory_data) " + "VALUES(?,?,?,?,?,?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS)) {
+
+            int amount = Math.max(1, displayItem.getAmount());
+            double pricePerItem = (amount > 0) ? price / amount : price;
+
+            ps.setString(1, sellerName);
+            ps.setString(2, currency.name());
+            ps.setString(3, serialize(displayItem));
+            ps.setDouble(4, price);
+            ps.setLong(5, System.currentTimeMillis());
+            ps.setInt(6, active);
+            ps.setString(7, displayItem.getType().name());
+            ps.setInt(8, amount);
+            ps.setDouble(9, pricePerItem);
+            ps.setString(10, AuctionLotType.INVENTORY.name());
+            ps.setString(11, serializeInventory(contents));
+            ps.executeUpdate();
+
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                return keys.next() ? keys.getLong(1) : -1L;
+            }
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "Ошибка создания лота-инвентаря", e);
+            return -1L;
+        }
+    }
+
+    @Override
+    public List<Long> loadInventoryLotIds(AuctionCurrency currency) {
+        ObjectArrayList<Long> ids = new ObjectArrayList<>();
+        try (Connection conn = open();
+             PreparedStatement ps = conn.prepareStatement("SELECT id FROM auction_items WHERE currency=? AND status=? AND lot_type=? ORDER BY id ASC")) {
+            ps.setString(1, currency.name());
+            ps.setInt(2, active);
+            ps.setString(3, AuctionLotType.INVENTORY.name());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    ids.add(rs.getLong("id"));
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.WARNING, "Ошибка загрузки ID лотов-инвентарей", e);
+        }
+        return ids;
     }
 
     @Override
@@ -458,6 +524,8 @@ public final class H2AuctionRepository implements AuctionRepository {
         if (amount > 0) {
             item.setAmount(amount);
         }
+        AuctionLotType type = AuctionLotType.valueOf(rs.getString("lot_type"));
+        List<ItemStack> inventoryContents = deserializeInventory(rs.getString("inventory_data"));
         return new AuctionItem(
                 rs.getLong("id"),
                 rs.getString("seller_name"),
@@ -465,8 +533,41 @@ public final class H2AuctionRepository implements AuctionRepository {
                 item,
                 rs.getDouble("price"),
                 rs.getLong("created_at"),
-                AuctionStatus.fromInt(rs.getInt("status"))
+                AuctionStatus.fromInt(rs.getInt("status")),
+                type,
+                inventoryContents
         );
+    }
+
+    private String serializeInventory(List<ItemStack> contents) throws Exception {
+        if (contents == null || contents.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < contents.size(); i++) {
+            if (i > 0) {
+                sb.append(";");
+            }
+            ItemStack is = contents.get(i);
+            sb.append(is == null || is.getType() == Material.AIR ? "" : serialize(is));
+        }
+        return sb.toString();
+    }
+
+    private List<ItemStack> deserializeInventory(String data) throws Exception {
+        ObjectArrayList<ItemStack> list = new ObjectArrayList<>();
+        if (data == null || data.isEmpty()) {
+            return list;
+        }
+        String[] parts = data.split(";", -1);
+        for (String part : parts) {
+            if (part.isEmpty()) {
+                list.add(null);
+            } else {
+                list.add(deserialize(part));
+            }
+        }
+        return list;
     }
 
     private Connection open() throws SQLException {

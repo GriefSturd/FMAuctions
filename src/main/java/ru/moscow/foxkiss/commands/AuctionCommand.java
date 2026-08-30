@@ -70,6 +70,7 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
 
         switch (args[0].toLowerCase()) {
             case "sell" -> { return handleSell(p, args); }
+            case "sellinv" -> { return handleSellInventory(p, args); }
             case "search" -> { return handleSearch(p, args); }
             default -> {
                 menu.openMain(p, cur, 0, null, null, null, null);
@@ -93,6 +94,22 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    private boolean handleSellInventory(Player p, String[] args) {
+        if (args.length < 2) {
+            p.sendMessage(PlaceholderUtils.applypapi(p, cfg.getConfigValues().messages().noPrice(), cfg));
+            return true;
+        }
+        double price;
+        try {
+            price = Double.parseDouble(args[1]);
+        } catch (NumberFormatException e) {
+            p.sendMessage(PlaceholderUtils.applypapi(p, cfg.getConfigValues().messages().noPrice(), cfg));
+            return true;
+        }
+        service.sellInventory(p, cur, price);
+        return true;
+    }
+
     private boolean handleSearch(Player p, String[] args) {
         if (args.length < 2) {
             p.sendMessage(PlaceholderUtils.applypapi(p, cfg.getConfigValues().messages().enterPlayerName(), cfg));
@@ -113,7 +130,7 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
         if (mat == null) mat = Material.matchMaterial(query.toUpperCase());
 
         if (mat == null) {
-            menu.openMain(p, cur, 0, null, null, null, null);
+            menu.openMain(p, cur, 0, null, null, query, "all");
             return true;
         }
 
@@ -134,6 +151,7 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
         final ObjectList<String> completions = new ObjectArrayList<>();
         if (args.length == 1) {
             completions.add("sell");
+            completions.add("sellinv");
             completions.add("search");
             return getResult(args, completions);
         }

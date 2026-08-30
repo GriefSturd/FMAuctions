@@ -12,15 +12,16 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
-import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionItem;
 import ru.moscow.foxkiss.auction.AuctionService;
 import ru.moscow.foxkiss.auction.AuctionSort;
 import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
+import ru.moscow.foxkiss.gui.actions.Action;
 import ru.moscow.foxkiss.gui.enums.ActionType;
 import ru.moscow.foxkiss.gui.holders.AuctionMenuHolder;
 import ru.moscow.foxkiss.gui.holders.ConfirmMenuHolder;
+import ru.moscow.foxkiss.gui.holders.InventoryMenuHolder;
 import ru.moscow.foxkiss.gui.holders.QuantityMenuHolder;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
@@ -43,7 +44,7 @@ public final class AuctionMenuListener implements Listener {
         this.configManager = configManager;
         this.auctionMenu = auctionMenu;
         this.auctionService = auctionService;
-        this.quantitySlot = configManager.getConfigValues().guiConfig().quantityMenu().slotAmount();
+        this.quantitySlot = configManager.getConfigValues().quantityMenu().slotAmount();
         reloadCategories();
     }
 
@@ -72,34 +73,55 @@ public final class AuctionMenuListener implements Listener {
             return;
         }
 
-        if (holder instanceof QuantityMenuHolder qh && slot == quantitySlot) {
-            auctionService.buy(player, qh.getLotId(), qh.getSelectedAmount(), success -> {
+        List<Action> actions = holder.getActions(slot);
+        if (actions == null || actions.isEmpty()) return;
+
+        boolean close = false;
+        for (Action action : actions) {
+            if (action.type() == ActionType.CLOSE) {
+                close = true;
+            }
+        }
+
+        if (holder instanceof QuantityMenuHolder qh) {
+            handleQuantityActions(player, qh, slot, actions);
+        } else if (holder instanceof ConfirmMenuHolder ch) {
+            handleConfirmActions(player, ch, actions);
+        } else if (holder instanceof InventoryMenuHolder ih) {
+            handleInventoryActions(player, ih, actions);
+        } else {
+            handleNavigationActions(player, holder, actions, event.isRightClick());
+        }
+
+        if (close && player.getOpenInventory().getTopInventory().getHolder() == holder) {
+            player.closeInventory();
+        }
+    }
+
+    private void handleQuantityActions(Player player, QuantityMenuHolder holder, int slot, List<Action> actions) {
+        boolean buy = false;
+        int amount = holder.getSelectedAmount();
+        boolean changed = false;
+        for (Action action : actions) {
+            switch (action.type()) {
+                case DECREASE_10 -> { amount -= 10; changed = true; }
+                case DECREASE_1 -> { amount--; changed = true; }
+                case INCREASE_1 -> { amount++; changed = true; }
+                case INCREASE_10 -> { amount += 10; changed = true; }
+                case BUY -> { if (slot == quantitySlot) buy = true; }
+                default -> { }
+            }
+        }
+
+        if (buy) {
+            auctionService.buy(player, holder.getLotId(), holder.getSelectedAmount(), success -> {
                 if (!success || !player.isOnline()) return;
-                auctionMenu.openMain(player, qh.getCurrency(), 0, null, null, null, null);
+                auctionMenu.openMain(player, holder.getCurrency(), 0, null, null, null, null);
             });
             return;
         }
 
-        ActionType action = holder.getAction(slot);
-
-        if (holder instanceof QuantityMenuHolder qh) {
-            handleQuantityAction(player, qh, action);
-        } else if (holder instanceof ConfirmMenuHolder ch) {
-            handleConfirmAction(player, ch, action);
-        } else {
-            handleNavigationAction(player, holder, action, event.isRightClick());
-        }
-    }
-
-    private void handleQuantityAction(Player player, QuantityMenuHolder holder, ActionType action) {
-        int amount = holder.getSelectedAmount();
-        switch (action) {
-            case DECREASE_10 -> amount -= 10;
-            case DECREASE_1 -> amount--;
-            case INCREASE_1 -> amount++;
-            case INCREASE_10 -> amount += 10;
-            default -> { return; }
-        }
+        if (!changed) return;
 
         if (amount < 1) amount = 1;
 
@@ -123,18 +145,62 @@ public final class AuctionMenuListener implements Listener {
         }
     }
 
-    private void handleConfirmAction(Player player, ConfirmMenuHolder holder, ActionType action) {
-        if (action == ActionType.CONFIRM) {
-            auctionService.buy(player, holder.getConfirmLotId(), holder.getConfirmAmount(), success -> {
-                if (!success || !player.isOnline()) return;
-                auctionMenu.openMain(player, holder.getCurrency(), 0, null, null, null, null);
-            });
-        } else if (action == ActionType.CANCEL) {
-            player.closeInventory();
+    private void handleConfirmActions(Player player, ConfirmMenuHolder holder, List<Action> actions) {
+        boolean confirmed = false;
+        for (Action action : actions) {
+            switch (action.type()) {
+                case CONFIRM -> confirmed = true;
+                default -> { }
+            }
+        }
+
+        if (confirmed) {
+            if (holder.isInventoryBuy()) {
+                auctionService.buyInventory(player, holder.getConfirmLotId(), success -> {
+                    if (!success || !player.isOnline()) return;
+                    auctionMenu.openMain(player, holder.getCurrency(), 0, null, null, null, null);
+                });
+            } else {
+                auctionService.buy(player, holder.getConfirmLotId(), holder.getConfirmAmount(), success -> {
+                    if (!success || !player.isOnline()) return;
+                    auctionMenu.openMain(player, holder.getCurrency(), 0, null, null, null, null);
+                });
+            }
         }
     }
 
-    private void handleNavigationAction(Player player, AuctionMenuHolder holder, ActionType action, boolean rightClick) {
+    private void handleInventoryActions(Player player, InventoryMenuHolder holder, List<Action> actions) {
+        for (Action action : actions) {
+            switch (action.type()) {
+                case CLOSE -> { }
+                case INVENTORY_PREV -> {
+                    if (holder.getPrevLotId() != -1L) {
+                        auctionMenu.openInventoryView(player, holder.getCurrency(), holder.getPrevLotId());
+                    }
+                }
+                case INVENTORY_NEXT -> {
+                    if (holder.getNextLotId() != -1L) {
+                        auctionMenu.openInventoryView(player, holder.getCurrency(), holder.getNextLotId());
+                    }
+                }
+                case BUY -> {
+                    if (configManager.getConfigValues().confirmMenu().enabled()) {
+                        auctionMenu.openConfirm(player, holder.getCurrency(), holder.getLotId(), 1, true);
+                    } else {
+                        auctionService.buyInventory(player, holder.getLotId(), success -> {
+                            if (!success || !player.isOnline()) return;
+                            auctionMenu.openMain(player, holder.getCurrency(), 0, null, null, null, null);
+                        });
+                    }
+                }
+                default -> { }
+            }
+        }
+    }
+
+    private void handleNavigationActions(Player player, AuctionMenuHolder holder, List<Action> actions, boolean rightClick) {
+        ActionType action = actions.get(0).type();
+
         if (action == ActionType.REFRESH) {
             if (!tryUseCooldown(player, updateCooldowns,
                     configManager.getConfigValues().cooldowns().updateAuctionSeconds())) {
@@ -182,6 +248,11 @@ public final class AuctionMenuListener implements Listener {
     }
 
     private void handleLotClick(Player player, AuctionMenuHolder holder, int slot, long lotId, boolean rightClick) {
+        if (holder.isInventoryLot(slot) && holder.getViewType() != AuctionViewType.SELLING && holder.getViewType() != AuctionViewType.EXPIRED) {
+            auctionMenu.openInventoryView(player, holder.getCurrency(), lotId);
+            return;
+        }
+
         if (holder.getViewType() == AuctionViewType.SELLING || holder.getViewType() == AuctionViewType.EXPIRED) {
             if (!tryUseCooldown(player, takeCooldowns, configManager.getConfigValues().cooldowns().takeItemSeconds())) {
                 return;
@@ -203,7 +274,7 @@ public final class AuctionMenuListener implements Listener {
         }
 
         if (configManager.getConfigValues().confirmMenu().enabled() && !rightClick) {
-            auctionMenu.openConfirm(player, holder.getCurrency(), lotId, amount);
+            auctionMenu.openConfirm(player, holder.getCurrency(), lotId, amount, false);
             return;
         }
 

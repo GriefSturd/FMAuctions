@@ -8,9 +8,10 @@ import org.jetbrains.annotations.NotNull;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionSort;
 import ru.moscow.foxkiss.gui.AuctionViewType;
-import ru.moscow.foxkiss.gui.enums.ActionType;
+import ru.moscow.foxkiss.gui.actions.Action;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -29,7 +30,8 @@ public abstract class AuctionMenuHolder implements InventoryHolder {
 
     protected final Map<Integer, Long> lotsBySlot = new HashMap<>();
     protected final Map<Integer, Integer> lotsAmountBySlot = new HashMap<>();
-    protected final Map<Integer, ActionType> actionsBySlot = new HashMap<>();
+    protected final Map<Integer, Boolean> inventoryLotBySlot = new HashMap<>();
+    protected final Map<Integer, List<Action>> actionsBySlot = new HashMap<>();
 
     protected int totalPages = 1;
     private long requestVersion = 0;
@@ -48,22 +50,32 @@ public abstract class AuctionMenuHolder implements InventoryHolder {
 
     public long incrementAndGetRequestVersion() { return ++requestVersion; }
 
-    public void addLot(int slot, long id, int amount) {
+    public void addLot(int slot, long id, int amount, boolean inventory) {
         lotsBySlot.put(slot, id);
         lotsAmountBySlot.put(slot, amount);
+        inventoryLotBySlot.put(slot, inventory);
     }
 
-    public void addAction(int slot, ActionType action) {
-        actionsBySlot.put(slot, action);
+    public void addLot(int slot, long id, int amount) {
+        addLot(slot, id, amount, false);
     }
 
-    public ActionType getAction(int slot) {
+    public boolean isInventoryLot(int slot) {
+        return Boolean.TRUE.equals(inventoryLotBySlot.get(slot));
+    }
+
+    public void addActions(int slot, List<Action> actions) {
+        actionsBySlot.put(slot, actions);
+    }
+
+    public List<Action> getActions(int slot) {
         return actionsBySlot.get(slot);
     }
 
     public void clearLots() {
         lotsBySlot.clear();
         lotsAmountBySlot.clear();
+        inventoryLotBySlot.clear();
     }
 
     public Long getLot(int slot) {

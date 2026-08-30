@@ -5,6 +5,7 @@ import org.bukkit.inventory.ItemStack;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionRepository;
 import ru.moscow.foxkiss.auction.services.base.BaseAuctionService;
+import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.permissions.LimitService;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
@@ -58,16 +59,25 @@ public final class AuctionSellService extends BaseAuctionService {
         String playerName = player.getName();
         ItemStack soldItem = hand.clone();
 
+        double commission = chargeCommission(player, currency, configManager.getConfigValues().commission().sell(), price);
+        if (commission == -1) return;
+
         scheduler.runAsync(() -> {
             int active = repository.countActiveBySellerSince(playerName, currency, 0);
             if (active >= limit) {
-                scheduler.runSync(() -> sendMessage(player, configManager.getConfigValues().messages().limitReached()));
+                scheduler.runSync(() -> {
+                    if (commission > 0) transactionService.depositMoney(player, currency, commission);
+                    sendMessage(player, configManager.getConfigValues().messages().limitReached());
+                });
                 return;
             }
 
             long id = repository.create(playerName, currency, soldItem, price);
             if (id <= 0) {
-                scheduler.runSync(() -> sendMessage(player, configManager.getConfigValues().messages().databaseError()));
+                scheduler.runSync(() -> {
+                    if (commission > 0) transactionService.depositMoney(player, currency, commission);
+                    sendMessage(player, configManager.getConfigValues().messages().databaseError());
+                });
                 return;
             }
 

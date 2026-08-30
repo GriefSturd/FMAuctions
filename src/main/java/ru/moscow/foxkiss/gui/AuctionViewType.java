@@ -6,4 +6,5 @@ public enum AuctionViewType {
     EXPIRED,
     QUANTITY,
     CONFIRM,
+    INVENTORY,
 }

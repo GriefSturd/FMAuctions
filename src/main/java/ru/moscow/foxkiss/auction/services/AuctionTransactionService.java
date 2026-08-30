@@ -27,6 +27,10 @@ public final class AuctionTransactionService {
         return economyProvider.withdraw(player, currency, amount);
     }
 
+    public boolean hasEnoughMoney(Player player, AuctionCurrency currency, double amount) {
+        return economyProvider.has(player, currency, amount);
+    }
+
     public void depositMoney(OfflinePlayer player, AuctionCurrency currency, double amount) {
         economyProvider.deposit(player, currency, amount);
     }

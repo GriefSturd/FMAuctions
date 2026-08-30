@@ -4,6 +4,8 @@ import lombok.Data;
 import lombok.AllArgsConstructor;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.List;
+
 @Data
 @AllArgsConstructor
 public class AuctionItem {
@@ -14,6 +16,8 @@ public class AuctionItem {
     private final double price;
     private final long createdAt;
     private final AuctionStatus status;
+    private final AuctionLotType type;
+    private final List<ItemStack> inventoryContents;
 
     public int amount() {
         return itemStack.getAmount();

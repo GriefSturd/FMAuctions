@@ -11,7 +11,11 @@ public interface AuctionRepository {
 
     long create(String sellerName, AuctionCurrency currency, ItemStack itemStack, double price);
 
+    long createInventory(String sellerName, AuctionCurrency currency, ItemStack displayItem, List<ItemStack> contents, double price);
+
     Optional<AuctionItem> findById(long id);
+
+    List<Long> loadInventoryLotIds(AuctionCurrency currency);
 
     MenuData loadMenuData(AuctionCurrency currency, String playerName, int maxDays, int page, int pageSize, AuctionSort sort, String category, String sellerFilter, String searchFilter, AuctionViewType viewType);
 

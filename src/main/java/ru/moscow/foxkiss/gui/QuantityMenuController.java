@@ -25,10 +25,10 @@ public final class QuantityMenuController {
 
     public void openQuantity(Player player, AuctionCurrency currency, AuctionItem item, int selectedAmount) {
         ConfigValues values = configManager.getConfigValues();
-        ConfigValues.QuantityMenuConfig qm = values.guiConfig().quantityMenu();
+        ConfigValues.QuantityMenuConfig qm = values.quantityMenu();
 
         QuantityMenuHolder holder = new QuantityMenuHolder(currency, player.getUniqueId(), item.getId(), selectedAmount, item.amount(), item);
-        Inventory inv = Bukkit.createInventory(holder, qm.sizeMenu(), TextUtils.component(values.guiConfig().titles().quantity()));
+        Inventory inv = Bukkit.createInventory(holder, qm.sizeMenu(), TextUtils.component(values.quantityMenu().title()));
 
         holder.setInventory(inv);
 
@@ -40,20 +40,21 @@ public final class QuantityMenuController {
         setButton(inv, holder, qm.increase10());
 
         updateQuantityDisplay(inv, holder, item);
+        holder.addActions(qm.slotAmount(), qm.amount().actions());
         player.openInventory(inv);
     }
 
     public void updateQuantityDisplay(Inventory inv, QuantityMenuHolder holder, AuctionItem item) {
         int amount = holder.getSelectedAmount();
         ItemStack display = itemFactory.createBuyItem(item, amount);
-        inv.setItem(configManager.getConfigValues().guiConfig().quantityMenu().slotAmount(), display);
+        inv.setItem(configManager.getConfigValues().quantityMenu().slotAmount(), display);
     }
 
     private void setButton(Inventory inv, QuantityMenuHolder holder, ConfigValues.ButtonConfig config) {
         for (int slot : config.slots()) {
             if (slot >= 0 && slot < inv.getSize()) {
                 inv.setItem(slot, itemFactory.createButton(config));
-                holder.addAction(slot, config.action());
+                holder.addActions(slot, config.actions());
             }
         }
     }

@@ -2,6 +2,7 @@ package ru.moscow.foxkiss.gui;
 
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import lombok.RequiredArgsConstructor;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -13,9 +14,13 @@ import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.builder.MenuBuilder;
 import ru.moscow.foxkiss.gui.holders.AuctionMenuHolder;
+import ru.moscow.foxkiss.gui.holders.InventoryMenuHolder;
 import ru.moscow.foxkiss.gui.holders.QuantityMenuHolder;
+import ru.moscow.foxkiss.gui.ConfirmMenuController;
+import ru.moscow.foxkiss.gui.QuantityMenuController;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
+import ru.moscow.foxkiss.utils.TextUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -39,9 +44,36 @@ public final class AuctionMenu {
         this.playerPreferences = playerPreferences;
         this.scheduler = new SchedulerService(plugin);
         this.itemFactory = itemFactory;
-        this.builder = new MenuBuilder(configManager, itemFactory);
+        this.builder = new MenuBuilder(configManager, itemFactory, repository);
         this.quantityController = new QuantityMenuController(configManager, itemFactory, builder);
         this.confirmController = new ConfirmMenuController(configManager, itemFactory, builder);
+    }
+
+    public void openInventoryView(Player player, AuctionCurrency currency, long lotId) {
+        scheduler.runAsync(() -> {
+            AuctionItem lot = repository.findById(lotId).orElse(null);
+            List<Long> ids = repository.loadInventoryLotIds(currency);
+            scheduler.runSync(() -> {
+                if (!player.isOnline()) return;
+                if (lot == null) {
+                    player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
+                    return;
+                }
+                int total = ids.size();
+                int current = ids.indexOf(lotId);
+                if (current < 0) current = 0;
+                long prevId = current > 0 ? ids.get(current - 1) : -1L;
+                long nextId = current < total - 1 ? ids.get(current + 1) : -1L;
+
+                String title = configManager.getConfigValues().inventorySelling().view().title();
+
+                InventoryMenuHolder holder = new InventoryMenuHolder(currency, player.getUniqueId(), lotId, prevId, nextId, current, total);
+                Inventory inv = Bukkit.createInventory(holder, 54, TextUtils.colorize(title));
+                holder.setInventory(inv);
+                builder.buildInventoryView(holder, currency, lot, current, total);
+                player.openInventory(inv);
+            });
+        });
     }
 
     public void openMain(Player player, AuctionCurrency currency, int page, AuctionSort sort, String sellerFilter, String searchFilter, String category) {
@@ -84,7 +116,7 @@ public final class AuctionMenu {
         });
     }
 
-    public void openConfirm(Player player, AuctionCurrency currency, long lotId, int amount) {
+    public void openConfirm(Player player, AuctionCurrency currency, long lotId, int amount, boolean isInventoryBuy) {
         scheduler.runAsync(() -> {
             AuctionItem item = repository.findById(lotId).orElse(null);
             scheduler.runSync(() -> {
@@ -93,7 +125,7 @@ public final class AuctionMenu {
                     player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().noId(), configManager));
                     return;
                 }
-                confirmController.openConfirm(player, currency, item, amount);
+                confirmController.openConfirm(player, currency, item, amount, isInventoryBuy);
             });
         });
     }
@@ -132,7 +164,7 @@ public final class AuctionMenu {
             requestInProgress.put(uuid, true);
         }
 
-        int pageSize = configManager.getConfigValues().auctionSlots().size();
+        int pageSize = configManager.getConfigValues().gui(currency).auctionSlots().size();
         String playerName = player.getName();
         int maxStorageDays = configManager.getConfigValues().maxAuctionStorageDays();
 
@@ -176,13 +208,13 @@ public final class AuctionMenu {
 
     private void renderRefresh(Player player, AuctionMenuHolder holder, long requestVersion) {
         UUID uuid = player.getUniqueId();
+        AuctionCurrency currency = holder.getCurrency();
 
-        int pageSize = configManager.getConfigValues().auctionSlots().size();
+        int pageSize = configManager.getConfigValues().gui(currency).auctionSlots().size();
         String playerName = player.getName();
         int maxStorageDays = configManager.getConfigValues().maxAuctionStorageDays();
 
         AuctionViewType viewType = holder.getViewType();
-        AuctionCurrency currency = holder.getCurrency();
         int page = holder.getPage();
         AuctionSort sort = holder.getSort();
         String sellerFilter = holder.getSellerFilter();
@@ -220,8 +252,8 @@ public final class AuctionMenu {
                         } else {
                             ConfigValues values = configManager.getConfigValues();
                             Map<Integer, ConfigValues.GlassPane> panes = (viewType == AuctionViewType.SELLING)
-                                    ? values.sellingGlassPanes()
-                                    : values.expiredGlassPanes();
+                                    ? values.gui(holder.getCurrency()).mainGlass()
+                                    : values.gui(holder.getCurrency()).expiredGlass();
                             builder.fillGlass(holder.getInventory(), panes);
                         }
                     } finally {

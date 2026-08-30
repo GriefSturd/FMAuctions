@@ -2,8 +2,6 @@ package ru.moscow.foxkiss.utils;
 
 import com.destroystokyo.paper.profile.PlayerProfile;
 import com.destroystokyo.paper.profile.ProfileProperty;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -26,18 +24,20 @@ public final class ItemUtils {
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return item;
 
-        meta.displayName(TextUtils.component(name).decoration(TextDecoration.ITALIC, false));
+        if (name != null && !name.isEmpty()) {
+            meta.setDisplayName(TextUtils.colorize(name));
+        }
 
         if (customModelData != null) {
             meta.setCustomModelData(customModelData);
         }
 
         if (lore != null && !lore.isEmpty()) {
-            List<Component> loreComponents = new ArrayList<>(lore.size());
+            List<String> coloredLore = new ArrayList<>(lore.size());
             for (String line : lore) {
-                loreComponents.add(TextUtils.component(line).decoration(TextDecoration.ITALIC, false));
+                coloredLore.add(TextUtils.colorize(line));
             }
-            meta.lore(loreComponents);
+            meta.setLore(coloredLore);
         }
 
         item.setItemMeta(meta);
