@@ -5,12 +5,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.utils.TextUtils;
 
-public final class MessagesLoader {
-    private final String prefix;
-
-    public MessagesLoader(String prefix) {
-        this.prefix = prefix;
-    }
+public record MessagesLoader(String prefix) {
 
     public ConfigValues.ConfigMessages load(FileConfiguration config) {
         ConfigurationSection a = config.getConfigurationSection("messages");
@@ -24,7 +19,8 @@ public final class MessagesLoader {
         ConfigurationSection i = config.getConfigurationSection("auction");
         ConfigurationSection j = i.getConfigurationSection("errors");
 
-        ConfigurationSection search = config.getConfigurationSection("search");
+        ConfigurationSection k = config.getConfigurationSection("search");
+        ConfigurationSection l = a.getConfigurationSection("profile");
 
         return new ConfigValues.ConfigMessages(
                 msg(b.getString("reload")),
@@ -42,7 +38,7 @@ public final class MessagesLoader {
                 msg(h.getString("price-too-high")),
                 msg(h.getString("limit-reached")),
                 msg(h.getString("database-error")),
-                msg(String.join("\n", search.getStringList("enter-player-name"))),
+                msg(String.join("\n", k.getStringList("enter-player-name"))),
                 msg(d.getString("buy-seller")),
                 msg(d.getString("otmena")),
                 msg(d.getString("yspex")),
@@ -55,11 +51,21 @@ public final class MessagesLoader {
                 msg(a.getString("cooldown-item")),
                 msg(h.getString("inventory-min-items")),
                 msg(h.getString("commission-charged")),
-                msg(h.getString("commission-not-enough"))
+                msg(h.getString("commission-not-enough")),
+                msg(d.getString("pending-items-empty")),
+                msg(d.getString("pending-items-received")),
+                msg(d.getString("pending-items-remaining")),
+                msg(d.getString("pending-items-saved")),
+                msg(d.getString("pending-items-auto-received")),
+                msg(l.getString("discord-set")),
+                msg(l.getString("discord-cleared")),
+                msg(l.getString("store-set")),
+                msg(l.getString("store-cleared")),
+                msg(l.getString("too-long"))
         );
     }
 
     private String msg(String raw) {
-        return raw == null ? "" : TextUtils.colorize(raw.replace("%prefix%", prefix));
+        return TextUtils.colorize(raw.replace("%prefix%", prefix));
     }
 }

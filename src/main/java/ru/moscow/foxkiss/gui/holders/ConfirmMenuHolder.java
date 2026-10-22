@@ -9,7 +9,7 @@ import java.util.UUID;
 
 @Value
 @EqualsAndHashCode(callSuper = true)
-public final class ConfirmMenuHolder extends AuctionMenuHolder {
+public class ConfirmMenuHolder extends AuctionMenuHolder {
     long confirmLotId;
     int confirmAmount;
     boolean isInventoryBuy;

@@ -4,14 +4,14 @@ import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import lombok.RequiredArgsConstructor;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.auction.AuctionItem;
 import ru.moscow.foxkiss.auction.AuctionService;
 import ru.moscow.foxkiss.auction.AuctionSort;
@@ -23,35 +23,33 @@ import ru.moscow.foxkiss.gui.holders.AuctionMenuHolder;
 import ru.moscow.foxkiss.gui.holders.ConfirmMenuHolder;
 import ru.moscow.foxkiss.gui.holders.InventoryMenuHolder;
 import ru.moscow.foxkiss.gui.holders.QuantityMenuHolder;
+import ru.moscow.foxkiss.gui.holders.SalesHistoryMenuHolder;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
 import java.util.*;
 
-@RequiredArgsConstructor
 public final class AuctionMenuListener implements Listener {
     private final IConfigManager configManager;
     private final AuctionMenu auctionMenu;
     private final AuctionService auctionService;
-    private final int quantitySlot;
 
     private ObjectList<String> cats;
-    private final Object2LongOpenHashMap<String> quantityMessageCooldowns = new Object2LongOpenHashMap<>();
+    private final Object2LongOpenHashMap<UUID> quantityMessageCooldowns = new Object2LongOpenHashMap<>();
     private final Object2LongOpenHashMap<UUID> updateCooldowns = new Object2LongOpenHashMap<>();
     private final Object2LongOpenHashMap<UUID> takeCooldowns = new Object2LongOpenHashMap<>();
     private final Object2IntOpenHashMap<UUID> cooldownMessageSkips = new Object2IntOpenHashMap<>();
 
-    public AuctionMenuListener(IConfigManager configManager, AuctionMenu auctionMenu, AuctionService auctionService, JavaPlugin plugin) {
+    public AuctionMenuListener(IConfigManager configManager, AuctionMenu auctionMenu, AuctionService auctionService) {
         this.configManager = configManager;
         this.auctionMenu = auctionMenu;
         this.auctionService = auctionService;
-        this.quantitySlot = configManager.getConfigValues().quantityMenu().slotAmount();
         reloadCategories();
     }
 
     public void reloadCategories() {
         cats = new ObjectArrayList<>(configManager.getConfigValues().categories().keySet());
         if (!cats.contains("all")) {
-            cats.add(0, "all");
+            cats.addFirst("all");
         }
     }
 
@@ -80,21 +78,31 @@ public final class AuctionMenuListener implements Listener {
         for (Action action : actions) {
             if (action.type() == ActionType.CLOSE) {
                 close = true;
+                break;
             }
         }
 
-        if (holder instanceof QuantityMenuHolder qh) {
-            handleQuantityActions(player, qh, slot, actions);
-        } else if (holder instanceof ConfirmMenuHolder ch) {
-            handleConfirmActions(player, ch, actions);
-        } else if (holder instanceof InventoryMenuHolder ih) {
-            handleInventoryActions(player, ih, actions);
-        } else {
-            handleNavigationActions(player, holder, actions, event.isRightClick());
+        switch (holder) {
+            case QuantityMenuHolder qh -> handleQuantityActions(player, qh, slot, actions);
+            case ConfirmMenuHolder ch -> handleConfirmActions(player, ch, actions);
+            case InventoryMenuHolder ih -> handleInventoryActions(player, ih, actions);
+            default -> handleNavigationActions(player, holder, actions, event.isRightClick());
         }
 
         if (close && player.getOpenInventory().getTopInventory().getHolder() == holder) {
             player.closeInventory();
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onDrag(InventoryDragEvent event) {
+        if (!(event.getView().getTopInventory().getHolder() instanceof AuctionMenuHolder)) return;
+        int topSize = event.getView().getTopInventory().getSize();
+        for (int slot : event.getRawSlots()) {
+            if (slot < topSize) {
+                event.setCancelled(true);
+                return;
+            }
         }
     }
 
@@ -108,7 +116,7 @@ public final class AuctionMenuListener implements Listener {
                 case DECREASE_1 -> { amount--; changed = true; }
                 case INCREASE_1 -> { amount++; changed = true; }
                 case INCREASE_10 -> { amount += 10; changed = true; }
-                case BUY -> { if (slot == quantitySlot) buy = true; }
+                case BUY -> { if (slot == configManager.getConfigValues().quantityMenu().slotAmount()) buy = true; }
                 default -> { }
             }
         }
@@ -126,14 +134,14 @@ public final class AuctionMenuListener implements Listener {
         if (amount < 1) amount = 1;
 
         if (amount > holder.getMaxAmount()) {
-            String nick = player.getName();
+            UUID uuid = player.getUniqueId();
             long now = System.currentTimeMillis();
-            long last = quantityMessageCooldowns.getLong(nick);
+            long last = quantityMessageCooldowns.getLong(uuid);
             if (now - last >= 5000L) {
                 player.sendMessage(PlaceholderUtils.applypapi(player,
                         configManager.getConfigValues().messages().quantityExceeded().replace("{max}", String.valueOf(holder.getMaxAmount())),
                         configManager));
-                quantityMessageCooldowns.put(nick, now);
+                quantityMessageCooldowns.put(uuid, now);
             }
             amount = holder.getMaxAmount();
         }
@@ -199,10 +207,10 @@ public final class AuctionMenuListener implements Listener {
     }
 
     private void handleNavigationActions(Player player, AuctionMenuHolder holder, List<Action> actions, boolean rightClick) {
-        ActionType action = actions.get(0).type();
+        ActionType action = actions.getFirst().type();
 
         if (action == ActionType.REFRESH) {
-            if (!tryUseCooldown(player, updateCooldowns,
+            if (tryUseCooldown(player, updateCooldowns,
                     configManager.getConfigValues().cooldowns().updateAuctionSeconds())) {
                 return;
             }
@@ -216,15 +224,31 @@ public final class AuctionMenuListener implements Listener {
 
             case SELLING -> auctionMenu.openSelling(player, holder.getCurrency(), 0);
 
+            case HISTORY -> auctionMenu.openSalesHistory(player, holder.getCurrency(), 0);
+
+            case PROFILE -> auctionMenu.openProfile(player, holder.getCurrency());
+
+            case DISCORD -> auctionMenu.openProfileInput(player, true);
+
+            case STORE -> auctionMenu.openProfileInput(player, false);
+
             case EXPIRED -> auctionMenu.openExpired(player, holder.getCurrency(), 0);
 
             case PREVIOUS -> {
                 if (currentPage <= 0) return;
+                if (holder instanceof SalesHistoryMenuHolder) {
+                    auctionMenu.openSalesHistory(player, holder.getCurrency(), currentPage - 1);
+                    return;
+                }
                 holder.setPage(currentPage - 1);
                 auctionMenu.refreshInventory(player, holder);
             }
             case NEXT -> {
                 if (currentPage + 1 >= totalPages) return;
+                if (holder instanceof SalesHistoryMenuHolder) {
+                    auctionMenu.openSalesHistory(player, holder.getCurrency(), currentPage + 1);
+                    return;
+                }
                 holder.setPage(currentPage + 1);
                 auctionMenu.refreshInventory(player, holder);
             }
@@ -254,7 +278,7 @@ public final class AuctionMenuListener implements Listener {
         }
 
         if (holder.getViewType() == AuctionViewType.SELLING || holder.getViewType() == AuctionViewType.EXPIRED) {
-            if (!tryUseCooldown(player, takeCooldowns, configManager.getConfigValues().cooldowns().takeItemSeconds())) {
+            if (tryUseCooldown(player, takeCooldowns, configManager.getConfigValues().cooldowns().takeItemSeconds())) {
                 return;
             }
 
@@ -284,21 +308,27 @@ public final class AuctionMenuListener implements Listener {
         });
     }
 
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
-        updateCooldowns.remove(uuid);
-        takeCooldowns.remove(uuid);
-        cooldownMessageSkips.remove(uuid);
-        quantityMessageCooldowns.remove(event.getPlayer().getName());
+        updateCooldowns.removeLong(uuid);
+        takeCooldowns.removeLong(uuid);
+        cooldownMessageSkips.removeInt(uuid);
+        quantityMessageCooldowns.removeLong(uuid);
+    }
+
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        auctionService.processPendingDeliveries(event.getPlayer());
+        auctionService.processPendingPayouts(event.getPlayer());
     }
 
     private boolean tryUseCooldown(Player player, Object2LongOpenHashMap<UUID> cooldowns, double seconds) {
         ConfigValues.Cooldowns settings = configManager.getConfigValues().cooldowns();
-        if (!settings.cooldownEnabled()) return true;
+        if (!settings.cooldownEnabled()) return false;
 
         long cooldownMillis = Math.round(seconds * 1000D);
-        if (cooldownMillis <= 0L) return true;
+        if (cooldownMillis <= 0L) return false;
 
         long now = System.currentTimeMillis();
         UUID playerId = player.getUniqueId();
@@ -306,8 +336,8 @@ public final class AuctionMenuListener implements Listener {
 
         if (now - lastUse >= cooldownMillis) {
             cooldowns.put(playerId, now);
-            cooldownMessageSkips.remove(playerId);
-            return true;
+            cooldownMessageSkips.removeInt(playerId);
+            return false;
         }
 
         int skips = cooldownMessageSkips.getInt(playerId);
@@ -317,7 +347,7 @@ public final class AuctionMenuListener implements Listener {
         } else if (settings.cooldownMessageEnabled()) {
             cooldownMessageSkips.put(playerId, skips - 1);
         }
-        return false;
+        return true;
     }
 
     private ObjectList<String> getCategoriesList() {
@@ -327,14 +357,14 @@ public final class AuctionMenuListener implements Listener {
     private String getNextCategory(String current) {
         ObjectList<String> categories = getCategoriesList();
         int index = categories.indexOf(current.toLowerCase());
-        if (index < 0) return categories.get(0);
+        if (index < 0) return categories.getFirst();
         return categories.get((index + 1) % categories.size());
     }
 
     private String getPreviousCategory(String current) {
         ObjectList<String> categories = getCategoriesList();
         int index = categories.indexOf(current.toLowerCase());
-        if (index < 0) return categories.get(categories.size() - 1);
+        if (index < 0) return categories.getLast();
         return categories.get((index - 1 + categories.size()) % categories.size());
     }
 }

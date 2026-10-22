@@ -29,7 +29,7 @@ public final class PlayerPointsApi {
         return api.take(player.getUniqueId(), amount);
     }
 
-    public void deposit(OfflinePlayer player, int amount) {
-        api.give(player.getUniqueId(), amount);
+    public boolean deposit(OfflinePlayer player, int amount) {
+        return api.give(player.getUniqueId(), amount);
     }
 }

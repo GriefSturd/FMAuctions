@@ -11,23 +11,14 @@ import ru.moscow.foxkiss.gui.builder.MenuBuilder;
 import ru.moscow.foxkiss.gui.holders.ConfirmMenuHolder;
 import ru.moscow.foxkiss.utils.TextUtils;
 
-public final class ConfirmMenuController {
-    private final IConfigManager configManager;
-    private final ItemDisplayFactory itemFactory;
-    private final MenuBuilder menuBuilder;
-
-    public ConfirmMenuController(IConfigManager configManager, ItemDisplayFactory itemFactory, MenuBuilder menuBuilder) {
-        this.configManager = configManager;
-        this.itemFactory = itemFactory;
-        this.menuBuilder = menuBuilder;
-    }
+public record ConfirmMenuController(IConfigManager configManager, ItemDisplayFactory itemFactory, MenuBuilder menuBuilder) {
 
     public void openConfirm(Player player, AuctionCurrency currency, AuctionItem item, int amount, boolean isInventoryBuy) {
         ConfigValues.ConfirmMenuConfig config = configManager.getConfigValues().confirmMenu();
 
         int finalAmount = (amount == Integer.MAX_VALUE) ? item.amount() : amount;
 
-        ConfirmMenuHolder holder = new ConfirmMenuHolder(currency, player.getUniqueId(), item.getId(), finalAmount, isInventoryBuy);
+        ConfirmMenuHolder holder = new ConfirmMenuHolder(currency, player.getUniqueId(), item.id(), finalAmount, isInventoryBuy);
         Inventory inv = Bukkit.createInventory(holder, config.size(), TextUtils.component(config.title()));
 
         holder.setInventory(inv);

@@ -98,8 +98,8 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
         synchronized (statsCache) {
             cached = statsCache.get(uuid);
         }
-        if (cached != null && (now - cached.timestamp) < 60000) {
-            return field.equals("sold") ? String.valueOf(cached.sold) : formatMoney(cached.money);
+        if (cached != null && !cached.isExpired(now, 60000)) {
+            return field.equals("sold") ? String.valueOf(cached.sold()) : formatMoney(cached.money());
         }
 
         synchronized (loadingStats) {
@@ -145,10 +145,10 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
 
         TopPlayerInfo info = top.get(pos - 1);
         switch (field) {
-            case "nick": return info.name;
-            case "sold": return String.valueOf(info.soldCount);
-            case "money": return formatMoney(info.money);
-            case "prefix": return info.prefix;
+            case "nick": return info.name();
+            case "sold": return String.valueOf(info.soldCount());
+            case "money": return formatMoney(info.money());
+            case "prefix": return info.prefix();
             default: return null;
         }
     }
@@ -204,29 +204,5 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
 
     private String formatMoney(double amount) {
         return PriceFormatter.format(amount);
-    }
-
-    private static class TopPlayerInfo {
-        final String name;
-        final int soldCount;
-        final double money;
-        final String prefix;
-        TopPlayerInfo(String name, int soldCount, double money, String prefix) {
-            this.name = name;
-            this.soldCount = soldCount;
-            this.money = money;
-            this.prefix = prefix;
-        }
-    }
-
-    private static class CachedPlayerStats {
-        final int sold;
-        final double money;
-        final long timestamp;
-        CachedPlayerStats(int sold, double money, long timestamp) {
-            this.sold = sold;
-            this.money = money;
-            this.timestamp = timestamp;
-        }
     }
 }

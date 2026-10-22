@@ -21,12 +21,17 @@ public final class PriceFormatter {
         formatWithoutDecimals.setGroupingUsed(true);
     }
 
-    private PriceFormatter() {}
-
     public static String format(double amount) {
         if (amount < 1_000) {
             return formatDecimals.format(amount);
         }
         return formatWithoutDecimals.format(amount);
+    }
+
+    public static String format(double amount, ru.moscow.foxkiss.auction.AuctionCurrency currency) {
+        if (currency != null && currency.isIntegerOnly()) {
+            return formatWithoutDecimals.format(Math.round(amount));
+        }
+        return format(amount);
     }
 }

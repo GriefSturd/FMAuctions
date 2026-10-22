@@ -16,6 +16,7 @@ import ru.moscow.foxkiss.gui.AuctionMenu;
 import ru.moscow.foxkiss.gui.AuctionMenuListener;
 import ru.moscow.foxkiss.gui.ItemDisplayFactory;
 import ru.moscow.foxkiss.gui.PlayerPreferences;
+import ru.moscow.foxkiss.gui.ProfileInputService;
 import ru.moscow.foxkiss.permissions.LimitService;
 import ru.moscow.foxkiss.placeholders.FMAuctionExpansion;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
@@ -37,6 +38,7 @@ public final class FMAuction extends JavaPlugin {
     private AuctionMenuListener auctionMenuListener;
     private SchedulerService schedulerService;
     private ItemDisplayFactory itemDisplayFactory;
+    private ProfileInputService profileInputService;
     private UpdateChecker updateChecker;
 
     @Override
@@ -57,15 +59,15 @@ public final class FMAuction extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        if (auctionRepository != null) {
-            auctionRepository.close();
+        if (schedulerService != null) {
+            schedulerService.shutdown();
         }
         if (placeholderExpansion != null) {
             placeholderExpansion.disable();
             placeholderExpansion.unregister();
         }
-        if (schedulerService != null) {
-            schedulerService.shutdown();
+        if (auctionRepository != null) {
+            auctionRepository.close();
         }
     }
 
@@ -90,12 +92,16 @@ public final class FMAuction extends JavaPlugin {
         limitService.init();
 
         schedulerService = new SchedulerService(this);
-        itemDisplayFactory = new ItemDisplayFactory(this, configManager);
+        itemDisplayFactory = new ItemDisplayFactory(configManager);
 
-        auctionService = AuctionService.create(configManager, auctionRepository, economyProvider, limitService, itemDisplayFactory, schedulerService);
+        auctionService = AuctionService.create(this, configManager, auctionRepository, economyProvider, limitService, itemDisplayFactory, schedulerService);
 
         playerPreferences = new PlayerPreferences();
-        auctionMenu = new AuctionMenu(this, configManager, auctionRepository, playerPreferences, itemDisplayFactory);
+        profileInputService = new ProfileInputService(this, configManager, auctionRepository, schedulerService);
+        auctionMenu = new AuctionMenu(this, configManager, auctionRepository, playerPreferences, itemDisplayFactory, schedulerService, profileInputService);
+
+        auctionRepository.recoverStuckLots(economyProvider, true);
+        schedulerService.runTimerAsync(() -> auctionRepository.recoverStuckLots(economyProvider, false), 20L * 60, 20L * 60);
     }
 
     public void reloadAll() {
@@ -118,8 +124,8 @@ public final class FMAuction extends JavaPlugin {
     }
 
     private void registerCommands() {
-        auctionCommand = new AuctionCommand(this, configManager, AuctionCurrency.VAULT, auctionMenu, auctionService, auctionRepository);
-        donateAuctionCommand = new AuctionCommand(this, configManager, AuctionCurrency.PLAYER_POINTS, auctionMenu, auctionService, auctionRepository);
+        auctionCommand = new AuctionCommand(configManager, AuctionCurrency.VAULT, auctionMenu, auctionService);
+        donateAuctionCommand = new AuctionCommand(configManager, AuctionCurrency.PLAYER_POINTS, auctionMenu, auctionService);
 
         AdminCommand adminCommand = new AdminCommand(this, configManager);
 
@@ -137,8 +143,9 @@ public final class FMAuction extends JavaPlugin {
     }
 
     private void registerListeners() {
-        auctionMenuListener = new AuctionMenuListener(configManager, auctionMenu, auctionService, this);
+        auctionMenuListener = new AuctionMenuListener(configManager, auctionMenu, auctionService);
         getServer().getPluginManager().registerEvents(auctionMenuListener, this);
+        getServer().getPluginManager().registerEvents(profileInputService, this);
 
         updateChecker = new UpdateChecker(this);
         getServer().getPluginManager().registerEvents(updateChecker, this);
@@ -148,9 +155,9 @@ public final class FMAuction extends JavaPlugin {
         if (getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
             placeholderExpansion = new FMAuctionExpansion(this, auctionRepository, schedulerService);
             if (placeholderExpansion.register()) {
-                getLogger().info("PlaceholderAPI expansion registered successfully.");
+                getLogger().info("Расширение PlaceholderAPI успешно зарегистрировано.");
             } else {
-                getLogger().warning("Failed to register PlaceholderAPI expansion.");
+                getLogger().warning("Не удалось зарегистрировать расширение PlaceholderAPI.");
             }
         }
     }

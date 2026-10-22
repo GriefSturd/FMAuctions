@@ -29,25 +29,14 @@ public abstract class BaseAuctionService {
         player.sendMessage(PlaceholderUtils.applypapi(player, message, configManager));
     }
 
-    protected void finishWithMessage(Player player, String message, boolean result, Consumer<Boolean> callback) {
+    protected void finishWithMessage(Player player, String message, Consumer<Boolean> callback) {
         sendMessage(player, message);
-        if (callback != null) callback.accept(result);
-    }
-
-    protected void restoreAndFinish(Player player, long lotId, String message, Consumer<Boolean> callback) {
-        scheduler.runAsync(() -> {
-            repository.restoreStatus(lotId);
-            scheduler.runSync(() -> {
-                if (player.isOnline()) {
-                    player.sendMessage(PlaceholderUtils.applypapi(player, message, configManager));
-                }
-                if (callback != null) callback.accept(false);
-            });
-        });
+        if (callback != null) callback.accept(false);
     }
 
     protected double computeCommission(ConfigValues.CommissionRule rule, double price) {
-        if (rule == null) return 0;
+        ConfigValues.CommissionConfig cfg = config().commission();
+        if (cfg == null || !cfg.enabled() || rule == null) return 0;
         double amount = switch (rule.mode()) {
             case FIXED -> rule.fixed();
             case PERCENT -> price * rule.percent() / 100.0;
@@ -58,6 +47,7 @@ public abstract class BaseAuctionService {
 
     protected double chargeCommission(Player player, AuctionCurrency ignored, ConfigValues.CommissionRule rule, double price) {
         ConfigValues.CommissionConfig cfg = config().commission();
+        if (cfg == null || !cfg.enabled()) return 0;
         double commission = computeCommission(rule, price);
         if (commission <= 0) return 0;
         AuctionCurrency currency = rule.currency();
@@ -66,11 +56,10 @@ public abstract class BaseAuctionService {
             sendMessage(player, config().messages().commissionNotEnough().replace("{amount}", PriceFormatter.format(commission)).replace("{symbol_value}", symbol));
             return -1;
         }
-        if (!transactionService.withdrawMoney(player, currency, commission)) {
+        if (transactionService.withdrawMoney(player, currency, commission)) {
             sendMessage(player, config().messages().commissionNotEnough().replace("{amount}", PriceFormatter.format(commission)).replace("{symbol_value}", symbol));
             return -1;
         }
-        sendMessage(player, config().messages().commissionCharged().replace("{amount}", PriceFormatter.format(commission)).replace("{symbol_value}", symbol));
         return commission;
     }
 }

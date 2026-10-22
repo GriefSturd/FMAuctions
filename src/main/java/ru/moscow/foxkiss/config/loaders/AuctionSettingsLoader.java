@@ -4,24 +4,17 @@ import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.config.ConfigValues;
-import ru.moscow.foxkiss.config.loaders.GlassPaneLoader;
 import ru.moscow.foxkiss.gui.actions.Action;
 
 import java.util.*;
 
-public final class AuctionSettingsLoader {
-    private final JavaPlugin plugin;
-
-    public AuctionSettingsLoader(JavaPlugin plugin) {
-        this.plugin = plugin;
-    }
+public record AuctionSettingsLoader(JavaPlugin plugin) {
 
     public ConfigValues.AuctionData load(ConfigurationSection auction, ConfigurationSection categoriesSection) {
-        CategoryData categories = loadCategories(categoriesSection);
+        Map<String, Set<Material>> categories = loadCategories(categoriesSection);
         return new ConfigValues.AuctionData(
                 auction.getInt("max-storage-days"),
-                categories.materials(),
-                categories.allCategories()
+                categories
         );
     }
 
@@ -110,30 +103,23 @@ public final class AuctionSettingsLoader {
         return List.copyOf(actions);
     }
 
-    private CategoryData loadCategories(ConfigurationSection section) {
+    private Map<String, Set<Material>> loadCategories(ConfigurationSection section) {
         Map<String, Set<Material>> materials = new HashMap<>();
-        Set<String> all = new HashSet<>();
 
         for (String key : section.getKeys(false)) {
             String category = key.toLowerCase();
             Set<Material> mats = EnumSet.noneOf(Material.class);
             for (String raw : section.getStringList(key)) {
                 raw = raw.trim();
-                if (raw.equalsIgnoreCase("all")) {
-                    all.add(category);
+                Material m = Material.matchMaterial(raw);
+                if (m == null) {
+                    plugin.getLogger().warning("Неизвестный материал в категории " + key + ": " + raw);
                 } else {
-                    Material m = Material.matchMaterial(raw);
-                    if (m == null) {
-                        plugin.getLogger().warning("Неизвестный материал в категории " + key + ": " + raw);
-                    } else {
-                        mats.add(m);
-                    }
+                    mats.add(m);
                 }
             }
             materials.put(category, Set.copyOf(mats));
         }
-        return new CategoryData(Map.copyOf(materials), Set.copyOf(all));
+        return Map.copyOf(materials);
     }
-
-    private record CategoryData(Map<String, Set<Material>> materials, Set<String> allCategories) {}
 }

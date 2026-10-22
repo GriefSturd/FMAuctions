@@ -1,11 +1,10 @@
 package ru.moscow.foxkiss.gui;
 
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
-import lombok.RequiredArgsConstructor;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
-import org.bukkit.plugin.java.JavaPlugin;
+import ru.moscow.foxkiss.FMAuction;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionItem;
 import ru.moscow.foxkiss.auction.AuctionRepository;
@@ -16,8 +15,7 @@ import ru.moscow.foxkiss.gui.builder.MenuBuilder;
 import ru.moscow.foxkiss.gui.holders.AuctionMenuHolder;
 import ru.moscow.foxkiss.gui.holders.InventoryMenuHolder;
 import ru.moscow.foxkiss.gui.holders.QuantityMenuHolder;
-import ru.moscow.foxkiss.gui.ConfirmMenuController;
-import ru.moscow.foxkiss.gui.QuantityMenuController;
+import ru.moscow.foxkiss.gui.holders.SalesHistoryMenuHolder;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 import ru.moscow.foxkiss.utils.TextUtils;
@@ -35,18 +33,25 @@ public final class AuctionMenu {
     private final ConfirmMenuController confirmController;
     private final ItemDisplayFactory itemFactory;
     private final SchedulerService scheduler;
+    private final SalesHistoryMenu salesHistoryMenu;
+    private final ProfileMenu profileMenu;
+    private final ProfileInputService profileInputService;
 
     private final Object2ObjectOpenHashMap<UUID, Boolean> requestInProgress = new Object2ObjectOpenHashMap<>();
+    private final Object2ObjectOpenHashMap<UUID, Long> requestStartTime = new Object2ObjectOpenHashMap<>();
 
-    public AuctionMenu(JavaPlugin plugin, IConfigManager configManager, AuctionRepository repository, PlayerPreferences playerPreferences, ItemDisplayFactory itemFactory) {
+    public AuctionMenu(FMAuction plugin, IConfigManager configManager, AuctionRepository repository, PlayerPreferences playerPreferences, ItemDisplayFactory itemFactory, SchedulerService scheduler, ProfileInputService profileInputService) {
         this.configManager = configManager;
         this.repository = repository;
         this.playerPreferences = playerPreferences;
-        this.scheduler = new SchedulerService(plugin);
+        this.scheduler = scheduler;
         this.itemFactory = itemFactory;
-        this.builder = new MenuBuilder(configManager, itemFactory, repository);
+        this.builder = new MenuBuilder(configManager, itemFactory);
         this.quantityController = new QuantityMenuController(configManager, itemFactory, builder);
         this.confirmController = new ConfirmMenuController(configManager, itemFactory, builder);
+        this.salesHistoryMenu = new SalesHistoryMenu(plugin, configManager, repository, itemFactory, scheduler);
+        this.profileMenu = new ProfileMenu(configManager, repository, itemFactory, scheduler);
+        this.profileInputService = profileInputService;
     }
 
     public void openInventoryView(Player player, AuctionCurrency currency, long lotId) {
@@ -65,12 +70,14 @@ public final class AuctionMenu {
                 long prevId = current > 0 ? ids.get(current - 1) : -1L;
                 long nextId = current < total - 1 ? ids.get(current + 1) : -1L;
 
-                String title = configManager.getConfigValues().inventorySelling().view().title();
+                String title = configManager.getConfigValues().inventorySelling().view().title()
+                        .replace("{current}", String.valueOf(current + 1))
+                        .replace("{max}", String.valueOf(Math.max(1, total)));
 
                 InventoryMenuHolder holder = new InventoryMenuHolder(currency, player.getUniqueId(), lotId, prevId, nextId, current, total);
-                Inventory inv = Bukkit.createInventory(holder, 54, TextUtils.colorize(title));
+                Inventory inv = Bukkit.createInventory(holder, 54, TextUtils.component(title));
                 holder.setInventory(inv);
-                builder.buildInventoryView(holder, currency, lot, current, total);
+                builder.buildInventoryView(holder, lot, current, total);
                 player.openInventory(inv);
             });
         });
@@ -96,6 +103,29 @@ public final class AuctionMenu {
 
     public void openSelling(Player player, AuctionCurrency currency, int page) {
         openInventory(player, AuctionViewType.SELLING, currency, page, AuctionSort.NEWEST, null, null, null);
+    }
+
+    public void openSalesHistory(Player player, AuctionCurrency currency, int page) {
+        salesHistoryMenu.open(player, currency, page);
+    }
+
+    public void openProfile(Player player, AuctionCurrency currency) {
+        profileMenu.open(player, currency);
+    }
+
+    public void openProfileInput(Player player, boolean discord) {
+        profileInputService.open(player, discord);
+    }
+
+    public void openSeller(Player player, AuctionCurrency currency, String query) {
+        scheduler.runAsync(() -> {
+            String seller = repository.findProfileOwner(query).orElse(query);
+            scheduler.runSync(() -> {
+                if (player.isOnline()) {
+                    openMain(player, currency, 0, null, seller, null, "all");
+                }
+            });
+        });
     }
 
     public void openExpired(Player player, AuctionCurrency currency, int page) {
@@ -135,12 +165,23 @@ public final class AuctionMenu {
     }
 
     public void refreshInventory(Player player, AuctionMenuHolder holder) {
+        if (holder instanceof SalesHistoryMenuHolder) {
+            openSalesHistory(player, holder.getCurrency(), holder.getPage());
+            return;
+        }
         UUID uuid = player.getUniqueId();
         synchronized (requestInProgress) {
+            Long start = requestStartTime.get(uuid);
+            if (start != null && (System.currentTimeMillis() - start > 15_000L)) {
+                requestInProgress.remove(uuid);
+                requestStartTime.remove(uuid);
+            }
+
             if (requestInProgress.getOrDefault(uuid, false)) {
                 return;
             }
             requestInProgress.put(uuid, true);
+            requestStartTime.put(uuid, System.currentTimeMillis());
         }
         long requestVersion = holder.incrementAndGetRequestVersion();
         renderRefresh(player, holder, requestVersion);
@@ -158,13 +199,27 @@ public final class AuctionMenu {
     private void renderNew(Player player, AuctionViewType viewType, AuctionCurrency currency, int page, AuctionSort sort, String sellerFilter, String searchFilter, String category) {
         UUID uuid = player.getUniqueId();
         synchronized (requestInProgress) {
+            Long start = requestStartTime.get(uuid);
+            if (start != null && (System.currentTimeMillis() - start > 15_000L)) {
+                requestInProgress.remove(uuid);
+                requestStartTime.remove(uuid);
+            }
+
             if (requestInProgress.getOrDefault(uuid, false)) {
                 return;
             }
             requestInProgress.put(uuid, true);
+            requestStartTime.put(uuid, System.currentTimeMillis());
         }
 
-        int pageSize = configManager.getConfigValues().gui(currency).auctionSlots().size();
+        int pageSize = builder.getAuctionSlots(viewType, currency).size();
+        if (pageSize == 0) {
+            synchronized (requestInProgress) {
+                requestInProgress.remove(uuid);
+                requestStartTime.remove(uuid);
+            }
+            return;
+        }
         String playerName = player.getName();
         int maxStorageDays = configManager.getConfigValues().maxAuctionStorageDays();
 
@@ -186,7 +241,7 @@ public final class AuctionMenu {
                             currency, playerName, maxStorageDays, page, pageSize,
                             fSort, fCategory, fSeller, fSearch, viewType
                     );
-                    return new LoadResult(data.items(), data.totalCount(), data.sellingCount(), data.expiredCount());
+                    return new LoadResult(data.items(), data.totalCount(), data.sellingCount(), data.expiredCount(), data.profiles());
                 },
                 result -> {
                     try {
@@ -194,12 +249,13 @@ public final class AuctionMenu {
                                 player, viewType, currency, page,
                                 fSort, fSeller, fSearch, fCategory,
                                 result.items, result.totalCount, pageSize,
-                                result.sellingCount, result.expiredCount
+                                result.sellingCount, result.expiredCount, result.profiles
                         );
                         player.openInventory(inv);
                     } finally {
                         synchronized (requestInProgress) {
                             requestInProgress.remove(uuid);
+                            requestStartTime.remove(uuid);
                         }
                     }
                 }
@@ -210,7 +266,14 @@ public final class AuctionMenu {
         UUID uuid = player.getUniqueId();
         AuctionCurrency currency = holder.getCurrency();
 
-        int pageSize = configManager.getConfigValues().gui(currency).auctionSlots().size();
+        int pageSize = builder.getAuctionSlots(holder.getViewType(), currency).size();
+        if (pageSize == 0) {
+            synchronized (requestInProgress) {
+                requestInProgress.remove(uuid);
+                requestStartTime.remove(uuid);
+            }
+            return;
+        }
         String playerName = player.getName();
         int maxStorageDays = configManager.getConfigValues().maxAuctionStorageDays();
 
@@ -235,17 +298,14 @@ public final class AuctionMenu {
 
         scheduler.runAsyncThenSync(
                 () -> {
-                    AuctionRepository.MenuData data = repository.loadMenuData(
-                            currency, playerName, maxStorageDays, page, pageSize,
-                            fSort, fCategory, fSeller, fSearch, viewType
-                    );
-                    return new LoadResult(data.items(), data.totalCount(), data.sellingCount(), data.expiredCount());
+                    AuctionRepository.MenuData data = repository.loadMenuData(currency, playerName, maxStorageDays, page, pageSize, fSort, fCategory, fSeller, fSearch, viewType);
+                    return new LoadResult(data.items(), data.totalCount(), data.sellingCount(), data.expiredCount(), data.profiles());
                 },
                 result -> {
                     try {
                         if (requestVersion != holder.getRequestVersion()) return;
 
-                        builder.refreshLotDisplays(holder.getInventory(), holder, result.items, result.totalCount, pageSize);
+                        builder.refreshLotDisplays(holder.getInventory(), holder, result.items, result.totalCount, pageSize, result.profiles);
 
                         if (viewType == AuctionViewType.MAIN) {
                             builder.refreshNavigationButtons(holder.getInventory(), holder);
@@ -255,15 +315,18 @@ public final class AuctionMenu {
                                     ? values.gui(holder.getCurrency()).mainGlass()
                                     : values.gui(holder.getCurrency()).expiredGlass();
                             builder.fillGlass(holder.getInventory(), panes);
+                            builder.addSalesHistoryButton(holder.getInventory(), holder);
+                            builder.addProfileButton(holder.getInventory(), holder, result.profiles.getOrDefault(player.getName(), ru.moscow.foxkiss.auction.PlayerProfile.empty(player.getName())));
                         }
                     } finally {
                         synchronized (requestInProgress) {
                             requestInProgress.remove(uuid);
+                            requestStartTime.remove(uuid);
                         }
                     }
                 }
         );
     }
 
-    private record LoadResult(List<AuctionItem> items, int totalCount, int sellingCount, int expiredCount) {}
+    private record LoadResult(List<AuctionItem> items, int totalCount, int sellingCount, int expiredCount, Map<String, ru.moscow.foxkiss.auction.PlayerProfile> profiles) {}
 }

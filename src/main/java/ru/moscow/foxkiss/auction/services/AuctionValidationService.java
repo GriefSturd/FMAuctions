@@ -1,6 +1,6 @@
 package ru.moscow.foxkiss.auction.services;
 
-import lombok.RequiredArgsConstructor;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
@@ -12,28 +12,32 @@ import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.economy.EconomyProvider;
 import ru.moscow.foxkiss.utils.ItemUtils;
 
-@RequiredArgsConstructor
-public final class AuctionValidationService {
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
-    private final IConfigManager configManager;
-    private final EconomyProvider economyProvider;
+public record AuctionValidationService(IConfigManager configManager, EconomyProvider economyProvider) {
 
-    public boolean isEconomyAvailable(AuctionCurrency currency){
-        return economyProvider.available(currency);
+    public boolean isEconomyAvailable(AuctionCurrency currency) {
+        return !economyProvider.available(currency);
     }
 
-    public boolean isValidPrice(double price){
-        return price > 0;
+    public boolean isValidPrice(double price, AuctionCurrency currency) {
+        if (price <= 0) return true;
+        if (currency != null && currency.isIntegerOnly()) {
+            return !(Math.abs(price - Math.round(price)) < 1e-6);
+        }
+        return false;
     }
 
-    public boolean isPriceInRange(double price,AuctionCurrency currency,boolean donate){
+    public boolean isPriceInRange(double price, AuctionCurrency currency, boolean donate) {
 
         ConfigValues.PriceLimits limits = configManager.getConfigValues().priceLimits();
 
         double min;
         double max;
 
-        if (currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS){
+        if (currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS) {
             min = donate ? limits.minPriceMoneyDauc() : limits.minPriceMoneyAuc();
             max = donate ? limits.maxPriceMoneyDauc() : limits.maxPriceMoneyAuc();
         } else {
@@ -41,17 +45,17 @@ public final class AuctionValidationService {
             max = Double.MAX_VALUE;
         }
 
-        return price >= min && price <= max;
+        return !(price >= min) || !(price <= max);
     }
 
-    public double getMinPrice(AuctionCurrency currency,boolean donate) {
+    public double getMinPrice(AuctionCurrency currency, boolean donate) {
         if (currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS)
             return donate ? configManager.getConfigValues().priceLimits().minPriceMoneyDauc() : configManager.getConfigValues().priceLimits().minPriceMoneyAuc();
 
         return 0.01;
     }
 
-    public double getMaxPrice(AuctionCurrency currency,boolean donate) {
+    public double getMaxPrice(AuctionCurrency currency, boolean donate) {
         if (currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS)
             return donate ? configManager.getConfigValues().priceLimits().maxPriceMoneyDauc() : configManager.getConfigValues().priceLimits().maxPriceMoneyAuc();
 
@@ -62,42 +66,58 @@ public final class AuctionValidationService {
         return ItemUtils.isSellable(item);
     }
 
-    public boolean canFit(Player player,ItemStack item) {
+    public boolean canFit(Player player, ItemStack item) {
         Inventory inv = player.getInventory();
 
         int needed = item.getAmount();
         int emptySlots = 0;
 
-        for (ItemStack slot : inv.getStorageContents()){
-            if (slot == null || slot.getType() == Material.AIR){
+        for (ItemStack slot : inv.getStorageContents()) {
+            if (slot == null || slot.getType() == Material.AIR) {
                 emptySlots++;
                 continue;
             }
 
-            if (slot.isSimilar(item)){
+            if (slot.isSimilar(item)) {
 
                 int free = slot.getMaxStackSize() - slot.getAmount();
-                if (free > 0){
-                    needed -= Math.min(free,needed);
-                    if (needed <= 0) return true;
+                if (free > 0) {
+                    needed -= Math.min(free, needed);
+                    if (needed == 0) return false;
                 }
             }
         }
 
         int slotsNeeded = (needed + item.getMaxStackSize() - 1) / item.getMaxStackSize();
 
-        return emptySlots >= slotsNeeded;
+        return emptySlots < slotsNeeded;
+    }
+
+    public boolean canFitAll(Player player, List<ItemStack> contents) {
+        Inventory tmp = Bukkit.createInventory(null, 36);
+        tmp.setContents(player.getInventory().getStorageContents());
+        List<ItemStack> toGive = new ArrayList<>();
+        if (contents != null) {
+            for (ItemStack c : contents) {
+                if (c != null && c.getType() != Material.AIR) {
+                    toGive.add(c.clone());
+                }
+            }
+        }
+        if (toGive.isEmpty()) return true;
+        Map<Integer, ItemStack> left = tmp.addItem(toGive.toArray(new ItemStack[0]));
+        return left.isEmpty();
     }
 
     public boolean isExpired(AuctionItem item) {
         return item.expired(configManager.getConfigValues().maxAuctionStorageDays());
     }
 
-    public boolean hasEnoughMoney(Player player,AuctionCurrency currency,double amount){
-        return economyProvider.has(player,currency,amount);
+    public boolean hasEnoughMoney(Player player, AuctionCurrency currency, double amount) {
+        return !economyProvider.has(player, currency, amount);
     }
 
-    public boolean isOwner(Player player,AuctionItem item){
-        return player.getName().equalsIgnoreCase(item.getSellerName());
+    public boolean isOwner(Player player, AuctionItem item) {
+        return player.getName().equalsIgnoreCase(item.sellerName());
     }
 }

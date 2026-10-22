@@ -2,40 +2,40 @@ package ru.moscow.foxkiss.auction.services;
 
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import ru.moscow.foxkiss.FMAuction;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionRepository;
-import ru.moscow.foxkiss.auction.services.base.BaseAuctionService;
-import ru.moscow.foxkiss.config.ConfigValues;
+import ru.moscow.foxkiss.auction.services.base.BaseAuctionSellService;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.permissions.LimitService;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
-import ru.moscow.foxkiss.utils.PlaceholderUtils;
-import ru.moscow.foxkiss.utils.PriceFormatter;
 
-public final class AuctionSellService extends BaseAuctionService {
+import java.util.Map;
+
+public final class AuctionSellService extends BaseAuctionSellService {
 
     private final LimitService limitService;
     private final AuctionValidationService validationService;
 
-    public AuctionSellService(SchedulerService scheduler, IConfigManager configManager, AuctionRepository repository, LimitService limitService, AuctionValidationService validationService, AuctionTransactionService transactionService) {
-        super(scheduler, configManager, repository, transactionService);
+    public AuctionSellService(FMAuction plugin, SchedulerService scheduler, IConfigManager configManager, AuctionRepository repository, LimitService limitService, AuctionValidationService validationService, AuctionTransactionService transactionService) {
+        super(plugin, scheduler, configManager, repository, transactionService);
         this.limitService = limitService;
         this.validationService = validationService;
     }
 
     public void sell(Player player, AuctionCurrency currency, double price) {
-        if (!validationService.isEconomyAvailable(currency)) {
+        if (validationService.isEconomyAvailable(currency)) {
             sendMessage(player, configManager.getConfigValues().messages().economyUnavailable());
             return;
         }
 
-        if (!validationService.isValidPrice(price)) {
+        if (validationService.isValidPrice(price, currency)) {
             sendMessage(player, configManager.getConfigValues().messages().noPrice());
             return;
         }
 
         boolean isDonate = currency == AuctionCurrency.PLAYER_POINTS;
-        if (!validationService.isPriceInRange(price, currency, isDonate)) {
+        if (validationService.isPriceInRange(price, currency, isDonate)) {
             String symbol = currency.symbol(configManager.getConfigValues());
             double min = validationService.getMinPrice(currency, isDonate);
             double max = validationService.getMaxPrice(currency, isDonate);
@@ -59,35 +59,9 @@ public final class AuctionSellService extends BaseAuctionService {
         String playerName = player.getName();
         ItemStack soldItem = hand.clone();
 
-        double commission = chargeCommission(player, currency, configManager.getConfigValues().commission().sell(), price);
-        if (commission == -1) return;
-
-        scheduler.runAsync(() -> {
-            int active = repository.countActiveBySellerSince(playerName, currency, 0);
-            if (active >= limit) {
-                scheduler.runSync(() -> {
-                    if (commission > 0) transactionService.depositMoney(player, currency, commission);
-                    sendMessage(player, configManager.getConfigValues().messages().limitReached());
-                });
-                return;
-            }
-
-            long id = repository.create(playerName, currency, soldItem, price);
-            if (id <= 0) {
-                scheduler.runSync(() -> {
-                    if (commission > 0) transactionService.depositMoney(player, currency, commission);
-                    sendMessage(player, configManager.getConfigValues().messages().databaseError());
-                });
-                return;
-            }
-
-            scheduler.runSync(() -> {
-                transactionService.removeItemFromHand(player);
-                String symbol = currency.symbol(configManager.getConfigValues());
-                String formatted = PriceFormatter.format(price) + symbol;
-                String msg = configManager.getConfigValues().messages().sellSuccess().replace("{symbol_value}", formatted);
-                player.sendMessage(PlaceholderUtils.applypapi(player, msg, configManager));
-            });
-        });
+        submitListing(player, currency, price, config().commission().sell(),
+                Map.of(player.getInventory().getHeldItemSlot(), soldItem),
+                () -> repository.countActiveBySellerSince(playerName, currency, 0) >= limit,
+                () -> repository.createWithinLimit(playerName, currency, soldItem, price, limit));
     }
 }

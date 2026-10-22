@@ -3,33 +3,34 @@ package ru.moscow.foxkiss.auction.services;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import ru.moscow.foxkiss.FMAuction;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionRepository;
-import ru.moscow.foxkiss.auction.services.base.BaseAuctionService;
+import ru.moscow.foxkiss.auction.services.base.BaseAuctionSellService;
 import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.permissions.LimitService;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
-import ru.moscow.foxkiss.utils.PlaceholderUtils;
-import ru.moscow.foxkiss.utils.PriceFormatter;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Random;
 
-public final class AuctionSellInventoryService extends BaseAuctionService {
+public final class AuctionSellInventoryService extends BaseAuctionSellService {
 
     private final LimitService limitService;
     private final AuctionValidationService validationService;
 
-    public AuctionSellInventoryService(SchedulerService scheduler, IConfigManager configManager, AuctionRepository repository, LimitService limitService, AuctionValidationService validationService, AuctionTransactionService transactionService) {
-        super(scheduler, configManager, repository, transactionService);
+    public AuctionSellInventoryService(FMAuction plugin, SchedulerService scheduler, IConfigManager configManager, AuctionRepository repository, LimitService limitService, AuctionValidationService validationService, AuctionTransactionService transactionService) {
+        super(plugin, scheduler, configManager, repository, transactionService);
         this.limitService = limitService;
         this.validationService = validationService;
     }
 
     public void sellInventory(Player player, AuctionCurrency currency, double price) {
-        if (!validationService.isEconomyAvailable(currency)) {
+        if (validationService.isEconomyAvailable(currency)) {
             sendMessage(player, config().messages().economyUnavailable());
             return;
         }
@@ -42,13 +43,13 @@ public final class AuctionSellInventoryService extends BaseAuctionService {
             return;
         }
 
-        if (!validationService.isValidPrice(price)) {
+        if (validationService.isValidPrice(price, currency)) {
             sendMessage(player, config().messages().noPrice());
             return;
         }
 
         boolean isDonate = currency == AuctionCurrency.PLAYER_POINTS;
-        if (!validationService.isPriceInRange(price, currency, isDonate)) {
+        if (validationService.isPriceInRange(price, currency, isDonate)) {
             double min = validationService.getMinPrice(currency, isDonate);
             double max = validationService.getMaxPrice(currency, isDonate);
             String msg;
@@ -102,37 +103,16 @@ public final class AuctionSellInventoryService extends BaseAuctionService {
                 ? Material.WHITE_SHULKER_BOX
                 : shulkerMaterials.get(new Random().nextInt(shulkerMaterials.size()));
         ItemStack displayItem = new ItemStack(displayMaterial, 1);
-        List<ItemStack> finalContents = contents;
+        Map<Integer, ItemStack> reserved = new LinkedHashMap<>();
+        for (int slot = 0; slot < contents.size(); slot++) {
+            ItemStack item = contents.get(slot);
+            if (item != null && !item.getType().isAir()) reserved.put(slot, item);
+        }
 
-        double commission = chargeCommission(player, currency, config().commission().sellInventory(), price);
-        if (commission == -1) return;
-
-        scheduler.runAsync(() -> {
-            int active = repository.countActiveBySellerSince(playerName, currency, 0);
-            if (active >= limit) {
-                scheduler.runSync(() -> {
-                    if (commission > 0) transactionService.depositMoney(player, currency, commission);
-                    sendMessage(player, config().messages().limitReached());
-                });
-                return;
-            }
-
-            long id = repository.createInventory(playerName, currency, displayItem, finalContents, price);
-            if (id <= 0) {
-                scheduler.runSync(() -> {
-                    if (commission > 0) transactionService.depositMoney(player, currency, commission);
-                    sendMessage(player, config().messages().databaseError());
-                });
-                return;
-            }
-
-            scheduler.runSync(() -> {
-                player.getInventory().clear();
-                String formatted = PriceFormatter.format(price) + symbol;
-                String msg = config().messages().sellSuccess().replace("{symbol_value}", formatted);
-                player.sendMessage(PlaceholderUtils.applypapi(player, msg, configManager));
-            });
-        });
+        submitListing(player, currency, price, config().commission().sellInventory(),
+                reserved,
+                () -> repository.countActiveBySellerSince(playerName, currency, 0) >= limit,
+                () -> repository.createInventoryWithinLimit(playerName, currency, displayItem, contents, price, limit));
     }
 
     private List<ItemStack> collectInventory(Player player) {
@@ -144,7 +124,7 @@ public final class AuctionSellInventoryService extends BaseAuctionService {
             contents.add(item == null ? null : item.clone());
         }
         ItemStack offHand = player.getInventory().getItemInOffHand();
-        contents.add(offHand == null ? null : offHand.clone());
+        contents.add(offHand.clone());
         return contents;
     }
 }

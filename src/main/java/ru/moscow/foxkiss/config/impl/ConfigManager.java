@@ -1,6 +1,5 @@
 package ru.moscow.foxkiss.config.impl;
 
-import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -26,6 +25,8 @@ public final class ConfigManager implements IConfigManager {
         copyResourceIfMissing("menus/menu_confirm_buy.yml");
         copyResourceIfMissing("menus/menu_quantity.yml");
         copyResourceIfMissing("menus/menu_inventory_view.yml");
+        copyResourceIfMissing("menus/menu_sales_history.yml");
+        copyResourceIfMissing("menus/menu_profile.yml");
         reload();
     }
 
@@ -37,10 +38,6 @@ public final class ConfigManager implements IConfigManager {
         loadItemsYml();
 
         FileConfiguration config = plugin.getConfig();
-
-        ConfigurationSection a = config.getConfigurationSection("database");
-        DataBaseLoader dbLoader = new DataBaseLoader();
-        DataBaseLoader.DataBase db = dbLoader.load(a);
 
         String prefix = config.getString("prefix");
 
@@ -59,15 +56,10 @@ public final class ConfigManager implements IConfigManager {
         ConfigurationSection d = config.getConfigurationSection("vault-auc");
         ConfigurationSection e = config.getConfigurationSection("playerpoints-auc");
         ConfigurationSection f = d.getConfigurationSection("groups");
-        ConfigurationSection g = d.getConfigurationSection("priorities");
-
         ConfigurationSection h = e.getConfigurationSection("groups");
-        ConfigurationSection i = e.getConfigurationSection("priorities");
 
         Map<String, Integer> vaultGroups = LimitsLoader.load(f);
-        Map<String, Integer> vaultPriorities = LimitsLoader.load(g);
         Map<String, Integer> ppGroups = LimitsLoader.load(h);
-        Map<String, Integer> ppPriorities = LimitsLoader.load(i);
 
         ConfigurationSection j = config.getConfigurationSection("auction");
         ConfigurationSection k = config.getConfigurationSection("categories");
@@ -91,13 +83,11 @@ public final class ConfigManager implements IConfigManager {
         ConfigValues.QuantityMenuConfig quantityMenu = guiLoader.loadQuantityMenu(YamlConfiguration.loadConfiguration(getMenuFile("menus/menu_quantity.yml")));
 
         this.configValues = new ConfigValues(
-                db.host(), db.port(), db.username(), db.password(), db.database(),
                 prefix,
-                vaultGroups, vaultPriorities,
-                ppGroups, ppPriorities,
+                vaultGroups,
+                ppGroups,
                 auctionSettings.maxStorageDays(),
                 auctionSettings.categories(),
-                auctionSettings.allCategories(),
                 messages,
                 priceLimits,
                 cooldowns,
@@ -108,7 +98,9 @@ public final class ConfigManager implements IConfigManager {
                 confirmMenu,
                 quantityMenu,
                 inventorySelling,
-                commission
+                commission,
+                new SalesHistoryLoader().load(YamlConfiguration.loadConfiguration(getMenuFile("menus/menu_sales_history.yml"))),
+                new ProfileMenuLoader().load(YamlConfiguration.loadConfiguration(getMenuFile("menus/menu_profile.yml")))
         );
     }
 

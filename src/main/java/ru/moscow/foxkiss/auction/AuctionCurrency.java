@@ -26,4 +26,8 @@ public enum AuctionCurrency {
     }
 
     public abstract String symbol(ConfigValues values);
+
+    public boolean isIntegerOnly() {
+        return this == PLAYER_POINTS;
+    }
 }

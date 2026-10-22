@@ -6,13 +6,17 @@ import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
-import ru.moscow.foxkiss.auction.AuctionItem;
 import ru.moscow.foxkiss.auction.AuctionRepository;
 import ru.moscow.foxkiss.economy.EconomyProvider;
 import ru.moscow.foxkiss.gui.ItemDisplayFactory;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 @Getter
 @RequiredArgsConstructor
@@ -22,17 +26,26 @@ public final class AuctionTransactionService {
     private final AuctionRepository repository;
     private final EconomyProvider economyProvider;
     private final ItemDisplayFactory itemFactory;
+    private final Set<UUID> pendingListings = new HashSet<>();
+
+    public boolean beginListing(Player player) {
+        return pendingListings.add(player.getUniqueId());
+    }
+
+    public void endListing(Player player) {
+        pendingListings.remove(player.getUniqueId());
+    }
 
     public boolean withdrawMoney(Player player, AuctionCurrency currency, double amount) {
-        return economyProvider.withdraw(player, currency, amount);
+        return !economyProvider.withdraw(player, currency, amount);
     }
 
     public boolean hasEnoughMoney(Player player, AuctionCurrency currency, double amount) {
         return economyProvider.has(player, currency, amount);
     }
 
-    public void depositMoney(OfflinePlayer player, AuctionCurrency currency, double amount) {
-        economyProvider.deposit(player, currency, amount);
+    public boolean depositMoney(OfflinePlayer player, AuctionCurrency currency, double amount) {
+        return economyProvider.deposit(player, currency, amount);
     }
 
     public void giveItem(Player player, ItemStack item) {
@@ -42,30 +55,18 @@ public final class AuctionTransactionService {
         }
     }
 
-    public void removeItemFromHand(Player player) {
-        player.getInventory().setItemInMainHand(null);
-    }
+    public List<ItemStack> giveItems(Player player, List<ItemStack> items) {
+        List<ItemStack> leftovers = new ArrayList<>();
 
-    public void recordSale(String sellerName, String buyerName, AuctionCurrency currency, String itemType, int amount, double price) {
-        scheduler.runAsync(() -> repository.recordSale(sellerName, buyerName, currency, itemType, amount, price));
-    }
+        for (ItemStack item : items) {
+            if (item == null || item.getType().isAir()) continue;
 
-    public void createRemainingLot(AuctionItem original, int remainingAmount) {
-        ItemStack remaining = original.getItemStack().clone();
-        remaining.setAmount(remainingAmount);
-        double totalPrice = original.pricePerItem() * remainingAmount;
+            Map<Integer, ItemStack> remaining = player.getInventory().addItem(item.clone());
+            for (ItemStack left : remaining.values()) {
+                leftovers.add(left.clone());
+            }
+        }
 
-        itemFactory.invalidateLotCache(original.getId());
-
-        scheduler.runAsync(() -> repository.create(
-                original.getSellerName(),
-                original.getCurrency(),
-                remaining,
-                totalPrice
-        ));
-    }
-
-    public void restoreStatus(long lotId) {
-        scheduler.runAsync(() -> repository.restoreStatus(lotId));
+        return leftovers;
     }
 }

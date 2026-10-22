@@ -12,22 +12,13 @@ import ru.moscow.foxkiss.gui.builder.MenuBuilder;
 import ru.moscow.foxkiss.gui.holders.QuantityMenuHolder;
 import ru.moscow.foxkiss.utils.TextUtils;
 
-public final class QuantityMenuController {
-    private final IConfigManager configManager;
-    private final ItemDisplayFactory itemFactory;
-    private final MenuBuilder menuBuilder;
-
-    public QuantityMenuController(IConfigManager configManager, ItemDisplayFactory itemFactory, MenuBuilder menuBuilder) {
-        this.configManager = configManager;
-        this.itemFactory = itemFactory;
-        this.menuBuilder = menuBuilder;
-    }
+public record QuantityMenuController(IConfigManager configManager, ItemDisplayFactory itemFactory, MenuBuilder menuBuilder) {
 
     public void openQuantity(Player player, AuctionCurrency currency, AuctionItem item, int selectedAmount) {
         ConfigValues values = configManager.getConfigValues();
         ConfigValues.QuantityMenuConfig qm = values.quantityMenu();
 
-        QuantityMenuHolder holder = new QuantityMenuHolder(currency, player.getUniqueId(), item.getId(), selectedAmount, item.amount(), item);
+        QuantityMenuHolder holder = new QuantityMenuHolder(currency, player.getUniqueId(), item.id(), selectedAmount, item.amount(), item);
         Inventory inv = Bukkit.createInventory(holder, qm.sizeMenu(), TextUtils.component(values.quantityMenu().title()));
 
         holder.setInventory(inv);

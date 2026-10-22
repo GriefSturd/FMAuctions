@@ -43,7 +43,7 @@ public final class UpdateChecker implements Listener {
 
                 Matcher matcher = tag_pattern.matcher(response.body());
                 if (!matcher.find()) {
-                    plugin.getLogger().warning("Unable to check for updates: GitHub response has no release tag.");
+                    plugin.getLogger().warning("Не удалось проверить обновления: в ответе GitHub отсутствует тег релиза.");
                     return;
                 }
 
@@ -55,7 +55,7 @@ public final class UpdateChecker implements Listener {
                 }
             } catch (IOException | InterruptedException exception) {
                 if (exception instanceof InterruptedException) Thread.currentThread().interrupt();
-                plugin.getLogger().warning("Unable to check for updates: " + exception.getMessage());
+                plugin.getLogger().warning("Не удалось проверить обновления: " + exception.getMessage());
             }
         });
     }

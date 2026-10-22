@@ -99,10 +99,19 @@ public final class GuiLoader {
         ConfigurationSection b = a.getConfigurationSection("item-lore");
         ConfigurationSection c = a.getConfigurationSection("item-lore_one");
         ConfigurationSection d = a.getConfigurationSection("item-lore_buy_one_item");
+        ConfigurationSection e = a.getConfigurationSection("item-lore_discord");
+        ConfigurationSection f = a.getConfigurationSection("item-lore_store");
+        ConfigurationSection g = a.getConfigurationSection("item-lore_discord_store");
         return new ConfigValues.ItemLoreConfig(
                 b.getStringList("lore"),
                 c.getStringList("lore"),
-                d.getStringList("lore")
+                d.getStringList("lore"),
+                e.getStringList("lore"),
+                e.getStringList("lore_one"),
+                f.getStringList("lore"),
+                f.getStringList("lore_one"),
+                g.getStringList("lore"),
+                g.getStringList("lore_one")
         );
     }
 

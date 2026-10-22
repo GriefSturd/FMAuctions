@@ -126,12 +126,53 @@ symbol_value:
   item-lore_buy_one_item:
     lore:
       - ""
-      - "&f&x&F&F&A&5&0&0╔ &fЦена: &e{total_price}"
-      - "&f&x&F&F&A&5&0&0╠ &fПродавец: &#74F271{seller}"
-      - "&f&x&F&F&A&5&0&0╚ &fКоличество: &7{amount}"
+  # Эти лоры используются, когда продавец задал Discord, магазин или оба значения.
+  # {discord} и {store} содержат настроенный продавцом цветной текст, {sales} — продажи за всё время.
+  item-lore_discord:
+    lore:
       - ""
-      - "&f&x&F&F&A&5&0&0▸ &fНажмите, чтобы &x&f&f&c&5&0&0приобрести"
+      - "&fЦена: &6{price}{symbol_value} &7({pricePerItem} за шт.)"
+      - "&fПродавец: &#74F271{seller}"
+      - "&fDiscord: {discord}"
+      - "&fИстекает через: &c{daysLeft} дн."
+    lore_one:
       - ""
+      - "&fЦена: &e{price}{symbol_value}"
+      - "&fПродавец: &#74F271{seller}"
+      - "&fDiscord: {discord}"
+      - "&fИстекает через: &c{daysLeft} дн."
+  item-lore_store:
+    lore:
+      - ""
+      - "&fЦена: &6{price}{symbol_value} &7({pricePerItem} за шт.)"
+      - "&fПродавец: &#74F271{seller}"
+      - "&fМагазин: {store}"
+      - "&fПродаж за всё время: &e{sales}"
+      - "&fИстекает через: &c{daysLeft} дн."
+    lore_one:
+      - ""
+      - "&fЦена: &e{price}{symbol_value}"
+      - "&fПродавец: &#74F271{seller}"
+      - "&fМагазин: {store}"
+      - "&fПродаж за всё время: &e{sales}"
+      - "&fИстекает через: &c{daysLeft} дн."
+  item-lore_discord_store:
+    lore:
+      - ""
+      - "&fЦена: &6{price}{symbol_value} &7({pricePerItem} за шт.)"
+      - "&fПродавец: &#74F271{seller}"
+      - "&fDiscord: {discord}"
+      - "&fМагазин: {store}"
+      - "&fПродаж за всё время: &e{sales}"
+      - "&fИстекает через: &c{daysLeft} дн."
+    lore_one:
+      - ""
+      - "&fЦена: &e{price}{symbol_value}"
+      - "&fПродавец: &#74F271{seller}"
+      - "&fDiscord: {discord}"
+      - "&fМагазин: {store}"
+      - "&fПродаж за всё время: &e{sales}"
+      - "&fИстекает через: &c{daysLeft} дн."
 
 # Навигационные кнопки
 # CustomModelData поддерживается: добавьте строку custom-model-data: 123

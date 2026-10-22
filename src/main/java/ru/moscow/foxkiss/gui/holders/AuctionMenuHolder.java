@@ -56,10 +56,6 @@ public abstract class AuctionMenuHolder implements InventoryHolder {
         inventoryLotBySlot.put(slot, inventory);
     }
 
-    public void addLot(int slot, long id, int amount) {
-        addLot(slot, id, amount, false);
-    }
-
     public boolean isInventoryLot(int slot) {
         return Boolean.TRUE.equals(inventoryLotBySlot.get(slot));
     }

@@ -3,6 +3,10 @@ package ru.moscow.foxkiss.gui.enums;
 public enum ActionType {
     MAIN,
     SELLING,
+    HISTORY,
+    PROFILE,
+    DISCORD,
+    STORE,
     EXPIRED,
     SORT,
     CATEGORIES,

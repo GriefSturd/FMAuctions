@@ -9,19 +9,11 @@ import java.util.Map;
 import java.util.Set;
 
 public record ConfigValues(
-        String databaseHost,
-        int databasePort,
-        String databaseUsername,
-        String databasePassword,
-        String databaseName,
         String prefix,
         Map<String, Integer> vaultGroupLimits,
-        Map<String, Integer> vaultPriorityLimits,
         Map<String, Integer> playerPointsGroupLimits,
-        Map<String, Integer> playerPointsPriorityLimits,
         int maxAuctionStorageDays,
         Map<String, Set<Material>> categories,
-        Set<String> allMaterialCategories,
         ConfigMessages messages,
         PriceLimits priceLimits,
         Cooldowns cooldowns,
@@ -32,7 +24,9 @@ public record ConfigValues(
         ConfirmMenuConfig confirmMenu,
         QuantityMenuConfig quantityMenu,
         InventorySellingConfig inventorySelling,
-        CommissionConfig commission
+        CommissionConfig commission,
+        SalesHistoryConfig salesHistory,
+        ProfileMenuConfig profileMenu
 ) {
 
     public AuctionGuiConfig gui(AuctionCurrency currency) {
@@ -44,8 +38,7 @@ public record ConfigValues(
 
     public record AuctionData(
             int maxStorageDays,
-            Map<String, Set<Material>> categories,
-            Set<String> allCategories
+            Map<String, Set<Material>> categories
     ) {}
 
     public record PriceLimits(
@@ -95,7 +88,13 @@ public record ConfigValues(
     public record ItemLoreConfig(
             List<String> lore,
             List<String> loreOne,
-            List<String> buyLore
+            List<String> buyLore,
+            List<String> discordLore,
+            List<String> discordLoreOne,
+            List<String> storeLore,
+            List<String> storeLoreOne,
+            List<String> discordStoreLore,
+            List<String> discordStoreLoreOne
     ) {}
 
     public record QuantityMenuConfig(
@@ -203,7 +202,17 @@ public record ConfigValues(
             String cooldownItem,
             String inventoryMinItems,
             String commissionCharged,
-            String commissionNotEnough
+            String commissionNotEnough,
+            String pendingItemsEmpty,
+            String pendingItemsReceived,
+            String pendingItemsRemaining,
+            String pendingItemsSaved,
+            String pendingItemsAutoReceived,
+            String discordSet,
+            String discordCleared,
+            String storeSet,
+            String storeCleared,
+            String tooLong
     ) {}
 
     public record InventorySellingConfig(
