@@ -93,21 +93,6 @@ public record AuctionValidationService(IConfigManager configManager, EconomyProv
         return emptySlots < slotsNeeded;
     }
 
-    public boolean canFitAll(Player player, List<ItemStack> contents) {
-        Inventory tmp = Bukkit.createInventory(null, 36);
-        tmp.setContents(player.getInventory().getStorageContents());
-        List<ItemStack> toGive = new ArrayList<>();
-        if (contents != null) {
-            for (ItemStack c : contents) {
-                if (c != null && c.getType() != Material.AIR) {
-                    toGive.add(c.clone());
-                }
-            }
-        }
-        if (toGive.isEmpty()) return true;
-        Map<Integer, ItemStack> left = tmp.addItem(toGive.toArray(new ItemStack[0]));
-        return left.isEmpty();
-    }
 
     public boolean isExpired(AuctionItem item) {
         return item.expired(configManager.getConfigValues().maxAuctionStorageDays());

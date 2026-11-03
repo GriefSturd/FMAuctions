@@ -2,12 +2,17 @@ package ru.moscow.foxkiss.utils;
 
 import com.destroystokyo.paper.profile.PlayerProfile;
 import com.destroystokyo.paper.profile.ProfileProperty;
+import io.papermc.paper.datacomponent.DataComponentTypes;
+import io.papermc.paper.datacomponent.item.CustomModelData;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
+import org.bukkit.plugin.java.JavaPlugin;
+import ru.moscow.foxkiss.FMAuction;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -25,19 +30,20 @@ public final class ItemUtils {
         if (meta == null) return item;
 
         if (name != null && !name.isEmpty()) {
-            meta.setDisplayName(TextUtils.colorize(name));
+            meta.displayName(TextUtils.component(name));
         }
 
         if (customModelData != null) {
-            meta.setCustomModelData(customModelData);
+            item.setData(DataComponentTypes.CUSTOM_MODEL_DATA,
+                    CustomModelData.customModelData().addFloat(customModelData.floatValue()).build());
         }
 
         if (lore != null && !lore.isEmpty()) {
-            List<String> coloredLore = new ArrayList<>(lore.size());
+            List<Component> coloredLore = new ArrayList<>(lore.size());
             for (String line : lore) {
-                coloredLore.add(TextUtils.colorize(line));
+                coloredLore.add(TextUtils.component(line));
             }
-            meta.setLore(coloredLore);
+            meta.lore(coloredLore);
         }
 
         item.setItemMeta(meta);
@@ -73,14 +79,17 @@ public final class ItemUtils {
 
     public static void loadTranslations(File itemsFile) {
         perevod.clear();
+
+        FMAuction plugin = JavaPlugin.getPlugin(FMAuction.class);
+
         if (itemsFile == null || !itemsFile.exists()) {
-            Bukkit.getLogger().warning("items.yml не найден, переводы не загружены.");
+            plugin.getLogger().warning("items.yml не найден, переводы не загружены.");
             return;
         }
         YamlConfiguration cfg = YamlConfiguration.loadConfiguration(itemsFile);
         for (String key : cfg.getKeys(false)) {
             if (Material.getMaterial(key) == null) {
-                Bukkit.getLogger().warning("Пропущен не поддерживаемый или не валидный материал: " + key);
+                plugin.getLogger().warning("Пропущен не поддерживаемый или не валидный материал: " + key);
                 continue;
             }
             perevod.put(key, cfg.getString(key));
@@ -90,7 +99,7 @@ public final class ItemUtils {
     public static String getItemDisplayName(ItemStack item) {
         Material material = item.getType();
         String materialName = material.name();
-        return perevod.getOrDefault(materialName, materialName.toLowerCase(Locale.ROOT).replace('_', ' '));
+        return perevod.getOrDefault(materialName, materialName.toLowerCase().replace('_', ' '));
     }
 
     public static String getTranslation(Material material) {

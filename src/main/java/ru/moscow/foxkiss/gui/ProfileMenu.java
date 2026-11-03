@@ -54,7 +54,6 @@ public record ProfileMenu(IConfigManager configManager, AuctionRepository reposi
         for (String line : item.lore()) {
             lore.add(line.replace("{discord}", discord).replace("{store}", store).replace("{sales}", sales));
         }
-        return new ConfigValues.ButtonConfig(item.material(), item.name().replace("{discord}", discord).replace("{store}", store).replace("{sales}", sales), lore,
-                item.skullTexture(), item.actions(), item.slots(), item.customModelData());
+        return new ConfigValues.ButtonConfig(item.material(), item.name().replace("{discord}", discord).replace("{store}", store).replace("{sales}", sales), lore, item.skullTexture(), item.actions(), item.slots(), item.customModelData());
     }
 }

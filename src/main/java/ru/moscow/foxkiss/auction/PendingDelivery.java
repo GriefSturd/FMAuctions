@@ -10,5 +10,6 @@ public record PendingDelivery(
         AuctionLotType lotType,
         ItemStack item,
         List<ItemStack> inventoryContents,
-        long createdAt
-) {}
+        long createdAt,
+        AuctionCurrency currency) {
+}

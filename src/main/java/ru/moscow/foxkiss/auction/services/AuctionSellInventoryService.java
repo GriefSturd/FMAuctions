@@ -14,7 +14,7 @@ import ru.moscow.foxkiss.scheduler.SchedulerService;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 
@@ -103,7 +103,7 @@ public final class AuctionSellInventoryService extends BaseAuctionSellService {
                 ? Material.WHITE_SHULKER_BOX
                 : shulkerMaterials.get(new Random().nextInt(shulkerMaterials.size()));
         ItemStack displayItem = new ItemStack(displayMaterial, 1);
-        Map<Integer, ItemStack> reserved = new LinkedHashMap<>();
+        Map<Integer, ItemStack> reserved = new HashMap<>();
         for (int slot = 0; slot < contents.size(); slot++) {
             ItemStack item = contents.get(slot);
             if (item != null && !item.getType().isAir()) reserved.put(slot, item);

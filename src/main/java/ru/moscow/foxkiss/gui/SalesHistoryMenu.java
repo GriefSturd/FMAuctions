@@ -53,10 +53,6 @@ public final class SalesHistoryMenu {
         this.scheduler = scheduler;
     }
 
-    public void cleanup(UUID playerId) {
-        requests.remove(playerId);
-    }
-
     public void open(Player player, AuctionCurrency currency, int page) {
         SalesHistoryConfig settings = configManager.getConfigValues().salesHistory();
         if (!settings.enabled()) return;

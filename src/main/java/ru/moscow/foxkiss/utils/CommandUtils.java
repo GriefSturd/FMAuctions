@@ -11,16 +11,13 @@ import java.util.List;
 
 public final class CommandUtils {
 
-    private CommandUtils() {}
-
     public static List<String> getResult(String[] args, List<String> completions) {
         if (completions == null || completions.isEmpty() || args == null || args.length == 0) {
             return Collections.emptyList();
         }
         String last = args[args.length - 1];
         ObjectList<String> result = new ObjectArrayList<>();
-        for (int i = 0; i < completions.size(); i++) {
-            String c = completions.get(i);
+        for (String c : completions) {
             if (StringUtil.startsWithIgnoreCase(c, last)) {
                 result.add(c);
             }

@@ -53,6 +53,20 @@ public abstract class BaseAuctionSellService extends BaseAuctionService {
     }
 
     private void chargeAndSubmit(Player player, AuctionCurrency currency, double price, ConfigValues.CommissionRule rule, Map<Integer, ItemStack> reserved, LongSupplier createLot) {
+        boolean unchanged = player.isOnline();
+        if (unchanged) {
+            for (Map.Entry<Integer, ItemStack> entry : reserved.entrySet()) {
+                if (!entry.getValue().equals(player.getInventory().getItem(entry.getKey()))) {
+                    unchanged = false;
+                    break;
+                }
+            }
+        }
+        if (!unchanged) {
+            transactionService.endListing(player);
+            sendMessage(player, config().messages().databaseError());
+            return;
+        }
         double commission;
         try {
             for (int slot : reserved.keySet()) {

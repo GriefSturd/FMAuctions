@@ -1,8 +1,10 @@
+
 package ru.moscow.foxkiss.commands;
 
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -18,9 +20,9 @@ import ru.moscow.foxkiss.utils.CommandUtils;
 import ru.moscow.foxkiss.utils.ItemUtils;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 public final class AuctionCommand implements CommandExecutor, TabCompleter {
@@ -33,10 +35,10 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
     private final Object2ObjectOpenHashMap<String, String> toMat = new Object2ObjectOpenHashMap<>();
 
     public AuctionCommand(IConfigManager configManager, AuctionCurrency currency, AuctionMenu auctionMenu, AuctionService auctionService) {
-        this.cfg = configManager;
-        this.cur = currency;
-        this.menu = auctionMenu;
-        this.service = auctionService;
+        cfg = configManager;
+        cur = currency;
+        menu = auctionMenu;
+        service = auctionService;
         updateCache();
     }
 
@@ -53,92 +55,77 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
         }
 
         switch (args[0].toLowerCase()) {
-            case "sell" -> { return handleSell(p, args); }
-            case "sellinv" -> { return handleSellInventory(p, args); }
-            case "search" -> { return handleSearch(p, args); }
-            case "items" -> {
-                service.takePendingInventoryItems(p, cur);
-                return true;
-            }
-            default -> {
-                menu.openSeller(p, cur, args[0]);
-                return true;
-            }
+            case "sell" -> handleSell(p, args);
+            case "sellinv" -> handleSellInventory(p, args);
+            case "search" -> handleSearch(p, args);
+            case "items" -> service.takePendingInventoryItems(p, cur);
+            default -> menu.openSeller(p, cur, args[0]);
         }
+
+        return true;
     }
 
-    private boolean handleSell(Player p, String[] args) {
+    private void handleSell(Player p, String[] args) {
         Double price = CommandUtils.parsePrice(p, args, cfg);
-        if (price == null) return true;
+        if (price == null) return;
+
         service.sell(p, cur, price);
-        return true;
     }
 
-    private boolean handleSellInventory(Player p, String[] args) {
+    private void handleSellInventory(Player p, String[] args) {
         Double price = CommandUtils.parsePrice(p, args, cfg);
-        if (price == null) return true;
+        if (price == null) return;
+
         service.sellInventory(p, cur, price);
-        return true;
     }
 
-    private boolean handleSearch(Player p, String[] args) {
+    private void handleSearch(Player p, String[] args) {
         if (args.length < 2) {
-            p.sendMessage(PlaceholderUtils.applypapi(p, cfg.getConfigValues().messages().enterPlayerName(), cfg));
-            return true;
+            sendSearchUsage(p);
+            return;
         }
 
-        String query = String.join(" ", Arrays.copyOfRange(args, 1, args.length)).trim();
+        String query = String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)).trim();
         if (query.isEmpty()) {
-            p.sendMessage(PlaceholderUtils.applypapi(p, cfg.getConfigValues().messages().enterPlayerName(), cfg));
-            return true;
+            sendSearchUsage(p);
+            return;
         }
 
-        Material mat = null;
         String matName = toMat.get(query.toLowerCase());
-        if (matName != null) {
-            mat = Material.getMaterial(matName);
-        }
+        Material mat = matName != null ? Material.getMaterial(matName) : null;
 
         if (mat == null) {
             mat = Material.matchMaterial(query.toUpperCase());
         }
 
-        if (mat == null) {
-            menu.openMain(p, cur, 0, null, null, query, "all");
-            return true;
-        }
+        menu.openMain(p, cur, 0, null, null, mat != null ? mat.name() : query, "all");
+    }
 
-        menu.openMain(p, cur, 0, null, null, mat.name(), "all");
-        return true;
+    private void sendSearchUsage(Player p) {
+        p.sendMessage(PlaceholderUtils.applypapi(p, cfg.getConfigValues().messages().enterPlayerName(), cfg));
     }
 
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, String[] args) {
-        if (args.length == 0) {
+        if (args.length != 1) {
             return Collections.emptyList();
         }
 
-        if (!sender.hasPermission("fmauction.admin")) {
-            ObjectList<String> completions = new ObjectArrayList<>();
-            completions.add("items");
-            for (Player player : org.bukkit.Bukkit.getOnlinePlayers()) {
-                completions.add(player.getName());
-            }
-            return CommandUtils.getResult(args, completions);
-        }
+        ObjectList<String> completions = new ObjectArrayList<>();
 
-        final ObjectList<String> completions = new ObjectArrayList<>();
-        if (args.length == 1) {
+        if (sender.hasPermission("fmauction.admin")) {
             completions.add("sell");
             completions.add("sellinv");
             completions.add("search");
-            completions.add("items");
-            for (Player player : org.bukkit.Bukkit.getOnlinePlayers()) {
-                completions.add(player.getName());
-            }
-            return CommandUtils.getResult(args, completions);
         }
-        return Collections.emptyList();
+
+        completions.add("items");
+
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            completions.add(player.getName());
+        }
+
+        return CommandUtils.getResult(args, completions);
     }
 
     public void updateCache() {
@@ -148,6 +135,7 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
         for (String matName : all) {
             Material m = Material.getMaterial(matName);
             if (m == null) continue;
+
             String trans = ItemUtils.getTranslation(m);
             if (trans != null && !trans.isEmpty()) {
                 toMat.put(trans.toLowerCase(), matName);

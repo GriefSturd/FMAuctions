@@ -86,6 +86,12 @@ public interface AuctionRepository {
 
     int countActiveBySellerSince(String sellerName, AuctionCurrency currency, long since);
 
+    boolean prepareWithdrawal(String operationId);
+
+    void refundPurchase(String operationId);
+
+    void claimPendingInventoryItems(String playerName, AuctionCurrency currency);
+
     void close();
 
     record TopSeller(String name, int soldCount, double totalEarned) {}

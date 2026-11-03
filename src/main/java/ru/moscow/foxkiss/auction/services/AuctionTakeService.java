@@ -1,8 +1,6 @@
 package ru.moscow.foxkiss.auction.services;
 
-import org.bukkit.Material;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
 import ru.moscow.foxkiss.auction.AuctionItem;
 import ru.moscow.foxkiss.auction.AuctionLotType;
 import ru.moscow.foxkiss.auction.AuctionRepository;
@@ -13,7 +11,6 @@ import ru.moscow.foxkiss.gui.ItemDisplayFactory;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
-import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -64,22 +61,11 @@ public final class AuctionTakeService extends BaseAuctionService {
             return;
         }
 
-        if (item.type() == AuctionLotType.INVENTORY) {
-            List<ItemStack> contents = item.inventoryContents();
-            if (!validationService.canFitAll(player, contents)) {
-                repository.cancelProcessing(lotId, operationId);
-                repository.updateJournalStatus(operationId, "CANCELLED");
-                finishWithMessage(player, configManager.getConfigValues().messages().inventoryFull(), callback);
-                return;
-            }
-        } else {
-            ItemStack returned = item.itemStack().clone();
-            if (validationService.canFit(player, returned)) {
-                repository.cancelProcessing(lotId, operationId);
-                repository.updateJournalStatus(operationId, "CANCELLED");
-                finishWithMessage(player, configManager.getConfigValues().messages().inventoryFull(), callback);
-                return;
-            }
+        if (item.type() != AuctionLotType.INVENTORY && validationService.canFit(player, item.itemStack())) {
+            repository.cancelProcessing(lotId, operationId);
+            repository.updateJournalStatus(operationId, "CANCELLED");
+            finishWithMessage(player, configManager.getConfigValues().messages().inventoryFull(), callback);
+            return;
         }
 
         scheduler.runAsync(() -> {
@@ -102,19 +88,7 @@ public final class AuctionTakeService extends BaseAuctionService {
             return;
         }
 
-        if (item.type() == AuctionLotType.INVENTORY) {
-            List<ItemStack> contents = item.inventoryContents();
-            if (contents != null) {
-                for (ItemStack content : contents) {
-                    if (content == null || content.getType() == Material.AIR) continue;
-                    transactionService.giveItem(player, content.clone());
-                }
-            }
-        } else {
-            transactionService.giveItem(player, item.itemStack().clone());
-        }
-
-        scheduler.runAsync(() -> repository.confirmDelivery(deliveryId, operationId));
+        transactionService.deliverPending(player, null, configManager);
         itemFactory.invalidateLotCache(item.id());
 
         String key = validationService.isExpired(item) ? "takeExpired" : "takeSelling";

@@ -32,6 +32,8 @@ public final class H2AuctionRepository implements AuctionRepository {
     private DataSource dataSource;
     private final ReentrantLock[] listingLocks = new ReentrantLock[64];
 
+    private final Set<String> liveOperations = Collections.synchronizedSet(new HashSet<>());
+
     private final ExecutorService asyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     public H2AuctionRepository(JavaPlugin plugin) {
@@ -40,7 +42,7 @@ public final class H2AuctionRepository implements AuctionRepository {
             listingLocks[i] = new ReentrantLock();
         }
         Path dbPath = plugin.getDataFolder().toPath().resolve("auction").toAbsolutePath();
-        this.jdbcUrl = "jdbc:h2:file:" + dbPath + ";MODE=MySQL";
+        this.jdbcUrl = "jdbc:h2:file:" + dbPath + ";MODE=MySQL;WRITE_DELAY=0";
     }
 
     @Override
@@ -152,6 +154,16 @@ public final class H2AuctionRepository implements AuctionRepository {
             ensureColumns(conn);
             st.executeUpdate("ALTER TABLE sales_history ADD COLUMN IF NOT EXISTS item TEXT");
             st.executeUpdate("ALTER TABLE sales_history ADD COLUMN IF NOT EXISTS operation_id VARCHAR(64)");
+            st.executeUpdate("ALTER TABLE auction_pending_deliveries ADD COLUMN IF NOT EXISTS currency VARCHAR(32)");
+            st.executeUpdate("ALTER TABLE auction_pending_payouts ADD COLUMN IF NOT EXISTS operation_id VARCHAR(100)");
+            st.executeUpdate("ALTER TABLE auction_pending_payouts ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'READY'");
+            st.executeUpdate("CREATE UNIQUE INDEX IF NOT EXISTS idx_payout_operation ON auction_pending_payouts(operation_id)");
+            // A provider may have committed a PAYING transfer before the previous process died.
+            int uncertain = st.executeUpdate("UPDATE auction_pending_payouts SET status='REVIEW' WHERE status='PAYING'");
+            if (uncertain > 0) plugin.getLogger().severe("Payouts require economy reconciliation: " + uncertain);
+            try (ResultSet legacy = st.executeQuery("SELECT COUNT(*) FROM auction_pending_deliveries WHERE currency IS NULL")) {
+                if (legacy.next() && legacy.getInt(1) > 0) plugin.getLogger().severe("Legacy deliveries have no currency; reconcile before delivery: " + legacy.getInt(1));
+            }
             st.executeUpdate("CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_operation ON sales_history(operation_id)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_sales_seller_time ON sales_history(seller_name,currency,sold_at,id)");
             migrateAmounts(conn);
@@ -473,7 +485,7 @@ public final class H2AuctionRepository implements AuctionRepository {
     public Optional<String> findProfileOwner(String value) {
         try (Connection conn = open();
              PreparedStatement ps = conn.prepareStatement("SELECT player_name FROM auction_player_profiles WHERE LOWER(discord_plain)=? OR LOWER(store_name_plain)=? LIMIT 1")) {
-            String plain = TextUtils.plain(value).toLowerCase(Locale.ROOT);
+            String plain = TextUtils.plain(value).toLowerCase();
             ps.setString(1, plain);
             ps.setString(2, plain);
             try (ResultSet rs = ps.executeQuery()) {
@@ -554,7 +566,7 @@ public final class H2AuctionRepository implements AuctionRepository {
             params.add(cutoff);
             if (TextUtils.isNotBlank(category) && !category.equalsIgnoreCase("all")) {
                 baseWhere.append(" AND material=?");
-                params.add(category.toUpperCase(Locale.ROOT));
+                params.add(category.toUpperCase());
             }
             if (TextUtils.isNotBlank(sellerFilter)) {
                 baseWhere.append(" AND seller_name LIKE ?");
@@ -760,7 +772,9 @@ public final class H2AuctionRepository implements AuctionRepository {
             ps.setLong(3, startedAt);
             ps.setLong(4, id);
             ps.setInt(5, active);
-            return ps.executeUpdate() > 0;
+            boolean acquired = ps.executeUpdate() > 0;
+            if (acquired && operationId != null) liveOperations.add(operationId);
+            return acquired;
         } catch (SQLException e) {
             plugin.getLogger().log(Level.WARNING, "Ошибка пометки лота #" + id + " как обрабатываемого", e);
             return false;
@@ -774,6 +788,7 @@ public final class H2AuctionRepository implements AuctionRepository {
 
     @Override
     public void cancelProcessing(long id, String operationId) {
+        if (operationId != null) liveOperations.remove(operationId);
         try (Connection conn = open();
              PreparedStatement ps = conn.prepareStatement("UPDATE auction_items SET status=?, operation_id=NULL, processing_started_at=0 WHERE id=? AND status=? AND (operation_id=? OR ? IS NULL)")) {
             ps.setInt(1, active);
@@ -810,7 +825,7 @@ public final class H2AuctionRepository implements AuctionRepository {
             ps.setLong(11, now);
             ps.executeUpdate();
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Ошибка записи журнала сделки " + operationId, e);
+            throw new IllegalStateException("Cannot persist transaction journal", e);
         }
     }
 
@@ -822,9 +837,9 @@ public final class H2AuctionRepository implements AuctionRepository {
             ps.setString(1, status);
             ps.setLong(2, now);
             ps.setString(3, operationId);
-            ps.executeUpdate();
+            if (ps.executeUpdate() != 1) throw new SQLException("Transaction journal row missing: " + operationId);
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Ошибка обновления статуса журнала " + operationId, e);
+            throw new IllegalStateException("Cannot persist transaction status " + operationId, e);
         }
     }
 
@@ -835,9 +850,10 @@ public final class H2AuctionRepository implements AuctionRepository {
             conn.setAutoCommit(false);
             try {
                 AuctionItem item = null;
-                try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM auction_items WHERE id=? AND status=? FOR UPDATE")) {
+                try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM auction_items WHERE id=? AND status=? AND operation_id=? FOR UPDATE")) {
                     ps.setLong(1, lotId);
                     ps.setInt(2, processing);
+                    ps.setString(3, operationId);
                     try (ResultSet rs = ps.executeQuery()) {
                         if (rs.next()) {
                             item = readItem(rs);
@@ -849,6 +865,7 @@ public final class H2AuctionRepository implements AuctionRepository {
                     return new PurchaseResult(false, 0, null, false);
                 }
 
+                requireWithdrawn(conn, operationId);
                 int currentAmount = item.amount();
                 int actualBuyAmount = Math.max(1, Math.min(buyAmount, currentAmount));
                 ItemStack purchasedItem = item.itemStack().clone();
@@ -886,13 +903,14 @@ public final class H2AuctionRepository implements AuctionRepository {
 
                 long deliveryId = 0;
                 try (PreparedStatement ps = conn.prepareStatement(
-                        "INSERT INTO auction_pending_deliveries(player_name, lot_type, item, inventory_data, created_at) VALUES(?,?,?,?,?)",
+                        "INSERT INTO auction_pending_deliveries(player_name, lot_type, item, inventory_data, created_at, currency) VALUES(?,?,?,?,?,?)",
                         Statement.RETURN_GENERATED_KEYS)) {
                     ps.setString(1, buyerName);
                     ps.setString(2, AuctionLotType.ITEM.name());
                     ps.setString(3, serialize(purchasedItem));
                     ps.setString(4, null);
                     ps.setLong(5, System.currentTimeMillis());
+                    ps.setString(6, item.currency().name());
                     ps.executeUpdate();
                     try (ResultSet keys = ps.getGeneratedKeys()) {
                         if (keys.next()) {
@@ -903,14 +921,17 @@ public final class H2AuctionRepository implements AuctionRepository {
 
                 try (PreparedStatement ps = conn.prepareStatement(
                         "UPDATE auction_transaction_journal SET status=?, updated_at=? WHERE operation_id=?")) {
-                    ps.setString(1, "LOT_UPDATED");
+                    ps.setString(1, "SALE_COMMITTED");
                     ps.setLong(2, System.currentTimeMillis());
                     ps.setString(3, operationId);
                     ps.executeUpdate();
                 }
 
                 recordSale(conn, operationId, item, buyerName, purchasedItem, actualBuyAmount, totalPrice);
+                savePayout(conn, operationId + ":seller", item.sellerName(), item.currency(),
+                        item.calculatePurchasePrice(actualBuyAmount));
                 conn.commit();
+                liveOperations.remove(operationId);
                 return new PurchaseResult(true, deliveryId, purchasedItem, remainingUpdated);
             } catch (Exception e) {
                 try {
@@ -927,10 +948,6 @@ public final class H2AuctionRepository implements AuctionRepository {
         }
     }
 
-    public CompletableFuture<PurchaseResult> processPurchaseAsync(long lotId, String operationId, String buyerName, int buyAmount, double totalPrice) {
-        return CompletableFuture.supplyAsync(() -> processPurchase(lotId, operationId, buyerName, buyAmount, totalPrice), asyncExecutor);
-    }
-
     @Override
     public PurchaseResult processInventoryPurchase(long lotId, String operationId, String buyerName) {
         try (Connection conn = open()) {
@@ -938,9 +955,10 @@ public final class H2AuctionRepository implements AuctionRepository {
             conn.setAutoCommit(false);
             try {
                 AuctionItem item = null;
-                try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM auction_items WHERE id=? AND status=? FOR UPDATE")) {
+                try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM auction_items WHERE id=? AND status=? AND operation_id=? FOR UPDATE")) {
                     ps.setLong(1, lotId);
                     ps.setInt(2, processing);
+                    ps.setString(3, operationId);
                     try (ResultSet rs = ps.executeQuery()) {
                         if (rs.next()) {
                             item = readItem(rs);
@@ -952,6 +970,7 @@ public final class H2AuctionRepository implements AuctionRepository {
                     return new PurchaseResult(false, 0, null, false);
                 }
 
+                requireWithdrawn(conn, operationId);
                 try (PreparedStatement ps = conn.prepareStatement("DELETE FROM auction_items WHERE id=?")) {
                     ps.setLong(1, lotId);
                     ps.executeUpdate();
@@ -959,13 +978,14 @@ public final class H2AuctionRepository implements AuctionRepository {
 
                 long deliveryId = 0;
                 try (PreparedStatement ps = conn.prepareStatement(
-                        "INSERT INTO auction_pending_deliveries(player_name, lot_type, item, inventory_data, created_at) VALUES(?,?,?,?,?)",
+                        "INSERT INTO auction_pending_deliveries(player_name, lot_type, item, inventory_data, created_at, currency) VALUES(?,?,?,?,?,?)",
                         Statement.RETURN_GENERATED_KEYS)) {
                     ps.setString(1, buyerName);
                     ps.setString(2, AuctionLotType.INVENTORY.name());
                     ps.setString(3, serialize(item.itemStack()));
                     ps.setString(4, serializeInventory(item.inventoryContents()));
                     ps.setLong(5, System.currentTimeMillis());
+                    ps.setString(6, item.currency().name());
                     ps.executeUpdate();
                     try (ResultSet keys = ps.getGeneratedKeys()) {
                         if (keys.next()) {
@@ -976,14 +996,16 @@ public final class H2AuctionRepository implements AuctionRepository {
 
                 try (PreparedStatement ps = conn.prepareStatement(
                         "UPDATE auction_transaction_journal SET status=?, updated_at=? WHERE operation_id=?")) {
-                    ps.setString(1, "LOT_UPDATED");
+                    ps.setString(1, "SALE_COMMITTED");
                     ps.setLong(2, System.currentTimeMillis());
                     ps.setString(3, operationId);
                     ps.executeUpdate();
                 }
 
                 recordSale(conn, operationId, item, buyerName, item.itemStack(), 1, item.price());
+                savePayout(conn, operationId + ":seller", item.sellerName(), item.currency(), item.price());
                 conn.commit();
+                liveOperations.remove(operationId);
                 return new PurchaseResult(true, deliveryId, item.itemStack(), false);
             } catch (Exception e) {
                 try {
@@ -1007,9 +1029,10 @@ public final class H2AuctionRepository implements AuctionRepository {
             conn.setAutoCommit(false);
             try {
                 AuctionItem item = null;
-                try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM auction_items WHERE id=? AND status=? FOR UPDATE")) {
+                try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM auction_items WHERE id=? AND status=? AND operation_id=? FOR UPDATE")) {
                     ps.setLong(1, lotId);
                     ps.setInt(2, processing);
+                    ps.setString(3, operationId);
                     try (ResultSet rs = ps.executeQuery()) {
                         if (rs.next()) {
                             item = readItem(rs);
@@ -1023,13 +1046,14 @@ public final class H2AuctionRepository implements AuctionRepository {
 
                 long deliveryId = 0;
                 try (PreparedStatement ps = conn.prepareStatement(
-                        "INSERT INTO auction_pending_deliveries(player_name, lot_type, item, inventory_data, created_at) VALUES(?,?,?,?,?)",
+                        "INSERT INTO auction_pending_deliveries(player_name, lot_type, item, inventory_data, created_at, currency) VALUES(?,?,?,?,?,?)",
                         Statement.RETURN_GENERATED_KEYS)) {
                     ps.setString(1, playerName);
                     ps.setString(2, item.type().name());
                     ps.setString(3, serialize(item.itemStack()));
                     ps.setString(4, item.type() == AuctionLotType.INVENTORY ? serializeInventory(item.inventoryContents()) : null);
                     ps.setLong(5, System.currentTimeMillis());
+                    ps.setString(6, item.currency().name());
                     ps.executeUpdate();
                     try (ResultSet keys = ps.getGeneratedKeys()) {
                         if (keys.next()) {
@@ -1052,6 +1076,7 @@ public final class H2AuctionRepository implements AuctionRepository {
                 }
 
                 conn.commit();
+                liveOperations.remove(operationId);
                 return new TakeResult(true, deliveryId, item);
             } catch (Exception e) {
                 try {
@@ -1126,11 +1151,11 @@ public final class H2AuctionRepository implements AuctionRepository {
                     ItemStack item = deserialize(rs.getString("item"));
                     List<ItemStack> contents = deserializeInventory(rs.getString("inventory_data"));
                     long createdAt = rs.getLong("created_at");
-                    list.add(new PendingDelivery(id, name, type, item, contents, createdAt));
+                    list.add(new PendingDelivery(id, name, type, item, contents, createdAt, rs.getString("currency") == null ? null : AuctionCurrency.valueOf(rs.getString("currency"))));
                 }
             }
         } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "Ошибка загрузки ожидающих выдач для игрока " + playerName, e);
+            throw new IllegalStateException("Cannot load pending deliveries", e);
         }
         return list;
     }
@@ -1179,31 +1204,61 @@ public final class H2AuctionRepository implements AuctionRepository {
         try (Connection conn = open()) {
             conn.setAutoCommit(false);
             try {
-                replacePendingInventoryItems(conn, playerName, currency, items);
-                try (PreparedStatement ps = conn.prepareStatement("DELETE FROM auction_pending_deliveries WHERE id=?")) {
-                    ps.setLong(1, pendingDeliveryId);
-                    ps.executeUpdate();
+                lockSeller(conn, playerName, currency);
+                try (PreparedStatement ps = conn.prepareStatement("SELECT id FROM auction_pending_deliveries WHERE id=? AND player_name=? AND currency=? FOR UPDATE")) {
+                    ps.setLong(1, pendingDeliveryId); ps.setString(2, playerName); ps.setString(3, currency.name());
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (!rs.next()) { conn.rollback(); return true; }
+                    }
                 }
-                try (PreparedStatement ps = conn.prepareStatement("UPDATE auction_transaction_journal SET status=?, updated_at=? WHERE operation_id=?")) {
-                    ps.setString(1, "COMPLETED");
-                    ps.setLong(2, System.currentTimeMillis());
-                    ps.setString(3, operationId);
-                    ps.executeUpdate();
+                List<ItemStack> combined = new ArrayList<>();
+                try (PreparedStatement ps = conn.prepareStatement("SELECT inventory_data FROM auction_pending_inventory_items WHERE player_name=? AND currency=? FOR UPDATE")) {
+                    ps.setString(1, playerName); ps.setString(2, currency.name());
+                    try (ResultSet rs = ps.executeQuery()) { if (rs.next()) combined.addAll(deserializeInventory(rs.getString(1))); }
+                }
+                combined.addAll(items);
+                replacePendingInventoryItems(conn, playerName, currency, combined);
+                try (PreparedStatement ps = conn.prepareStatement("DELETE FROM auction_pending_deliveries WHERE id=?")) {
+                    ps.setLong(1, pendingDeliveryId); ps.executeUpdate();
                 }
                 conn.commit();
                 return true;
-            } catch (Exception e) {
-                try {
-                    conn.rollback();
-                } catch (SQLException rollbackEx) {
-                    e.addSuppressed(rollbackEx);
-                }
-                throw e;
-            }
+            } catch (Exception e) { conn.rollback(); throw e; }
         } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "Ошибка подтверждения выдачи инвентаря #" + pendingDeliveryId, e);
+            plugin.getLogger().log(Level.SEVERE, "Cannot acknowledge delivery " + pendingDeliveryId, e);
             return false;
         }
+    }
+
+    @Override
+    public void claimPendingInventoryItems(String playerName, AuctionCurrency currency) {
+        try (Connection conn = open()) {
+            conn.setAutoCommit(false);
+            try {
+                lockSeller(conn, playerName, currency);
+                String data = null;
+                try (PreparedStatement ps = conn.prepareStatement("SELECT inventory_data FROM auction_pending_inventory_items WHERE player_name=? AND currency=? FOR UPDATE")) {
+                    ps.setString(1, playerName); ps.setString(2, currency.name());
+                    try (ResultSet rs = ps.executeQuery()) { if (rs.next()) data = rs.getString(1); }
+                }
+                if (data != null && !data.isEmpty()) {
+                    String icon = null;
+                    for (String part : data.split(";", -1)) {
+                        if (!part.isEmpty()) {
+                            icon = part;
+                            break;
+                        }
+                    }
+                    if (icon == null) throw new IllegalStateException("Queued inventory has no items");
+                    try (PreparedStatement ps = conn.prepareStatement("INSERT INTO auction_pending_deliveries(player_name,lot_type,item,inventory_data,created_at,currency) VALUES(?,'INVENTORY',?,?,?,?)")) {
+                        ps.setString(1, playerName); ps.setString(2, icon); ps.setString(3, data);
+                        ps.setLong(4, System.currentTimeMillis()); ps.setString(5, currency.name()); ps.executeUpdate();
+                    }
+                    replacePendingInventoryItems(conn, playerName, currency, List.of());
+                }
+                conn.commit();
+            } catch (Exception e) { conn.rollback(); throw e; }
+        } catch (Exception e) { throw new IllegalStateException("Cannot claim queued items", e); }
     }
 
     private void replacePendingInventoryItems(Connection conn, String playerName, AuctionCurrency currency, List<ItemStack> items) throws Exception {
@@ -1245,7 +1300,7 @@ public final class H2AuctionRepository implements AuctionRepository {
     public List<PendingPayout> getPendingPayouts(String playerName) {
         ObjectList<PendingPayout> list = new ObjectArrayList<>();
         try (Connection conn = open();
-             PreparedStatement ps = conn.prepareStatement("SELECT * FROM auction_pending_payouts WHERE player_name=? ORDER BY id ASC")) {
+             PreparedStatement ps = conn.prepareStatement("SELECT * FROM auction_pending_payouts WHERE player_name=? AND status='READY' ORDER BY id ASC")) {
             ps.setString(1, playerName);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -1275,153 +1330,127 @@ public final class H2AuctionRepository implements AuctionRepository {
         }
     }
 
+    private void savePayout(Connection conn, String operationId, String player, AuctionCurrency currency, double amount) throws SQLException {
+        if (amount == 0) return;
+        if (!Double.isFinite(amount) || amount < 0) throw new SQLException("Invalid payout amount");
+        try (PreparedStatement ps = conn.prepareStatement("INSERT INTO auction_pending_payouts(player_name,currency,amount,created_at,operation_id) SELECT ?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM auction_pending_payouts WHERE operation_id=?)")) {
+            ps.setString(1, player);
+            ps.setString(2, currency.name());
+            ps.setBigDecimal(3, BigDecimal.valueOf(amount).setScale(2, RoundingMode.HALF_UP));
+            ps.setLong(4, System.currentTimeMillis());
+            ps.setString(5, operationId);
+            ps.setString(6, operationId);
+            ps.executeUpdate();
+        }
+    }
+
+    private void requireWithdrawn(Connection conn, String operationId) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT status FROM auction_transaction_journal WHERE operation_id=? FOR UPDATE")) {
+            ps.setString(1, operationId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next() || !"MONEY_WITHDRAWN".equals(rs.getString(1))) throw new SQLException("Operation does not own a confirmed debit");
+            }
+        }
+    }
+
+    @Override
+    public boolean prepareWithdrawal(String operationId) {
+        try (Connection conn = open(); PreparedStatement ps = conn.prepareStatement("UPDATE auction_transaction_journal SET status='WITHDRAW_INTENT',updated_at=? WHERE operation_id=? AND status='STARTED'")) {
+            ps.setLong(1, System.currentTimeMillis());
+            ps.setString(2, operationId);
+            return ps.executeUpdate() == 1;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Cannot prepare debit", e);
+        }
+    }
+
+    @Override
+    public void refundPurchase(String operationId) {
+        try (Connection conn = open()) {
+            conn.setAutoCommit(false);
+            try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM auction_transaction_journal WHERE operation_id=? FOR UPDATE")) {
+                ps.setString(1, operationId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next() || !"MONEY_WITHDRAWN".equals(rs.getString("status"))) { conn.rollback(); return; }
+                    if (rs.getDouble("price") <= 0) {
+                        conn.rollback();
+                        updateJournalStatus(operationId, "REVIEW");
+                        plugin.getLogger().severe("Missing debit amount; reconciliation required: " + operationId);
+                        return;
+                    }
+                    savePayout(conn, operationId + ":refund", rs.getString("buyer_name"), AuctionCurrency.valueOf(rs.getString("currency")), rs.getDouble("price"));
+                    try (PreparedStatement lot = conn.prepareStatement("UPDATE auction_items SET status=0,operation_id=NULL,processing_started_at=0 WHERE operation_id=?")) {
+                        lot.setString(1, operationId); lot.executeUpdate();
+                    }
+                    try (PreparedStatement journal = conn.prepareStatement("UPDATE auction_transaction_journal SET status='REFUND_QUEUED',updated_at=? WHERE operation_id=?")) {
+                        journal.setLong(1, System.currentTimeMillis()); journal.setString(2, operationId); journal.executeUpdate();
+                    }
+                    conn.commit();
+                    liveOperations.remove(operationId);
+                }
+            }
+        } catch (SQLException e) { throw new IllegalStateException("Cannot queue refund " + operationId, e); }
+    }
+
     @Override
     public void processPendingPayouts(EconomyProvider economyProvider) {
-        try (Connection conn = open()) {
-            List<PendingPayout> pending = new ArrayList<>();
-            try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM auction_pending_payouts ORDER BY id ASC")) {
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        long id = rs.getLong("id");
-                        String name = rs.getString("player_name");
-                        AuctionCurrency curr = AuctionCurrency.valueOf(rs.getString("currency"));
-                        BigDecimal bd = rs.getBigDecimal("amount");
-                        double amount = bd != null ? bd.doubleValue() : 0.0;
-                        long createdAt = rs.getLong("created_at");
-                        pending.add(new PendingPayout(id, name, curr, amount, createdAt));
-                    }
-                }
-            }
-            for (PendingPayout payout : pending) {
-                OfflinePlayer target = org.bukkit.Bukkit.getOfflinePlayer(payout.playerName());
-                if (economyProvider.deposit(target, payout.currency(), payout.amount())) {
-                    removePendingPayout(payout.id());
-                    plugin.getLogger().info("Успешно выплачена отложенная выплата игроку " + payout.playerName() + " на сумму " + payout.amount() + " " + payout.currency());
-                }
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Ошибка при обработке ожидающих выплат", e);
+        List<PendingPayout> pending = new ArrayList<>();
+        try (Connection conn = open(); PreparedStatement ps = conn.prepareStatement("SELECT * FROM auction_pending_payouts WHERE status='READY' ORDER BY id LIMIT 100" ); ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) pending.add(new PendingPayout(rs.getLong("id"), rs.getString("player_name"), AuctionCurrency.valueOf(rs.getString("currency")), rs.getDouble("amount"), rs.getLong("created_at")));
+        } catch (SQLException e) { throw new IllegalStateException("Cannot load payouts", e); }
+        for (PendingPayout payout : pending) {
+            try (Connection conn = open(); PreparedStatement ps = conn.prepareStatement("UPDATE auction_pending_payouts SET status='PAYING' WHERE id=? AND status='READY'")) {
+                ps.setLong(1, payout.id());
+                if (ps.executeUpdate() != 1) continue;
+            } catch (SQLException e) { throw new IllegalStateException("Cannot claim payout", e); }
+            org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
+                // An exception / crash leaves PAYING for explicit reconciliation, never an automatic duplicate.
+                try {
+                    boolean paid = economyProvider.deposit(org.bukkit.Bukkit.getOfflinePlayer(payout.playerName()), payout.currency(), payout.amount());
+                    asyncExecutor.execute(() -> {
+                        try (Connection conn = open(); PreparedStatement ps = conn.prepareStatement("UPDATE auction_pending_payouts SET status=? WHERE id=? AND status='PAYING'")) {
+                            ps.setString(1, paid ? "PAID" : "READY"); ps.setLong(2, payout.id()); ps.executeUpdate();
+                        } catch (SQLException e) { plugin.getLogger().log(Level.SEVERE, "Payout requires reconciliation: " + payout.id(), e); }
+                    });
+                } catch (Exception e) { plugin.getLogger().log(Level.SEVERE, "Payout requires reconciliation: " + payout.id(), e); }
+            });
         }
     }
 
     @Override
     public void recoverStuckLots(EconomyProvider economyProvider, boolean forceAll) {
-        try (Connection conn = open()) {
-            List<AuctionItem> stuckLots = new ArrayList<>();
-            try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM auction_items WHERE status=?")) {
-                ps.setInt(1, processing);
-                try (ResultSet rs = ps.executeQuery()) {
+        long cutoff = forceAll ? Long.MAX_VALUE : System.currentTimeMillis() - 60_000L;
+        try (Connection conn = open(); PreparedStatement ps = conn.prepareStatement("SELECT operation_id,status,lot_id FROM auction_transaction_journal WHERE updated_at<? AND status IN ('STARTED','WITHDRAW_INTENT','MONEY_WITHDRAWN','LOT_UPDATED')")) {
+            ps.setLong(1, cutoff);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String op = rs.getString(1), status = rs.getString(2);
+                    if (liveOperations.contains(op)) continue;
+                    if ("MONEY_WITHDRAWN".equals(status)) refundPurchase(op);
+                    else if ("STARTED".equals(status)) {
+                        cancelProcessing(rs.getLong(3), op);
+                        updateJournalStatus(op, "CANCELLED");
+                    } else {
+                        // Legacy LOT_UPDATED has no reliable payout receipt; WITHDRAW_INTENT may have debited.
+                        updateJournalStatus(op, "REVIEW");
+                        plugin.getLogger().severe("Transaction requires economy reconciliation: " + op + " (" + status + ")");
+                    }
+                }
+            }
+            // A crash between lot claim and journal insert is safe to release after the timeout.
+            try (PreparedStatement orphan = conn.prepareStatement("SELECT id,operation_id FROM auction_items WHERE status=1 AND processing_started_at<? AND NOT EXISTS (SELECT 1 FROM auction_transaction_journal j WHERE j.operation_id=auction_items.operation_id)")) {
+                orphan.setLong(1, cutoff);
+                try (ResultSet rs = orphan.executeQuery()) {
                     while (rs.next()) {
-                        stuckLots.add(readItem(rs));
+                        String op = rs.getString(2);
+                        if (op == null || !liveOperations.contains(op)) cancelProcessing(rs.getLong(1), op);
                     }
-                }
-            } catch (Exception e) {
-                plugin.getLogger().log(Level.WARNING, "Ошибка выборки застрявших лотов", e);
-                return;
-            }
-
-            long now = System.currentTimeMillis();
-            long timeoutMillis = 60_000L;
-
-            for (AuctionItem item : stuckLots) {
-                long lotId = item.id();
-                String opId = item.operationId();
-                long startedAt = item.processingStartedAt();
-
-                if (!forceAll && startedAt > 0 && (now - startedAt < timeoutMillis)) {
-                    continue;
-                }
-
-                TransactionJournalRecord journal = null;
-                if (opId != null && !opId.isEmpty()) {
-                    try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM auction_transaction_journal WHERE operation_id=?")) {
-                        ps.setString(1, opId);
-                        try (ResultSet rs = ps.executeQuery()) {
-                            if (rs.next()) {
-                                BigDecimal priceBd = rs.getBigDecimal("price");
-                                double price = priceBd != null ? priceBd.doubleValue() : 0.0;
-                                journal = new TransactionJournalRecord(
-                                        rs.getString("operation_id"),
-                                        rs.getLong("lot_id"),
-                                        rs.getString("type"),
-                                        rs.getString("buyer_name"),
-                                        rs.getString("seller_name"),
-                                        AuctionCurrency.valueOf(rs.getString("currency")),
-                                        rs.getInt("amount"),
-                                        price,
-                                        rs.getString("status"),
-                                        rs.getLong("created_at"),
-                                        rs.getLong("updated_at")
-                                );
-                            }
-                        }
-                    } catch (SQLException e) {
-                        plugin.getLogger().log(Level.WARNING, "Ошибка чтения журнала для операции " + opId, e);
-                    }
-                }
-
-                if (journal == null || "STARTED".equals(journal.status()) || "CANCELLED".equals(journal.status())) {
-                    cancelProcessing(lotId, opId);
-                    if (opId != null && !opId.isEmpty()) {
-                        updateJournalStatus(opId, "CANCELLED");
-                    }
-                    plugin.getLogger().info("Восстановлен застрявший лот #" + lotId + " (средства не списывались)");
-                } else if ("MONEY_WITHDRAWN".equals(journal.status())) {
-                    OfflinePlayer buyer = org.bukkit.Bukkit.getOfflinePlayer(journal.buyerName());
-                    boolean refunded = economyProvider.deposit(buyer, journal.currency(), journal.price());
-                    if (!refunded) {
-                        savePendingPayout(journal.buyerName(), journal.currency(), journal.price());
-                    }
-                    cancelProcessing(lotId, opId);
-                    updateJournalStatus(opId, "REFUNDED");
-                    plugin.getLogger().warning("Застрявший лот #" + lotId + ": покупателю " + journal.buyerName() + " возвращено " + journal.price() + " " + journal.currency() + ", статус лота сброшен");
-                } else if ("LOT_UPDATED".equals(journal.status())) {
-                    OfflinePlayer seller = org.bukkit.Bukkit.getOfflinePlayer(journal.sellerName());
-                    boolean paid = economyProvider.deposit(seller, journal.currency(), journal.price());
-                    if (!paid) {
-                        savePendingPayout(journal.sellerName(), journal.currency(), journal.price());
-                    }
-                    recordSale(conn, opId, item, journal.buyerName(), item.itemStack(), journal.amount(), journal.price());
-                    updateJournalStatus(opId, "COMPLETED");
-                    cancelProcessing(lotId, opId);
-                    plugin.getLogger().info("Застрявший лот #" + lotId + ": завершена выплата продавцу " + journal.sellerName() + " по сделке " + opId);
-                } else if ("PENDING_DELIVERY".equals(journal.status())) {
-                    delete(lotId);
-                    updateJournalStatus(opId, "COMPLETED");
-                    plugin.getLogger().info("Застрявший лот #" + lotId + ": очищен лот после перемещения в ожидающие выдачи");
                 }
             }
-
-            try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM auction_transaction_journal WHERE status='MONEY_WITHDRAWN'")) {
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        String opId = rs.getString("operation_id");
-                        String buyerName = rs.getString("buyer_name");
-                        AuctionCurrency currency = AuctionCurrency.valueOf(rs.getString("currency"));
-                        BigDecimal priceBd = rs.getBigDecimal("price");
-                        double price = priceBd != null ? priceBd.doubleValue() : 0.0;
-                        OfflinePlayer buyer = org.bukkit.Bukkit.getOfflinePlayer(buyerName);
-                        boolean refunded = economyProvider.deposit(buyer, currency, price);
-                        if (!refunded) {
-                            savePendingPayout(buyerName, currency, price);
-                        }
-                        updateJournalStatus(opId, "REFUNDED");
-                        plugin.getLogger().warning("Восстановлена зависшая транзакция " + opId + ": возвращено " + price + " " + currency + " игроку " + buyerName);
-                    }
-                }
-            } catch (SQLException e) {
-                plugin.getLogger().log(Level.WARNING, "Ошибка проверки незавершённых списаний в журнале", e);
-            }
-
-            processPendingPayouts(economyProvider);
-        } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Ошибка при восстановлении застрявших лотов", e);
-        }
+        } catch (SQLException e) { throw new IllegalStateException("Cannot recover transactions", e); }
+        processPendingPayouts(economyProvider);
     }
 
-    public CompletableFuture<Void> recoverStuckLotsAsync(EconomyProvider economyProvider, boolean forceAll) {
-        return CompletableFuture.runAsync(() -> recoverStuckLots(economyProvider, forceAll), asyncExecutor);
-    }
 
     @Override
     public List<TopSeller> getTopSellers(AuctionCurrency currency, int limit) {
@@ -1507,6 +1536,18 @@ public final class H2AuctionRepository implements AuctionRepository {
     @Override
     public void close() {
         asyncExecutor.shutdown();
+        try {
+            if (!asyncExecutor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                asyncExecutor.shutdownNow();
+                if (!asyncExecutor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                    plugin.getLogger().severe("Database tasks did not stop; leaving the pool open to avoid interrupting a commit");
+                    return;
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        }
         if (dataSource == null) return;
         try {
             dataSource.getClass().getMethod("dispose").invoke(dataSource);

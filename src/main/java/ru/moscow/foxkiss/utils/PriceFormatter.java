@@ -2,7 +2,6 @@ package ru.moscow.foxkiss.utils;
 
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
-import java.util.Locale;
 
 public final class PriceFormatter {
 
@@ -10,7 +9,7 @@ public final class PriceFormatter {
     private static final DecimalFormat formatWithoutDecimals;
 
     static {
-        DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.ROOT);
+        DecimalFormatSymbols symbols = new DecimalFormatSymbols();
         symbols.setGroupingSeparator('.');
         symbols.setDecimalSeparator('.');
 

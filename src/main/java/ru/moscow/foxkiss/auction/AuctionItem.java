@@ -16,9 +16,7 @@ public record AuctionItem(long id, String sellerName, AuctionCurrency currency, 
     }
 
     public double pricePerItem() {
-        return BigDecimal.valueOf(price)
-                .divide(BigDecimal.valueOf(Math.max(1, amount())), 2, RoundingMode.HALF_UP)
-                .doubleValue();
+        return BigDecimal.valueOf(price).divide(BigDecimal.valueOf(Math.max(1, amount())), 2, RoundingMode.HALF_UP).doubleValue();
     }
 
     public boolean expired(int maxDays) {
@@ -36,20 +34,7 @@ public record AuctionItem(long id, String sellerName, AuctionCurrency currency, 
         if (currency == AuctionCurrency.PLAYER_POINTS) {
             long total = Math.round(price);
             if (total <= 0) return 0.0;
-            long buyPrice = Math.round((double) total * count / currentAmount);
-            if (buyPrice < 1) {
-                buyPrice = 1;
-            }
-            if (total >= currentAmount) {
-                long maxAllowed = total - (currentAmount - count);
-                if (buyPrice > maxAllowed) {
-                    buyPrice = maxAllowed;
-                }
-            } else {
-                if (buyPrice >= total) {
-                    buyPrice = Math.max(1, total - 1);
-                }
-            }
+            long buyPrice = getBuyPrice(total, count, currentAmount);
             return (double) buyPrice;
         } else {
             BigDecimal total = BigDecimal.valueOf(price);
@@ -64,6 +49,24 @@ public record AuctionItem(long id, String sellerName, AuctionCurrency currency, 
             }
             return buyVal;
         }
+    }
+
+    private static long getBuyPrice(long total, int count, int currentAmount) {
+        long buyPrice = Math.round((double) total * count / currentAmount);
+        if (buyPrice < 1) {
+            buyPrice = 1;
+        }
+        if (total >= currentAmount) {
+            long maxAllowed = total - (currentAmount - count);
+            if (buyPrice > maxAllowed) {
+                buyPrice = maxAllowed;
+            }
+        } else {
+            if (buyPrice >= total) {
+                buyPrice = Math.max(1, total - 1);
+            }
+        }
+        return buyPrice;
     }
 
     public double calculateRemainingPrice(int buyAmount, double paidPrice) {

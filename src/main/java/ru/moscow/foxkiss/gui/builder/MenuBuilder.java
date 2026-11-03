@@ -9,6 +9,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.components.CustomModelDataComponent;
 import org.jetbrains.annotations.NotNull;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionItem;
@@ -355,13 +356,19 @@ public final class MenuBuilder {
     private ItemStack createGlassPane(ConfigValues.GlassPane pane) {
         ItemStack item = new ItemStack(pane.material());
         ItemMeta meta = item.getItemMeta();
+
         if (meta != null) {
             meta.displayName(TextUtils.component(pane.displayName()));
+
             if (pane.customModelData() != null) {
-                meta.setCustomModelData(pane.customModelData());
+                CustomModelDataComponent component = meta.getCustomModelDataComponent();
+                component.setFloats(List.of(pane.customModelData().floatValue()));
+                meta.setCustomModelDataComponent(component);
             }
+
             item.setItemMeta(meta);
         }
+
         return item;
     }
 }
