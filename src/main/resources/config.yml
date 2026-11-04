@@ -675,3 +675,8 @@ categories:
     - PLAYER_HEAD
   all:
     - all
+
+# Режим подсчёта страниц: false = COUNT(*) OVER(), true = отдельный COUNT.
+# Оба запроса отдельного режима выполняются в одном снимке транзакции.
+database:
+  separate-page-count: false

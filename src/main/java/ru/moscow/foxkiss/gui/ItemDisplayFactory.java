@@ -40,23 +40,27 @@ public final class ItemDisplayFactory {
         long ageBucket = LotDisplayTime.ageBucket(item.createdAt(), now);
         long daysLeft = LotDisplayTime.daysLeft(item.createdAt(), now, maxStorageDays);
 
+        return createLotDisplay(item, profile, ageBucket, daysLeft, item.itemStack().hashCode());
+    }
+
+    public ItemStack createLotDisplay(AuctionItem item, PlayerProfile profile, long ageBucket, long daysLeft, int itemHash) {
         String key = item.id()
                 + "|" + item.amount()
                 + "|" + item.price()
                 + "|" + item.createdAt()
                 + "|" + item.status()
-                + "|" + item.itemStack().hashCode()
+                + "|" + itemHash
                 + "|" + profile.discord()
                 + "|" + profile.storeName()
                 + "|" + profile.sales()
                 + "|" + ageBucket
                 + "|" + daysLeft;
 
-        return lotDisplayCache.computeIfAbsent(key, k -> buildLotDisplay(item, profile)).clone();
+        return cached(lotDisplayCache, key, 1024, () -> buildLotDisplay(item, profile, ageBucket, daysLeft));
     }
 
 
-    private ItemStack buildLotDisplay(AuctionItem item, PlayerProfile profile) {
+    private ItemStack buildLotDisplay(AuctionItem item, PlayerProfile profile, long ageBucket, long daysLeft) {
         ItemStack base = item.itemStack().clone();
         ItemMeta meta = base.getItemMeta();
 
@@ -85,9 +89,7 @@ public final class ItemDisplayFactory {
         String price = PriceFormatter.format(item.price());
         String pricePerItem = PriceFormatter.format(item.pricePerItem());
         String amount = String.valueOf(item.amount());
-        long now = System.currentTimeMillis();
-        long ageBucket = LotDisplayTime.ageBucket(item.createdAt(), now);
-        long daysLeft = LotDisplayTime.daysLeft(item.createdAt(), now, config.maxAuctionStorageDays());
+        String sales = String.valueOf(profile.sales());
 
         String daysLeftText = String.valueOf(daysLeft);
         String listedDate = LotDisplayTime.formatAge(ageBucket);
@@ -101,7 +103,7 @@ public final class ItemDisplayFactory {
                     .replace("{daysLeft}", daysLeftText)
                     .replace("{symbol_value}", symbol)
                     .replace("{listedDate}", listedDate);
-            processed = processed.replace("{discord}", profile.discord()).replace("{store}", profile.storeName()).replace("{sales}", String.valueOf(profile.sales()));
+            processed = processed.replace("{discord}", profile.discord()).replace("{store}", profile.storeName()).replace("{sales}", sales);
             lore.add(TextUtils.component(processed));
         }
 
@@ -182,13 +184,13 @@ public final class ItemDisplayFactory {
     }
 
     public ItemStack createNavigationButton(ConfigValues.NavigationButton button, List<String> lore) {
-        String key = button.slot() + "|" + button.name() + "|" + String.join("", lore) + "|" + button.customModelData();
-        return navCache.computeIfAbsent(key, k -> createButtonInternal(button.material(), button.name(), lore, button.skullTexture(), button.customModelData())).clone();
+        String key = button.slot() + "|" + button.material() + "|" + button.skullTexture() + "|" + button.name() + "|" + String.join("\u001f", lore) + "|" + button.customModelData();
+        return cached(navCache, key, 128, () -> createButtonInternal(button.material(), button.name(), lore, button.skullTexture(), button.customModelData()));
     }
 
     public ItemStack createSortButton(AuctionSort selected, AuctionCurrency currency) {
         String key = selected.name() + "|" + currency.name();
-        return sortButtonCache.computeIfAbsent(key, k -> buildSortButton(selected, currency)).clone();
+        return cached(sortButtonCache, key, 64, () -> buildSortButton(selected, currency));
     }
 
     private ItemStack buildSortButton(AuctionSort selected, AuctionCurrency currency) {
@@ -222,7 +224,7 @@ public final class ItemDisplayFactory {
     public ItemStack createCategoryButton(String selectedCategory, AuctionCurrency currency) {
         final String cat = selectedCategory == null ? "all" : selectedCategory;
         String key = cat.toLowerCase() + "|" + currency.name();
-        return categoryButtonCache.computeIfAbsent(key, k -> buildCategoryButton(cat, currency)).clone();
+        return cached(categoryButtonCache, key, 128, () -> buildCategoryButton(cat, currency));
     }
 
     private ItemStack buildCategoryButton(String selectedCategory, AuctionCurrency currency) {
@@ -299,6 +301,19 @@ public final class ItemDisplayFactory {
 
         item.setItemMeta(meta);
         return item;
+    }
+
+    private static ItemStack cached(Map<String, ItemStack> cache, String key, int limit, java.util.function.Supplier<ItemStack> build) {
+        ItemStack item = cache.get(key);
+        if (item == null) {
+            if (cache.size() >= limit) {
+                Iterator<String> keys = cache.keySet().iterator();
+                keys.next(); keys.remove();
+            }
+            item = build.get();
+            cache.put(key, item);
+        }
+        return item.clone();
     }
 
     public void clearCache() {

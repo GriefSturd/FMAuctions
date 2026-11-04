@@ -75,6 +75,8 @@ public final class MenuBuilder {
         int count = Math.min(filtered.size(), slots.size());
         Map<Integer, LotSnapshot> snapshots = holder.getLotSnapshots();
 
+        long now = System.currentTimeMillis();
+        int maxStorageDays = configManager.getConfigValues().maxAuctionStorageDays();
         for (int i = 0; i < slots.size(); i++) {
             int slot = slots.get(i);
 
@@ -92,16 +94,14 @@ public final class MenuBuilder {
             AuctionItem item = filtered.get(i);
             boolean inventoryLot = item.type() == AuctionLotType.INVENTORY;
 
-            PlayerProfile profile = profiles.getOrDefault(item.sellerName(), PlayerProfile.empty(item.sellerName()));
-
-            long now = System.currentTimeMillis();
-
-            int maxStorageDays = configManager.getConfigValues().maxAuctionStorageDays();
+            PlayerProfile profile = profiles.get(item.sellerName());
+            if (profile == null) profile = PlayerProfile.empty(item.sellerName());
 
             long ageBucket = LotDisplayTime.ageBucket(item.createdAt(), now);
 
             long daysLeft = LotDisplayTime.daysLeft(item.createdAt(), now, maxStorageDays);
 
+            int itemHash = item.itemStack().hashCode();
             LotSnapshot next = new LotSnapshot(
                     item.id(),
                     item.amount(),
@@ -110,7 +110,7 @@ public final class MenuBuilder {
                     item.type(),
                     item.status(),
                     item.sellerName(),
-                    item.itemStack().hashCode(),
+                    itemHash,
                     profile.discord(),
                     profile.storeName(),
                     profile.sales(),
@@ -124,7 +124,7 @@ public final class MenuBuilder {
 
             ItemStack display = inventoryLot
                     ? itemFactory.createInventoryDisplay(item)
-                    : itemFactory.createLotDisplay(item, profile);
+                    : itemFactory.createLotDisplay(item, profile, ageBucket, daysLeft, itemHash);
 
             inventory.setItem(slot, display);
             holder.addLot(slot, item.id(), item.amount(), inventoryLot);
@@ -133,12 +133,18 @@ public final class MenuBuilder {
     }
 
     public void refreshNavigationButtons(Inventory inventory, AuctionMenuHolder holder) {
-        if (holder.getViewType() != AuctionViewType.MAIN) {
-            return;
+        ConfigValues.NavigationConfig nav = configManager.getConfigValues().gui(holder.getCurrency()).navigation();
+        if (holder.getRenderedPage() != holder.getPage() || holder.getRenderedTotalPages() != holder.getTotalPages()) {
+            String page = (holder.getPage() + 1) + "/" + holder.getTotalPages();
+            setNavButton(inventory, nav.previous(), page, holder);
+            setNavButton(inventory, nav.refresh(), page, holder);
+            setNavButton(inventory, nav.next(), page, holder);
+            holder.setRenderedPage(holder.getPage());
+            holder.setRenderedTotalPages(holder.getTotalPages());
         }
 
-        ConfigValues.NavigationConfig nav = configManager.getConfigValues().gui(holder.getCurrency()).navigation();
 
+        if (holder.getViewType() != AuctionViewType.MAIN) return;
         if (holder.getRenderedSort() != holder.getSort()) {
             inventory.setItem(nav.sort().slot(), itemFactory.createSortButton(holder.getSort(), holder.getCurrency()));
             holder.addActions(nav.sort().slot(), nav.sort().actions());
@@ -150,6 +156,22 @@ public final class MenuBuilder {
             holder.addActions(nav.categories().slot(), nav.categories().actions());
             holder.setRenderedCategory(holder.getCategory());
         }
+    }
+
+    public void refreshCounters(Inventory inventory, AuctionMenuHolder holder, int selling, int expired) {
+        if (holder.getViewType() != AuctionViewType.MAIN) return;
+        ConfigValues.NavigationConfig nav = configManager.getConfigValues().gui(holder.getCurrency()).navigation();
+        String page = (holder.getPage() + 1) + "/" + holder.getTotalPages();
+        boolean pageChanged = !page.equals(holder.getRenderedCounterPage());
+        if (pageChanged || selling != holder.getRenderedSellingCount()) {
+            setNavButtonWithCount(inventory, nav.selling(), page, selling, holder);
+            holder.setRenderedSellingCount(selling);
+        }
+        if (pageChanged || expired != holder.getRenderedExpiredCount()) {
+            setNavButtonWithCount(inventory, nav.expired(), page, expired, holder);
+            holder.setRenderedExpiredCount(expired);
+        }
+        holder.setRenderedCounterPage(page);
     }
 
     public void fillGlass(Inventory inventory, Map<Integer, ConfigValues.GlassPane> panes) {
@@ -277,6 +299,7 @@ public final class MenuBuilder {
         holder.setRenderedTotalPages(holder.getTotalPages());
         holder.setRenderedSellingCount(sellingCount);
         holder.setRenderedExpiredCount(expiredCount);
+        holder.setRenderedCounterPage(pageDisplay);
     }
 
 

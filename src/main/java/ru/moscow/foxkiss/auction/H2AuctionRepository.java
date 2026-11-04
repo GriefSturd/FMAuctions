@@ -30,6 +30,20 @@ public final class H2AuctionRepository implements AuctionRepository {
     private final JavaPlugin plugin;
     private final String jdbcUrl;
     private DataSource dataSource;
+    private boolean separatePageCount;
+    private final ru.moscow.foxkiss.database.SqlRuntime sqlRuntime = new ru.moscow.foxkiss.database.SqlRuntime();
+    private final Map<PageKey, CachedPage> pages = new HashMap<>();
+    private final Map<PageKey, CompletableFuture<MenuData>> pageFlights = new HashMap<>();
+    private final Map<PageKey, CachedRows> rowPages = new HashMap<>();
+    private final Map<PageKey, CompletableFuture<MenuQueryResult>> rowFlights = new HashMap<>();
+    private record CachedRows(MenuQueryResult data, long expiresAt) {}
+    private record PageKey(AuctionCurrency currency, String player, int days, int page, int size, AuctionSort sort,
+                           String category, String seller, String search, AuctionViewType view, long revision, Object translations) {}
+    private record CachedPage(MenuData data, long expiresAt) {}
+
+    public List<String> sqlReport() { return sqlRuntime.report(); }
+    public void clearReadCache() { synchronized (pages) { pages.clear(); rowPages.clear(); } }
+
     private final ReentrantLock[] listingLocks = new ReentrantLock[64];
 
     private final Set<String> liveOperations = Collections.synchronizedSet(new HashSet<>());
@@ -47,6 +61,7 @@ public final class H2AuctionRepository implements AuctionRepository {
 
     @Override
     public void init() {
+        separatePageCount = plugin.getConfig().getBoolean("database.separate-page-count", false);
         if (!plugin.getDataFolder().mkdirs() && !plugin.getDataFolder().exists()) {
             plugin.getLogger().severe("Не удалось создать папку плагина!");
             return;
@@ -183,6 +198,7 @@ public final class H2AuctionRepository implements AuctionRepository {
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_pending_payout_player ON auction_pending_payouts(player_name)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_profile_discord ON auction_player_profiles(discord_plain)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_profile_store ON auction_player_profiles(store_name_plain)");
+            sqlRuntime.clearSamples();
 
         } catch (SQLException e) {
             plugin.getLogger().log(Level.SEVERE, "Ошибка инициализации БД", e);
@@ -417,9 +433,121 @@ public final class H2AuctionRepository implements AuctionRepository {
 
     @Override
     public MenuData loadMenuData(AuctionCurrency currency, String playerName, int maxDays, int page, int pageSize, AuctionSort sort, String category, String sellerFilter, String searchFilter, AuctionViewType viewType) {
+        long revision = sqlRuntime.cacheRevision();
+        PageKey key = new PageKey(currency, playerName, maxDays, page, pageSize, sort, category, sellerFilter,
+                searchFilter, viewType, revision < 0 ? -System.nanoTime() : revision, ru.moscow.foxkiss.utils.ItemUtils.getSearchIndex());
+        CompletableFuture<MenuData> flight;
+        boolean owner;
+        synchronized (pages) {
+            CachedPage cached = pages.get(key);
+            if (cached != null && cached.expiresAt > System.currentTimeMillis() && revision == sqlRuntime.cacheRevision()) return copyMenuData(cached.data);
+            flight = pageFlights.get(key);
+            owner = flight == null;
+            if (owner) {
+                flight = new CompletableFuture<>();
+                pageFlights.put(key, flight);
+            }
+        }
+        if (!owner) return copyMenuData(flight.join());
+        try {
+            LoadedMenu loaded = loadMenuDataUncached(currency, playerName, maxDays, page, pageSize, sort, category, sellerFilter, searchFilter, viewType);
+            MenuData data = loaded.data;
+            long expires = loaded.expiresAt;
+            synchronized (pages) {
+                if (revision >= 0 && revision == sqlRuntime.cacheRevision() && expires > System.currentTimeMillis()) {
+                    if (pages.size() >= 128) {
+                        Iterator<PageKey> iterator = pages.keySet().iterator();
+                        iterator.next(); iterator.remove();
+                    }
+                    pages.put(key, new CachedPage(data, expires));
+                }
+            }
+            flight.complete(data);
+            return copyMenuData(data);
+        } catch (Throwable e) {
+            flight.completeExceptionally(e);
+            throw e;
+        } finally {
+            synchronized (pages) { pageFlights.remove(key, flight); }
+        }
+    }
+
+    private long pageExpiry(AuctionCurrency currency, int maxDays, long cutoff) {
+        long now = System.currentTimeMillis();
+        if (maxDays <= 0) return now;
+        long storage = maxDays * 86_400_000L;
+        try (Connection conn = open(); PreparedStatement ps = conn.prepareStatement(
+                "SELECT MIN(created_at) FROM auction_items WHERE currency=? AND status=0 AND created_at>=?")) {
+            ps.setString(1, currency.name()); ps.setLong(2, cutoff);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next(); long created = rs.getLong(1);
+                return rs.wasNull() ? now + 250 : Math.min(now + 250, created + storage);
+            }
+        } catch (SQLException e) { return now; } // A failed expiry lookup disables caching, never the page query.
+    }
+
+    private static MenuData copyMenuData(MenuData source) {
+        List<AuctionItem> items = new ArrayList<>(source.items().size());
+        for (AuctionItem item : source.items()) {
+            List<ItemStack> contents = new ArrayList<>();
+            if (item.inventoryContents() != null) {
+                for (ItemStack content : item.inventoryContents()) contents.add(content == null ? null : content.clone());
+            }
+            items.add(new AuctionItem(item.id(), item.sellerName(), item.currency(), item.itemStack().clone(), item.price(),
+                    item.createdAt(), item.status(), item.type(), Collections.unmodifiableList(contents), item.operationId(), item.processingStartedAt()));
+        }
+        return new MenuData(List.copyOf(items), source.totalCount(), source.sellingCount(), source.expiredCount(), Map.copyOf(source.profiles()));
+    }
+
+    private MenuQueryResult sharedRows(AuctionCurrency currency, String player, int days, int page, int size,
+                                      AuctionSort sort, String category, String seller, String search, AuctionViewType view, long cutoff) {
+        long revision = sqlRuntime.cacheRevision();
+        PageKey key = new PageKey(currency, view == AuctionViewType.MAIN ? "" : player, days, page, size, sort,
+                category, seller, search, view, revision < 0 ? -System.nanoTime() : revision, ru.moscow.foxkiss.utils.ItemUtils.getSearchIndex());
+        CompletableFuture<MenuQueryResult> flight;
+        boolean owner;
+        synchronized (pages) {
+            CachedRows cached = rowPages.get(key);
+            if (cached != null && cached.expiresAt > System.currentTimeMillis() && revision == sqlRuntime.cacheRevision()) return cached.data;
+            flight = rowFlights.get(key);
+            owner = flight == null;
+            if (owner) { flight = new CompletableFuture<>(); rowFlights.put(key, flight); }
+        }
+        if (!owner) return flight.join();
+        try {
+            MenuQueryResult result;
+            try (Connection conn = open()) {
+                conn.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+                conn.setAutoCommit(false);
+                result = findPageAndCount(conn, currency, page, size, sort, category, seller, search, view, cutoff, player);
+                conn.commit();
+            }
+            long expiry = pageExpiry(currency, days, cutoff);
+            result = new MenuQueryResult(result.items(), result.totalCount(), expiry);
+            synchronized (pages) {
+                if (revision >= 0 && revision == sqlRuntime.cacheRevision() && expiry > System.currentTimeMillis()) {
+                    if (rowPages.size() >= 128) { Iterator<PageKey> keys = rowPages.keySet().iterator(); keys.next(); keys.remove(); }
+                    rowPages.put(key, new CachedRows(result, expiry));
+                }
+            }
+            flight.complete(result);
+            return result;
+        } catch (Throwable e) {
+            flight.completeExceptionally(e);
+            if (e instanceof RuntimeException failure) throw failure;
+            if (e instanceof Error failure) throw failure;
+            throw new IllegalStateException("Не удалось загрузить лоты аукциона", e);
+        } finally { synchronized (pages) { rowFlights.remove(key, flight); } }
+    }
+
+    private record LoadedMenu(MenuData data, long expiresAt) {}
+
+    private LoadedMenu loadMenuDataUncached(AuctionCurrency currency, String playerName, int maxDays, int page, int pageSize, AuctionSort sort, String category, String sellerFilter, String searchFilter, AuctionViewType viewType) {
         long cutoff = System.currentTimeMillis() - maxDays * 86_400_000L;
+        MenuQueryResult result = sharedRows(currency, playerName, maxDays, page, pageSize, sort, category, sellerFilter, searchFilter, viewType, cutoff);
         try (Connection conn = open()) {
-            MenuQueryResult result = findPageAndCount(conn, currency, page, pageSize, sort, category, sellerFilter, searchFilter, viewType, cutoff, playerName);
+            conn.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+            conn.setAutoCommit(false);
             List<AuctionItem> items = result.items();
             int totalCount = result.totalCount();
 
@@ -440,10 +568,11 @@ public final class H2AuctionRepository implements AuctionRepository {
                     }
                 }
             }
-            return new MenuData(items, totalCount, sellingCount, expiredCount, loadProfiles(conn, items, playerName));
+            MenuData data = new MenuData(items, totalCount, sellingCount, expiredCount, loadProfiles(conn, items, playerName));
+            conn.commit();
+            return new LoadedMenu(data, result.validUntil());
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Ошибка загрузки меню", e);
-            return new MenuData(List.of(), 0, 0, 0, Map.of());
+            throw new IllegalStateException("Не удалось загрузить страницу аукциона", e);
         }
     }
 
@@ -551,7 +680,7 @@ public final class H2AuctionRepository implements AuctionRepository {
         return profiles;
     }
 
-    private record MenuQueryResult(List<AuctionItem> items, int totalCount) {}
+    private record MenuQueryResult(List<AuctionItem> items, int totalCount, long validUntil) {}
 
     private MenuQueryResult findPageAndCount(Connection conn, AuctionCurrency currency, int page, int pageSize, AuctionSort sort, String category, String sellerFilter, String searchFilter, AuctionViewType viewType, long cutoff, String playerName) throws SQLException {
         List<Object> params = new ArrayList<>();
@@ -572,11 +701,23 @@ public final class H2AuctionRepository implements AuctionRepository {
                 params.add("%" + sellerFilter + "%");
             }
             if (TextUtils.isNotBlank(searchFilter)) {
-                baseWhere.append(" AND (material LIKE ? OR seller_name LIKE ? OR EXISTS (SELECT 1 FROM auction_player_profiles p WHERE p.player_name=auction_items.seller_name AND (p.discord_plain LIKE ? OR p.store_name_plain LIKE ?)))");
-                params.add("%" + searchFilter + "%");
-                params.add("%" + searchFilter + "%");
-                params.add("%" + searchFilter + "%");
-                params.add("%" + searchFilter + "%");
+                String pattern = "%" + searchFilter + "%";
+                List<ru.moscow.foxkiss.utils.MaterialSearchIndex.Match> materials = ru.moscow.foxkiss.utils.ItemUtils.getSearchIndex().find(searchFilter, Integer.MAX_VALUE);
+                baseWhere.append(" AND (");
+                if (!materials.isEmpty()) {
+                    baseWhere.append("material IN (");
+                    for (int i = 0; i < materials.size(); i++) {
+                        if (i > 0) baseWhere.append(',');
+                        baseWhere.append('?');
+                        params.add(materials.get(i).material());
+                    }
+                    baseWhere.append(") OR ");
+                }
+                baseWhere.append("material LIKE ? OR seller_name LIKE ? OR seller_name IN (SELECT player_name FROM auction_player_profiles WHERE discord_plain LIKE ? OR store_name_plain LIKE ?))");
+                params.add(pattern);
+                params.add(pattern);
+                params.add(pattern);
+                params.add(pattern);
             }
         } else if (viewType == AuctionViewType.SELLING) {
             baseWhere.append(" AND seller_name = ?");
@@ -588,7 +729,9 @@ public final class H2AuctionRepository implements AuctionRepository {
             params.add(cutoff);
         }
 
-        StringBuilder sql = new StringBuilder("SELECT *, COUNT(*) OVER() AS total_count ");
+        // Inventory contents are loaded by findById when opening / buying the lot, not for every icon.
+        String columns = "id,seller_name,currency,item,price,created_at,status,material,amount,price_per_item,lot_type,operation_id,processing_started_at,NULL AS inventory_data";
+        StringBuilder sql = new StringBuilder("SELECT " + columns + (separatePageCount ? " " : ", COUNT(*) OVER() AS total_count "));
         sql.append(baseWhere);
 
         String orderBy = switch (sort) {
@@ -609,6 +752,12 @@ public final class H2AuctionRepository implements AuctionRepository {
 
         ObjectList<AuctionItem> items = new ObjectArrayList<>();
         int totalCount = 0;
+        if (separatePageCount) {
+            try (PreparedStatement count = conn.prepareStatement("SELECT COUNT(*) " + baseWhere)) {
+                for (int i = 0; i < params.size() - 2; i++) count.setObject(i + 1, params.get(i));
+                try (ResultSet rs = count.executeQuery()) { rs.next(); totalCount = rs.getInt(1); }
+            }
+        }
         try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
             for (int i = 0; i < params.size(); i++) {
                 ps.setObject(i + 1, params.get(i));
@@ -616,7 +765,7 @@ public final class H2AuctionRepository implements AuctionRepository {
             try (ResultSet rs = ps.executeQuery()) {
                 boolean first = true;
                 while (rs.next()) {
-                    if (first) {
+                    if (first && !separatePageCount) {
                         try {
                             totalCount = rs.getInt("total_count");
                         } catch (SQLException ignored) {}
@@ -629,7 +778,7 @@ public final class H2AuctionRepository implements AuctionRepository {
             }
         }
 
-        if (items.isEmpty()) {
+        if (items.isEmpty() && !separatePageCount) {
             StringBuilder countSql = new StringBuilder("SELECT COUNT(*) ").append(baseWhere);
             List<Object> countParams = new ArrayList<>(params.subList(0, params.size() - 2));
             try (PreparedStatement ps = conn.prepareStatement(countSql.toString())) {
@@ -644,7 +793,7 @@ public final class H2AuctionRepository implements AuctionRepository {
             }
         }
 
-        return new MenuQueryResult(items, totalCount);
+        return new MenuQueryResult(items, totalCount, Long.MAX_VALUE);
     }
 
     @Override
@@ -1632,7 +1781,7 @@ public final class H2AuctionRepository implements AuctionRepository {
         if (dataSource == null) {
             throw new SQLException("DataSource не инициализирован");
         }
-        return dataSource.getConnection();
+        return sqlRuntime.open(dataSource);
     }
 
     private String serialize(ItemStack item) {

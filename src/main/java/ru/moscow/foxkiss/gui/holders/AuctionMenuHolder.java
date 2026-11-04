@@ -36,6 +36,7 @@ public abstract class AuctionMenuHolder implements InventoryHolder {
     private int renderedTotalPages = -1;
     private int renderedSellingCount = -1;
     private int renderedExpiredCount = -1;
+    private String renderedCounterPage;
 
     protected final Map<Integer, Long> lotsBySlot = new HashMap<>();
     protected final Map<Integer, Integer> lotsAmountBySlot = new HashMap<>();

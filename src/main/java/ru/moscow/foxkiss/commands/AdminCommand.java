@@ -28,6 +28,10 @@ public record AdminCommand(FMAuction plugin, IConfigManager configManager) imple
             return true;
         }
 
+        if (args[0].equalsIgnoreCase("sql")) {
+            for (String line : plugin.sqlReport()) sender.sendMessage(line);
+            return true;
+        }
         if (args[0].equalsIgnoreCase("reload")) {
             handleReload(sender);
             return true;
@@ -56,6 +60,7 @@ public record AdminCommand(FMAuction plugin, IConfigManager configManager) imple
         final ObjectList<String> completions = new ObjectArrayList<>();
         if (args.length == 1) {
             completions.add("reload");
+            completions.add("sql");
         }
 
         return CommandUtils.getResult(args, completions);

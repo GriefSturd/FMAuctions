@@ -23,6 +23,11 @@ public final class ItemUtils {
     private static final Map<String, PlayerProfile> profileSkull = new HashMap<>();
     private static final Map<String, ItemStack> cacheSkull = new HashMap<>();
     private static final Map<String, String> perevod = new HashMap<>();
+    private static volatile MaterialSearchIndex searchIndex = new MaterialSearchIndex(Map.of());
+
+    public static MaterialSearchIndex getSearchIndex() {
+        return searchIndex;
+    }
 
     public static ItemStack named(Material material, String name, List<String> lore, Integer customModelData) {
         ItemStack item = new ItemStack(material);
@@ -64,11 +69,17 @@ public final class ItemUtils {
         ItemStack item = named(Material.PLAYER_HEAD, name, lore, customModelData);
         ItemMeta meta = item.getItemMeta();
         if (meta instanceof SkullMeta skullMeta) {
+            if (!profileSkull.containsKey(base64) && profileSkull.size() >= 128) {
+                Iterator<String> keys = profileSkull.keySet().iterator(); keys.next(); keys.remove();
+            }
             PlayerProfile profile = profileSkull.computeIfAbsent(base64, ItemUtils::createSkullProfile);
             skullMeta.setPlayerProfile(profile);
             item.setItemMeta(skullMeta);
         }
 
+        if (cacheSkull.size() >= 512) {
+            Iterator<String> keys = cacheSkull.keySet().iterator(); keys.next(); keys.remove();
+        }
         cacheSkull.put(cacheKey, item.clone());
         return item;
     }
@@ -83,6 +94,7 @@ public final class ItemUtils {
         FMAuction plugin = JavaPlugin.getPlugin(FMAuction.class);
 
         if (itemsFile == null || !itemsFile.exists()) {
+            searchIndex = new MaterialSearchIndex(Map.of());
             plugin.getLogger().warning("items.yml не найден, переводы не загружены.");
             return;
         }
@@ -94,6 +106,7 @@ public final class ItemUtils {
             }
             perevod.put(key, cfg.getString(key));
         }
+        searchIndex = new MaterialSearchIndex(perevod);
     }
 
     public static String getItemDisplayName(ItemStack item) {

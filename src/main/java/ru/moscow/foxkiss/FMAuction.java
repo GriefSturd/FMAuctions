@@ -102,8 +102,13 @@ public final class FMAuction extends JavaPlugin {
         schedulerService.runTimerAsync(() -> auctionRepository.recoverStuckLots(economyProvider, false), 20L * 60, 20L * 60);
     }
 
+    public java.util.List<String> sqlReport() {
+        return auctionRepository instanceof H2AuctionRepository repository ? repository.sqlReport() : java.util.List.of();
+    }
+
     public void reloadAll() {
         configManager.reload();
+        if (auctionRepository instanceof H2AuctionRepository repository) repository.clearReadCache();
         limitService.init();
 
         if (auctionMenu != null) {

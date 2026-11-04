@@ -183,9 +183,9 @@ public final class AuctionMenuListener implements Listener {
     private void handleConfirmActions(Player player, ConfirmMenuHolder holder, List<Action> actions) {
         boolean confirmed = false;
         for (Action action : actions) {
-            switch (action.type()) {
-                case CONFIRM -> confirmed = true;
-                default -> { }
+            if (action.type() == ActionType.CONFIRM) {
+                confirmed = true;
+                break;
             }
         }
 

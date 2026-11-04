@@ -33,7 +33,11 @@ public final class SchedulerService {
     }
 
     public void runSync(Runnable task) {
-        if (!plugin.isEnabled()) return;
+        tryRunSync(task);
+    }
+
+    private boolean tryRunSync(Runnable task) {
+        if (!plugin.isEnabled()) return false;
         BukkitRunnable runnable = new BukkitRunnable() {
             @Override
             public void run() {
@@ -46,7 +50,9 @@ public final class SchedulerService {
         };
         try {
             runnable.runTask(plugin);
+            return true;
         } catch (IllegalPluginAccessException ignored) {
+            return false;
         }
     }
 
@@ -62,25 +68,29 @@ public final class SchedulerService {
     }
 
     public <T> void runAsyncThenSync(Supplier<T> asyncTask, Consumer<T> syncCallback) {
-        if (dbExecutor.isShutdown()) return;
-        dbExecutor.execute(() -> {
-            T result = null;
-            Throwable error = null;
-            try {
-                result = asyncTask.get();
-            } catch (Throwable t) {
-                error = t;
-            }
-            final T finalResult = result;
-            final Throwable finalError = error;
-            runSync(() -> {
-                if (finalError != null) {
-                    plugin.getLogger().log(Level.SEVERE, "Ошибка в асинхронной части", finalError);
-                } else {
-                    syncCallback.accept(finalResult);
-                }
+        runAsyncThenSync(asyncTask, syncCallback, error -> plugin.getLogger().log(Level.SEVERE, "Ошибка в асинхронной части", error));
+    }
+
+    public <T> void runAsyncThenSync(Supplier<T> asyncTask, Consumer<T> syncCallback, Consumer<Throwable> onError) {
+        if (dbExecutor.isShutdown()) {
+            onError.accept(new java.util.concurrent.RejectedExecutionException("Планировщик завершает работу"));
+            return;
+        }
+        try {
+            dbExecutor.execute(() -> {
+                try {
+                    T result = asyncTask.get();
+                    if (!plugin.isEnabled()) {
+                        onError.accept(new java.util.concurrent.RejectedExecutionException("Плагин отключён"));
+                        return;
+                    }
+                    if (!tryRunSync(() -> {
+                        try { syncCallback.accept(result); }
+                        catch (Throwable e) { onError.accept(e); }
+                    })) onError.accept(new java.util.concurrent.RejectedExecutionException("Не удалось запланировать обновление меню"));
+                } catch (Throwable e) { onError.accept(e); }
             });
-        });
+        } catch (java.util.concurrent.RejectedExecutionException e) { onError.accept(e); }
     }
 
     public void shutdown() {

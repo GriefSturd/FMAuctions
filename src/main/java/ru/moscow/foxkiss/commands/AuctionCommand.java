@@ -18,6 +18,7 @@ import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.AuctionMenu;
 import ru.moscow.foxkiss.utils.CommandUtils;
 import ru.moscow.foxkiss.utils.ItemUtils;
+import ru.moscow.foxkiss.utils.MaterialSearchIndex;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
 import java.util.Collections;
@@ -85,7 +86,7 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
         }
 
         String query = String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length)).trim();
-        if (query.isEmpty()) {
+        if (query.isEmpty() || query.equals("начните*вводить*название")) {
             sendSearchUsage(p);
             return;
         }
@@ -106,6 +107,18 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, String[] args) {
+        if (args.length >= 2 && args[0].equalsIgnoreCase("search")) {
+            String query = String.join(" ", java.util.Arrays.copyOfRange(args, 1, args.length));
+            if (query.isBlank()) return List.of("начните*вводить*название");
+            int consumed = query.length() - args[args.length - 1].length();
+            List<String> suggestions = new ObjectArrayList<>();
+            Set<String> added = new java.util.HashSet<>();
+            for (MaterialSearchIndex.Match match : ItemUtils.getSearchIndex().find(query, 30)) {
+                String completion = match.name().substring(consumed);
+                if (added.add(completion)) suggestions.add(completion);
+            }
+            return suggestions;
+        }
         if (args.length != 1) {
             return Collections.emptyList();
         }
@@ -115,9 +128,10 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
         if (sender.hasPermission("fmauction.admin")) {
             completions.add("sell");
             completions.add("sellinv");
-            completions.add("search");
+
         }
 
+        completions.add("search");
         completions.add("items");
 
         for (Player player : Bukkit.getOnlinePlayers()) {

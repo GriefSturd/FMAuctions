@@ -166,7 +166,7 @@ public final class AuctionMenu {
     public boolean isRefreshing(Player player) {
         synchronized (requestInProgress) {
             Long started = requestStartTime.get(player.getUniqueId());
-            return started != null && System.currentTimeMillis() - started <= 15_000L
+            return started != null && System.nanoTime() - started <= 15_000_000_000L
                     && requestInProgress.getOrDefault(player.getUniqueId(), false);
         }
     }
@@ -179,7 +179,7 @@ public final class AuctionMenu {
         UUID uuid = player.getUniqueId();
         synchronized (requestInProgress) {
             Long start = requestStartTime.get(uuid);
-            if (start != null && (System.currentTimeMillis() - start > 15_000L)) {
+            if (start != null && (System.nanoTime() - start > 15_000_000_000L)) {
                 requestInProgress.remove(uuid);
                 requestStartTime.remove(uuid);
             }
@@ -188,7 +188,7 @@ public final class AuctionMenu {
                 return;
             }
             requestInProgress.put(uuid, true);
-            requestStartTime.put(uuid, System.currentTimeMillis());
+            requestStartTime.put(uuid, System.nanoTime());
         }
         if (holder.getViewType() == AuctionViewType.MAIN) {
             playerPreferences.setSort(uuid, holder.getCurrency(), holder.getSort());
@@ -196,6 +196,18 @@ public final class AuctionMenu {
         }
         long requestVersion = holder.incrementAndGetRequestVersion();
         renderRefresh(player, holder, requestVersion);
+    }
+
+    private boolean isCurrentRequest(UUID uuid, long token) {
+        synchronized (requestInProgress) { return java.util.Objects.equals(requestStartTime.get(uuid), token); }
+    }
+
+    private void releaseRequest(UUID uuid, long token) {
+        synchronized (requestInProgress) {
+            if (!java.util.Objects.equals(requestStartTime.get(uuid), token)) return;
+            requestInProgress.remove(uuid);
+            requestStartTime.remove(uuid);
+        }
     }
 
     public void updateQuantityDisplay(Inventory inventory, QuantityMenuHolder holder, AuctionItem item) {
@@ -211,7 +223,7 @@ public final class AuctionMenu {
         UUID uuid = player.getUniqueId();
         synchronized (requestInProgress) {
             Long start = requestStartTime.get(uuid);
-            if (start != null && (System.currentTimeMillis() - start > 15_000L)) {
+            if (start != null && (System.nanoTime() - start > 15_000_000_000L)) {
                 requestInProgress.remove(uuid);
                 requestStartTime.remove(uuid);
             }
@@ -220,7 +232,7 @@ public final class AuctionMenu {
                 return;
             }
             requestInProgress.put(uuid, true);
-            requestStartTime.put(uuid, System.currentTimeMillis());
+            requestStartTime.put(uuid, System.nanoTime());
         }
 
         int pageSize = builder.getAuctionSlots(viewType, currency).size();
@@ -246,6 +258,8 @@ public final class AuctionMenu {
         final String fSearch = searchFilter;
         final AuctionSort fSort = sort;
 
+        final long token;
+        synchronized (requestInProgress) { token = requestStartTime.get(uuid); }
         scheduler.runAsyncThenSync(
                 () -> {
                     AuctionRepository.MenuData data = repository.loadMenuData(
@@ -256,6 +270,7 @@ public final class AuctionMenu {
                 },
                 result -> {
                     try {
+                        if (!player.isOnline() || !isCurrentRequest(uuid, token)) return;
                         Inventory inv = builder.buildMainMenu(
                                 player, viewType, currency, page,
                                 fSort, fSeller, fSearch, fCategory,
@@ -264,11 +279,12 @@ public final class AuctionMenu {
                         );
                         player.openInventory(inv);
                     } finally {
-                        synchronized (requestInProgress) {
-                            requestInProgress.remove(uuid);
-                            requestStartTime.remove(uuid);
-                        }
+                        releaseRequest(uuid, token);
                     }
+                },
+                error -> {
+                    releaseRequest(uuid, token);
+                    java.util.logging.Logger.getLogger("FMAuction").log(java.util.logging.Level.WARNING, "Не удалось обновить меню аукциона", error);
                 }
         );
     }
@@ -307,6 +323,8 @@ public final class AuctionMenu {
         final String fSearch = searchFilter;
         final AuctionSort fSort = sort;
 
+        final long token;
+        synchronized (requestInProgress) { token = requestStartTime.get(uuid); }
         scheduler.runAsyncThenSync(
                 () -> {
                     AuctionRepository.MenuData data = repository.loadMenuData(currency, playerName, maxStorageDays, page, pageSize, fSort, fCategory, fSeller, fSearch, viewType);
@@ -314,7 +332,7 @@ public final class AuctionMenu {
                 },
                 result -> {
                     try {
-                        if (!player.isOnline()) return;
+                        if (!player.isOnline() || !isCurrentRequest(uuid, token)) return;
 
                         if (player.getOpenInventory().getTopInventory().getHolder() != holder) {
                             return;
@@ -326,12 +344,14 @@ public final class AuctionMenu {
 
                         builder.refreshLotDisplays(holder.getInventory(), holder, result.items, result.totalCount, pageSize, result.profiles);
                         builder.refreshNavigationButtons(holder.getInventory(), holder);
+                        builder.refreshCounters(holder.getInventory(), holder, result.sellingCount, result.expiredCount);
                     } finally {
-                        synchronized (requestInProgress) {
-                            requestInProgress.remove(uuid);
-                            requestStartTime.remove(uuid);
-                        }
+                        releaseRequest(uuid, token);
                     }
+                },
+                error -> {
+                    releaseRequest(uuid, token);
+                    java.util.logging.Logger.getLogger("FMAuction").log(java.util.logging.Level.WARNING, "Не удалось обновить меню аукциона", error);
                 }
         );
     }
