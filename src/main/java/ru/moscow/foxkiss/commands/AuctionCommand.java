@@ -22,7 +22,6 @@ import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 
 public final class AuctionCommand implements CommandExecutor, TabCompleter {

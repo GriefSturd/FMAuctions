@@ -24,6 +24,7 @@ public abstract class BaseAuctionSellService extends BaseAuctionService {
         super(scheduler, configManager, repository, transactionService);
         this.plugin = plugin;
     }
+
     protected void submitListing(Player player, AuctionCurrency currency, double price, ConfigValues.CommissionRule rule, Map<Integer, ItemStack> reserved, BooleanSupplier limitReached, LongSupplier createLot) {
         if (!transactionService.beginListing(player)) return;
 
@@ -75,7 +76,7 @@ public abstract class BaseAuctionSellService extends BaseAuctionService {
             commission = chargeCommission(player, currency, rule, price);
         } catch (RuntimeException e) {
             try {
-                restoreItems(player, reserved);
+                restoreItems(player, currency, reserved);
             } finally {
                 transactionService.endListing(player);
             }
@@ -83,7 +84,7 @@ public abstract class BaseAuctionSellService extends BaseAuctionService {
         }
         if (commission == -1) {
             try {
-                restoreItems(player, reserved);
+                restoreItems(player, currency, reserved);
             } finally {
                 transactionService.endListing(player);
             }
@@ -108,7 +109,7 @@ public abstract class BaseAuctionSellService extends BaseAuctionService {
                 scheduler.runSync(() -> {
                     try {
                         if (errorMessage != null) {
-                            rollback(player, rule, commission, reserved);
+                            rollback(player, currency, rule, commission, reserved);
                             sendMessage(player, errorMessage);
                         } else {
                             if (commission > 0) {
@@ -128,7 +129,7 @@ public abstract class BaseAuctionSellService extends BaseAuctionService {
         } catch (RuntimeException e) {
             plugin.getLogger().log(Level.WARNING, "Не удалось запланировать выставление лота на аукцион", e);
             try {
-                rollback(player, rule, commission, reserved);
+                rollback(player, currency, rule, commission, reserved);
                 sendMessage(player, config().messages().databaseError());
             } finally {
                 transactionService.endListing(player);
@@ -136,8 +137,8 @@ public abstract class BaseAuctionSellService extends BaseAuctionService {
         }
     }
 
-    private void rollback(Player player, ConfigValues.CommissionRule rule, double commission, Map<Integer, ItemStack> reserved) {
-        restoreItems(player, reserved);
+    private void rollback(Player player, AuctionCurrency currency, ConfigValues.CommissionRule rule, double commission, Map<Integer, ItemStack> reserved) {
+        restoreItems(player, currency, reserved);
         if (commission > 0) {
             boolean refunded = transactionService.depositMoney(player, rule.currency(), commission);
             if (!refunded) {
@@ -147,7 +148,8 @@ public abstract class BaseAuctionSellService extends BaseAuctionService {
         }
     }
 
-    private void restoreItems(Player player, Map<Integer, ItemStack> reserved) {
+    private void restoreItems(Player player, AuctionCurrency currency, Map<Integer, ItemStack> reserved) {
+        java.util.List<ItemStack> displaced = new java.util.ArrayList<>();
         for (Map.Entry<Integer, ItemStack> entry : reserved.entrySet()) {
             int slot = entry.getKey();
             ItemStack item = entry.getValue();
@@ -155,8 +157,9 @@ public abstract class BaseAuctionSellService extends BaseAuctionService {
             if (current == null || current.getType().isAir()) {
                 player.getInventory().setItem(slot, item.clone());
             } else {
-                transactionService.giveItem(player, item.clone());
+                displaced.add(item);
             }
         }
+        if (!displaced.isEmpty()) transactionService.returnItems(player, currency, displaced, configManager);
     }
 }

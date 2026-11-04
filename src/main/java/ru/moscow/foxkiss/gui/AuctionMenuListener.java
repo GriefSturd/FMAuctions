@@ -2,8 +2,6 @@ package ru.moscow.foxkiss.gui;
 
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectList;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -12,6 +10,8 @@ import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.jetbrains.annotations.NotNull;
+import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionItem;
 import ru.moscow.foxkiss.auction.AuctionService;
 import ru.moscow.foxkiss.auction.AuctionSort;
@@ -33,7 +33,7 @@ public final class AuctionMenuListener implements Listener {
     private final AuctionMenu auctionMenu;
     private final AuctionService auctionService;
 
-    private ObjectList<String> cats;
+    private final Map<AuctionCurrency, List<String>> cats = new EnumMap<>(AuctionCurrency.class);
     private final Object2LongOpenHashMap<UUID> quantityMessageCooldowns = new Object2LongOpenHashMap<>();
     private final Object2LongOpenHashMap<UUID> updateCooldowns = new Object2LongOpenHashMap<>();
     private final Object2LongOpenHashMap<UUID> takeCooldowns = new Object2LongOpenHashMap<>();
@@ -46,11 +46,38 @@ public final class AuctionMenuListener implements Listener {
         reloadCategories();
     }
 
+    private final Map<AuctionCurrency, List<AuctionSort>> sortOrders = new EnumMap<>(AuctionCurrency.class);
+
     public void reloadCategories() {
-        cats = new ObjectArrayList<>(configManager.getConfigValues().categories().keySet());
-        if (!cats.contains("all")) {
-            cats.addFirst("all");
+        cats.clear();
+        sortOrders.clear();
+        for (AuctionCurrency currency : AuctionCurrency.values()) {
+            List<AuctionSort> sorts = new ArrayList<>();
+            List<String> sortLore = configManager.getConfigValues().gui(currency).navigation().sort().lore();
+            if (sortLore.isEmpty()) java.util.Collections.addAll(sorts, AuctionSort.values());
+            else {
+                for (String line : sortLore) {
+                    for (AuctionSort sort : AuctionSort.values()) {
+                        if (line.contains("{sort:" + sort.name() + "}") && !sorts.contains(sort)) sorts.add(sort);
+                    }
+                }
+            }
+            sortOrders.put(currency, List.copyOf(sorts));
+            List<String> ids = getStrings(currency);
+            cats.put(currency, List.copyOf(ids));
         }
+    }
+
+    private @NotNull List<String> getStrings(AuctionCurrency currency) {
+        List<String> ids = new ArrayList<>();
+        List<ConfigValues.CategoryEntry> entries = configManager.getConfigValues().gui(currency).categoryMenu().entries();
+        if (entries == null) {
+            ids.add("all");
+            for (String id : configManager.getConfigValues().categories().keySet()) if (!id.equals("all")) ids.add(id);
+        } else {
+            for (ConfigValues.CategoryEntry entry : entries) if (!entry.id().isEmpty()) ids.add(entry.id());
+        }
+        return ids;
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -255,14 +282,22 @@ public final class AuctionMenuListener implements Listener {
             case REFRESH -> auctionMenu.refreshInventory(player, holder);
 
             case SORT -> {
-                AuctionSort newSort = rightClick ? holder.getSort().previous() : holder.getSort().next();
+                if (auctionMenu.isRefreshing(player)) return;
+                List<AuctionSort> order = sortOrders.get(holder.getCurrency());
+                if (order.isEmpty()) return;
+                int index = order.indexOf(holder.getSort());
+                int next = index < 0 ? (rightClick ? order.size() - 1 : 0)
+                        : Math.floorMod(index + (rightClick ? -1 : 1), order.size());
+                AuctionSort newSort = order.get(next);
                 holder.setSort(newSort);
                 holder.setPage(0);
                 auctionMenu.refreshInventory(player, holder);
             }
             case CATEGORIES -> {
+                if (auctionMenu.isRefreshing(player)) return;
+                if (cats.get(holder.getCurrency()).isEmpty()) return;
                 String currentCat = holder.getCategory();
-                String newCat = rightClick ? getPreviousCategory(currentCat) : getNextCategory(currentCat);
+                String newCat = rightClick ? getPreviousCategory(currentCat, holder.getCurrency()) : getNextCategory(currentCat, holder.getCurrency());
                 holder.setCategory(newCat);
                 holder.setPage(0);
                 auctionMenu.refreshInventory(player, holder);
@@ -310,6 +345,7 @@ public final class AuctionMenuListener implements Listener {
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
+        auctionService.transactionService().onPlayerQuit(event.getPlayer());
         UUID uuid = event.getPlayer().getUniqueId();
         updateCooldowns.removeLong(uuid);
         takeCooldowns.removeLong(uuid);
@@ -350,19 +386,15 @@ public final class AuctionMenuListener implements Listener {
         return true;
     }
 
-    private ObjectList<String> getCategoriesList() {
-        return cats;
-    }
-
-    private String getNextCategory(String current) {
-        ObjectList<String> categories = getCategoriesList();
+    private String getNextCategory(String current, AuctionCurrency currency) {
+        List<String> categories = cats.get(currency);
         int index = categories.indexOf(current.toLowerCase());
         if (index < 0) return categories.getFirst();
         return categories.get((index + 1) % categories.size());
     }
 
-    private String getPreviousCategory(String current) {
-        ObjectList<String> categories = getCategoriesList();
+    private String getPreviousCategory(String current, AuctionCurrency currency) {
+        List<String> categories = cats.get(currency);
         int index = categories.indexOf(current.toLowerCase());
         if (index < 0) return categories.getLast();
         return categories.get((index - 1 + categories.size()) % categories.size());

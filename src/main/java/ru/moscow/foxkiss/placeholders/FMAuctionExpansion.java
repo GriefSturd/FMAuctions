@@ -1,7 +1,5 @@
 package ru.moscow.foxkiss.placeholders;
 
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import it.unimi.dsi.fastutil.objects.ObjectList;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
@@ -29,7 +27,8 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
     private final VaultChatApi vaultChat = new VaultChatApi();
     private final VaultPermissionApi vaultPerm = new VaultPermissionApi();
 
-    private ObjectList<TopPlayerInfo> cachedTop = new ObjectArrayList<>();
+    private volatile List<TopPlayerInfo> cachedTop = List.of();
+    private volatile boolean disabled;
 
     private final Object2ObjectOpenHashMap<UUID, CachedPlayerStats> statsCache = new Object2ObjectOpenHashMap<>();
     private final ObjectOpenHashSet<UUID> loadingStats = new ObjectOpenHashSet<>();
@@ -103,8 +102,13 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
         }
 
         synchronized (loadingStats) {
-            if (!loadingStats.contains(uuid)) {
-                scheduler.runAsync(() -> loadStatsAsync(uuid, name));
+            if (!disabled && loadingStats.add(uuid)) {
+                try {
+                    scheduler.runAsync(() -> loadStatsAsync(uuid, name));
+                } catch (RuntimeException e) {
+                    loadingStats.remove(uuid);
+                    throw e;
+                }
             }
         }
 
@@ -112,12 +116,10 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
     }
 
     private void loadStatsAsync(UUID uuid, String name) {
-        synchronized (loadingStats) {
-            if (!loadingStats.add(uuid)) return;
-        }
         try {
             AuctionRepository.PlayerStats stats = repository.getPlayerStats(name, AuctionCurrency.VAULT);
             synchronized (statsCache) {
+                if (disabled) return;
                 statsCache.put(uuid, new CachedPlayerStats(stats.soldCount(), stats.totalEarned(), System.currentTimeMillis()));
             }
         } finally {
@@ -136,7 +138,7 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
         }
         if (pos < 1 || pos > 5) return null;
 
-        ObjectList<TopPlayerInfo> top = cachedTop;
+        List<TopPlayerInfo> top = cachedTop;
         if (pos > top.size()) {
             if (field.equals("nick") || field.equals("prefix")) return "&7[&c-&7]";
             if (field.equals("sold") || field.equals("money")) return "0";
@@ -154,52 +156,70 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
     }
 
     public void disable() {
+        disabled = true;
         synchronized (statsCache) { statsCache.clear(); }
         synchronized (prefixCache) { prefixCache.clear(); }
-        cachedTop = new ObjectArrayList<>();
+        cachedTop = List.of();
         synchronized (loadingStats) { loadingStats.clear(); }
     }
 
     private void updateCache() {
-        try {
+        if (disabled) return;
+        long now = System.currentTimeMillis();
+        synchronized (statsCache) {
+            statsCache.values().removeIf(cachedPlayerStats -> cachedPlayerStats.isExpired(now, 3_600_000));
+        }
+        scheduler.runAsyncThenSync(() -> {
             List<AuctionRepository.TopSeller> list = repository.getTopSellers(AuctionCurrency.VAULT, 1000);
             list.sort((a, b) -> Double.compare(b.totalEarned(), a.totalEarned()));
-            if (list.size() > 5) list = list.subList(0, 5);
+            return List.copyOf(list.subList(0, Math.min(5, list.size())));
+        }, this::publishTop);
+    }
 
-            ObjectList<TopPlayerInfo> result = new ObjectArrayList<>();
-            for (AuctionRepository.TopSeller seller : list) {
-                String prefix;
-                synchronized (prefixCache) {
-                    prefix = prefixCache.get(seller.name());
+    private void publishTop(List<AuctionRepository.TopSeller> sellers) {
+        if (disabled) return;
+        try {
+            Set<String> needed = new HashSet<>();
+            for (AuctionRepository.TopSeller seller : sellers) {
+                if (!prefixCache.containsKey(seller.name()) && Bukkit.getPlayerExact(seller.name()) == null) {
+                    needed.add(seller.name().toLowerCase());
                 }
-                if (prefix == null) {
-                    prefix = getPrefixForPlayer(seller.name());
-                    synchronized (prefixCache) {
-                        prefixCache.put(seller.name(), prefix);
+            }
+            Map<String, OfflinePlayer> offlineByName = new HashMap<>();
+            if (!needed.isEmpty()) {
+                for (OfflinePlayer offline : Bukkit.getOfflinePlayers()) {
+                    String name = offline.getName();
+                    if (name != null && needed.remove(name.toLowerCase())) {
+                        offlineByName.put(name.toLowerCase(), offline);
+                        if (needed.isEmpty()) break;
                     }
+                }
+            }
+            List<TopPlayerInfo> result = new ArrayList<>(sellers.size());
+            for (AuctionRepository.TopSeller seller : sellers) {
+                String prefix = prefixCache.get(seller.name());
+                if (prefix == null) {
+                    prefix = getPrefixForPlayer(seller.name(), offlineByName);
+                    prefixCache.put(seller.name(), prefix);
                 }
                 result.add(new TopPlayerInfo(seller.name(), seller.soldCount(), seller.totalEarned(), prefix));
             }
-            cachedTop = result;
+            cachedTop = List.copyOf(result);
         } catch (Exception e) {
             plugin.getLogger().warning("Не удалось обновить топ: " + e.getMessage());
         }
     }
 
-    private String getPrefixForPlayer(String name) {
+    private String getPrefixForPlayer(String name, Map<String, OfflinePlayer> offlineByName) {
         Player online = Bukkit.getPlayerExact(name);
         if (online != null) {
             String group = vaultPerm.getPrimaryGroup(online);
             return vaultChat.getGroupPrefix(online.getWorld(), group);
         }
-
-        for (OfflinePlayer offline : Bukkit.getOfflinePlayers()) {
-            if (offline.getName() != null && offline.getName().equalsIgnoreCase(name)) {
-                String group = vaultPerm.getPrimaryGroup(offline);
-                return vaultChat.getGroupPrefix(null, group);
-            }
-        }
-        return "";
+        OfflinePlayer offline = offlineByName.get(name.toLowerCase());
+        if (offline == null) return "";
+        String group = vaultPerm.getPrimaryGroup(offline);
+        return vaultChat.getGroupPrefix(null, group);
     }
 
     private String formatMoney(double amount) {

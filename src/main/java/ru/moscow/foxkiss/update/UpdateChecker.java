@@ -25,7 +25,7 @@ public final class UpdateChecker implements Listener {
     private static final Pattern VERSION_PREFIX = Pattern.compile("^[vV]");
     private static final Pattern VERSION_SUFFIX = Pattern.compile("[-+].*$");
 
-    private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 
     private final JavaPlugin plugin;
     private volatile String latestVersion;

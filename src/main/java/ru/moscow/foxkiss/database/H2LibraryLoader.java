@@ -84,11 +84,11 @@ public final class H2LibraryLoader {
 
     private static void downloadAndVerify(Path target) throws IOException, NoSuchAlgorithmException {
         Path temp = target.resolveSibling(library + ".tmp");
-        try (InputStream in = URI.create(base + library).toURL().openStream()) {
+        try (InputStream in = openDownload(base + library)) {
             Files.copy(in, temp, StandardCopyOption.REPLACE_EXISTING);
         }
         String expected;
-        try (InputStream in = URI.create(base + library + ".sha1").toURL().openStream()) {
+        try (InputStream in = openDownload(base + library + ".sha1")) {
             expected = new String(in.readAllBytes()).trim().split("\\s+")[0];
         }
         String actual = sha1(temp);
@@ -97,6 +97,13 @@ public final class H2LibraryLoader {
             throw new IOException("Контрольная сумма H2 не совпадает");
         }
         Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    private static InputStream openDownload(String address) throws IOException {
+        java.net.URLConnection connection = URI.create(address).toURL().openConnection();
+        connection.setConnectTimeout(10_000);
+        connection.setReadTimeout(30_000);
+        return connection.getInputStream();
     }
 
     private static String sha1(Path file) throws IOException, NoSuchAlgorithmException {

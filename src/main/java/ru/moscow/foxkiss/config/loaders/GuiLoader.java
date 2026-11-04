@@ -116,14 +116,47 @@ public final class GuiLoader {
     }
 
     private ConfigValues.CategoryMenuConfig loadCategoryMenu(ConfigurationSection section) {
-        ConfigurationSection a = section.getConfigurationSection("category-menu");
-        return new ConfigValues.CategoryMenuConfig(
-                Material.matchMaterial(a.getString("material")),
-                a.getString("name"),
-                a.getString("selected-prefix"),
-                a.getString("unselected-prefix"),
-                a.getString("footer")
-        );
+        ConfigurationSection menu = section.getConfigurationSection("category-menu");
+        String selectedPrefix = menu.getString("selected-prefix");
+        String unselectedPrefix = menu.getString("unselected-prefix");
+        List<ConfigValues.CategoryEntry> entries = null;
+        if (menu.contains("entries")) {
+            entries = new ArrayList<>();
+            java.util.Set<String> ids = new java.util.HashSet<>();
+            ConfigurationSection names = section.getConfigurationSection("category-names");
+            for (Map<?, ?> entry : menu.getMapList("entries")) {
+                String id = entry.get("id").toString().toLowerCase();
+                if (!ids.add(id)) throw new IllegalArgumentException("Категория повторяется в меню: " + id);
+                String name = entry.containsKey("name") ? entry.get("name").toString() : names.getString(id, id);
+                String selected = entry.containsKey("selected") ? entry.get("selected").toString() : "{prefix}{name}";
+                String unselected = entry.containsKey("unselected") ? entry.get("unselected").toString() : "{prefix}{name}";
+                entries.add(new ConfigValues.CategoryEntry(id,
+                        selected.replace("{prefix}", selectedPrefix).replace("{name}", name),
+                        unselected.replace("{prefix}", unselectedPrefix).replace("{name}", name)));
+            }
+            entries = List.copyOf(entries);
+        }
+        List<String> lore = section.getStringList("navigation.categories.lore");
+        if (!lore.isEmpty()) {
+            entries = new ArrayList<>();
+            java.util.Set<String> ids = new java.util.HashSet<>();
+            for (String line : lore) {
+                int start = line.indexOf("{category:");
+                if (start < 0) {
+                    entries.add(new ConfigValues.CategoryEntry("", line, line));
+                    continue;
+                }
+                int end = line.indexOf('}', start);
+                if (end < 0) throw new IllegalArgumentException("Не закрыт маркер категории: " + line);
+                String id = line.substring(start + 10, end).toLowerCase();
+                if (id.isEmpty() || !ids.add(id)) throw new IllegalArgumentException("Пустая или повторная категория: " + id);
+                String marker = line.substring(start, end + 1);
+                entries.add(new ConfigValues.CategoryEntry(id, line.replace(marker, selectedPrefix), line.replace(marker, unselectedPrefix)));
+            }
+            entries = List.copyOf(entries);
+        }
+        return new ConfigValues.CategoryMenuConfig(Material.matchMaterial(menu.getString("material")),
+                menu.getString("name"), selectedPrefix, unselectedPrefix, menu.getString("footer"), entries);
     }
 
     private ConfigValues.NavigationConfig loadNavigation(ConfigurationSection section) {

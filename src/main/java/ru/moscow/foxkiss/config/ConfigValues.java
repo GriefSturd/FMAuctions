@@ -154,8 +154,15 @@ public record ConfigValues(
             String name,
             String selectedPrefix,
             String unselectedPrefix,
-            String footer
-    ) {}
+            String footer,
+            List<CategoryEntry> entries
+    ) {
+        public CategoryMenuConfig(Material material, String name, String selectedPrefix, String unselectedPrefix, String footer) {
+            this(material, name, selectedPrefix, unselectedPrefix, footer, null);
+        }
+    }
+
+    public record CategoryEntry(String id, String selected, String unselected) {}
 
     public record GlassPane(
             Material material,

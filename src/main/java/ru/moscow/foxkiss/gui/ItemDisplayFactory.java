@@ -35,9 +35,26 @@ public final class ItemDisplayFactory {
     }
 
     public ItemStack createLotDisplay(AuctionItem item, PlayerProfile profile) {
-        String key = item.id() + "|" + item.amount() + "|" + item.price() + "|" + item.createdAt() + "|" + profile.discord() + "|" + profile.storeName();
+        long now = System.currentTimeMillis();
+        int maxStorageDays = configManager.getConfigValues().maxAuctionStorageDays();
+        long ageBucket = LotDisplayTime.ageBucket(item.createdAt(), now);
+        long daysLeft = LotDisplayTime.daysLeft(item.createdAt(), now, maxStorageDays);
+
+        String key = item.id()
+                + "|" + item.amount()
+                + "|" + item.price()
+                + "|" + item.createdAt()
+                + "|" + item.status()
+                + "|" + item.itemStack().hashCode()
+                + "|" + profile.discord()
+                + "|" + profile.storeName()
+                + "|" + profile.sales()
+                + "|" + ageBucket
+                + "|" + daysLeft;
+
         return lotDisplayCache.computeIfAbsent(key, k -> buildLotDisplay(item, profile)).clone();
     }
+
 
     private ItemStack buildLotDisplay(AuctionItem item, PlayerProfile profile) {
         ItemStack base = item.itemStack().clone();
@@ -68,9 +85,12 @@ public final class ItemDisplayFactory {
         String price = PriceFormatter.format(item.price());
         String pricePerItem = PriceFormatter.format(item.pricePerItem());
         String amount = String.valueOf(item.amount());
-        long daysLeft = Math.max(config.maxAuctionStorageDays() - (System.currentTimeMillis() - item.createdAt()) / 86_400_000L, 0);
+        long now = System.currentTimeMillis();
+        long ageBucket = LotDisplayTime.ageBucket(item.createdAt(), now);
+        long daysLeft = LotDisplayTime.daysLeft(item.createdAt(), now, config.maxAuctionStorageDays());
+
         String daysLeftText = String.valueOf(daysLeft);
-        String listedDate = formatDate(item.createdAt());
+        String listedDate = LotDisplayTime.formatAge(ageBucket);
 
         for (String line : template) {
             String processed = line
@@ -178,6 +198,15 @@ public final class ItemDisplayFactory {
         ConfigValues.NavigationConfig nav = gui.navigation();
 
         ObjectList<String> lore = new ObjectArrayList<>();
+        if (!nav.sort().lore().isEmpty()) {
+            for (String line : nav.sort().lore()) {
+                for (AuctionSort sort : AuctionSort.values()) {
+                    line = line.replace("{sort:" + sort.name() + "}", sort == selected ? sortMenu.selectedPrefix() : sortMenu.unselectedPrefix());
+                }
+                lore.add(line);
+            }
+            return createNavigationButton(nav.sort(), lore);
+        }
         Map<String, String> sortingNames = gui.sortingNames();
         for (AuctionSort sort : AuctionSort.values()) {
             String display = sortingNames.getOrDefault(sort.name(), sort.name());
@@ -202,19 +231,23 @@ public final class ItemDisplayFactory {
         ConfigValues.CategoryMenuConfig categoryMenu = gui.categoryMenu();
         ConfigValues.NavigationConfig nav = gui.navigation();
 
-        ObjectList<String> categories = new ObjectArrayList<>(config.categories().keySet());
-        if (!categories.contains("all")) {
-            categories.addFirst("all");
-        }
-
         String current = selectedCategory.toLowerCase();
         ObjectList<String> lore = new ObjectArrayList<>();
-        Map<String, String> categoryNames = gui.categoryNames();
-        for (String category : categories) {
-            String display = categoryNames.getOrDefault(category.toLowerCase(), category.substring(0, 1).toUpperCase() + category.substring(1).toLowerCase());
-            String prefix = category.equalsIgnoreCase(current) ? categoryMenu.selectedPrefix() : categoryMenu.unselectedPrefix();
-            lore.add(TextUtils.colorize(prefix + display));
+        if (categoryMenu.entries() != null) {
+            for (ConfigValues.CategoryEntry entry : categoryMenu.entries()) {
+                lore.add(entry.id().equals(current) ? entry.selected() : entry.unselected());
+            }
+        } else {
+            ObjectList<String> categories = new ObjectArrayList<>(config.categories().keySet());
+            if (!categories.contains("all")) categories.addFirst("all");
+            Map<String, String> categoryNames = gui.categoryNames();
+            for (String category : categories) {
+                String display = categoryNames.getOrDefault(category, category);
+                String prefix = category.equalsIgnoreCase(current) ? categoryMenu.selectedPrefix() : categoryMenu.unselectedPrefix();
+                lore.add(prefix + display);
+            }
         }
+        if (!nav.categories().lore().isEmpty()) return createNavigationButton(nav.categories(), lore);
         lore.add("");
         lore.add(TextUtils.colorize(categoryMenu.footer()));
 
@@ -266,15 +299,6 @@ public final class ItemDisplayFactory {
 
         item.setItemMeta(meta);
         return item;
-    }
-
-    private String formatDate(long timestamp) {
-        long diff = System.currentTimeMillis() - timestamp;
-        long minutes = diff / 60_000L;
-        if (minutes < 60) return minutes + " мин. назад";
-        long hours = diff / 3_600_000L;
-        if (hours < 24) return hours + " ч. назад";
-        return diff / 86_400_000L + " дн. назад";
     }
 
     public void clearCache() {

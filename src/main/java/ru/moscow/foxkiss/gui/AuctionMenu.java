@@ -9,7 +9,6 @@ import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionItem;
 import ru.moscow.foxkiss.auction.AuctionRepository;
 import ru.moscow.foxkiss.auction.AuctionSort;
-import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.builder.MenuBuilder;
 import ru.moscow.foxkiss.gui.holders.AuctionMenuHolder;
@@ -164,6 +163,14 @@ public final class AuctionMenu {
         renderNew(player, viewType, currency, page, sort, sellerFilter, searchFilter, category);
     }
 
+    public boolean isRefreshing(Player player) {
+        synchronized (requestInProgress) {
+            Long started = requestStartTime.get(player.getUniqueId());
+            return started != null && System.currentTimeMillis() - started <= 15_000L
+                    && requestInProgress.getOrDefault(player.getUniqueId(), false);
+        }
+    }
+
     public void refreshInventory(Player player, AuctionMenuHolder holder) {
         if (holder instanceof SalesHistoryMenuHolder) {
             openSalesHistory(player, holder.getCurrency(), holder.getPage());
@@ -182,6 +189,10 @@ public final class AuctionMenu {
             }
             requestInProgress.put(uuid, true);
             requestStartTime.put(uuid, System.currentTimeMillis());
+        }
+        if (holder.getViewType() == AuctionViewType.MAIN) {
+            playerPreferences.setSort(uuid, holder.getCurrency(), holder.getSort());
+            playerPreferences.setCategory(uuid, holder.getCurrency(), holder.getCategory());
         }
         long requestVersion = holder.incrementAndGetRequestVersion();
         renderRefresh(player, holder, requestVersion);
@@ -303,21 +314,18 @@ public final class AuctionMenu {
                 },
                 result -> {
                     try {
-                        if (requestVersion != holder.getRequestVersion()) return;
+                        if (!player.isOnline()) return;
+
+                        if (player.getOpenInventory().getTopInventory().getHolder() != holder) {
+                            return;
+                        }
+
+                        if (requestVersion != holder.getRequestVersion()) {
+                            return;
+                        }
 
                         builder.refreshLotDisplays(holder.getInventory(), holder, result.items, result.totalCount, pageSize, result.profiles);
-
-                        if (viewType == AuctionViewType.MAIN) {
-                            builder.refreshNavigationButtons(holder.getInventory(), holder);
-                        } else {
-                            ConfigValues values = configManager.getConfigValues();
-                            Map<Integer, ConfigValues.GlassPane> panes = (viewType == AuctionViewType.SELLING)
-                                    ? values.gui(holder.getCurrency()).mainGlass()
-                                    : values.gui(holder.getCurrency()).expiredGlass();
-                            builder.fillGlass(holder.getInventory(), panes);
-                            builder.addSalesHistoryButton(holder.getInventory(), holder);
-                            builder.addProfileButton(holder.getInventory(), holder, result.profiles.getOrDefault(player.getName(), ru.moscow.foxkiss.auction.PlayerProfile.empty(player.getName())));
-                        }
+                        builder.refreshNavigationButtons(holder.getInventory(), holder);
                     } finally {
                         synchronized (requestInProgress) {
                             requestInProgress.remove(uuid);

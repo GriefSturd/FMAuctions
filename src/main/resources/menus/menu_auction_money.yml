@@ -73,6 +73,7 @@ category-menu:
   unselected-prefix: "&7♦ "
   footer: "&fПеремещение: &x&f&f&c&5&0&0ЛКМ ↓ &f| &x&f&f&c&5&0&0ПКМ ↑"
 
+
 # Кнопка "назад" в меню "Ваши товары" / "Забытые товары"
 exit-action:
   actions:
@@ -232,19 +233,42 @@ navigation:
     slot: 52
     item: HOPPER
     name: "&x&f&f&c&5&0&0Сортировка предметов"
-    lore: []
+    # Маркер задаёт подсветку; текст после него можно менять.
+    # Удалите строку, чтобы убрать вариант из переключения.
+    lore:
+      - "{sort:NEWEST}Сначала новые"
+      - "{sort:OLDEST}Сначала старые"
+      - "{sort:EXPENSIVE}Сначала дорогие"
+      - "{sort:CHEAP}Сначала недорогие"
+      - "{sort:EXPENSIVE_PER_ITEM}Сначала дорогие за штуку"
+      - "{sort:CHEAP_PER_ITEM}Сначала недорогие за штуку"
+      - ""
+      - "&fПеремещение: &eЛКМ ↓ &f| &eПКМ ↑"
   categories:
     actions:
       - "[CATEGORIES]"
     slot: 53
     item: basehead-eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYzc1MDJjNmE2ODg1MmViZjEwODdhMmVkMmE2M2Y4ZDg1ODk4YTcwNDlkNTE0YjJjNjc1ZmEwOTE1YmY0NzI0NiJ9fX0=
     name: "&x&f&f&c&5&0&0Категории предметов"
+    # Порядок строк = порядок переключения. ID остаётся прежним при переименовании.
+    # Цвет и символ маркера берутся из category-menu selected/unselected-prefix.
     lore:
-      - "&r&eВсё подряд"
-      - "&r&7Инструменты"
-      - "&r&7Оружие"
+      - "{category:spheres}Шары"
+      - "{category:blocks}Блоки"
+      - "{category:unique}Уникальное"
+      - "{category:tools}Инструменты"
+      - "{category:mechanisms}Механизмы"
+      - "{category:alchemy}Алхимия"
+      - "{category:treasures}Драгоценности"
+      - "{category:plants}Растительность"
+      - "{category:enchantments}Зачарования"
+      - "{category:mob_loot}Лут с мобов"
+      - "{category:all}Все категории"
+      - "{category:armor}Броня"
+      - "{category:food}Еда"
+      - "{category:weapons}Оружие"
       - ""
-      - "&r&fЛКМ вниз | ПКМ вверх"
+      - "&fПеремещение: &eЛКМ ↓ &f| &eПКМ ↑"
 
 glass-selling:
   - glass-type: YELLOW_STAINED_GLASS_PANE

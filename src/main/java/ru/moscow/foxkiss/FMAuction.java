@@ -32,12 +32,10 @@ public final class FMAuction extends JavaPlugin {
     private PluginEconomyProvider economyProvider;
     private LimitService limitService;
     private FMAuctionExpansion placeholderExpansion;
-    private PlayerPreferences playerPreferences;
     private AuctionCommand auctionCommand;
     private AuctionCommand donateAuctionCommand;
     private AuctionMenuListener auctionMenuListener;
     private SchedulerService schedulerService;
-    private ItemDisplayFactory itemDisplayFactory;
     private ProfileInputService profileInputService;
     private UpdateChecker updateChecker;
 
@@ -92,11 +90,11 @@ public final class FMAuction extends JavaPlugin {
         limitService.init();
 
         schedulerService = new SchedulerService(this);
-        itemDisplayFactory = new ItemDisplayFactory(configManager);
+        ItemDisplayFactory itemDisplayFactory = new ItemDisplayFactory(configManager);
 
         auctionService = AuctionService.create(this, configManager, auctionRepository, economyProvider, limitService, itemDisplayFactory, schedulerService);
 
-        playerPreferences = new PlayerPreferences();
+        PlayerPreferences playerPreferences = new PlayerPreferences();
         profileInputService = new ProfileInputService(this, configManager, auctionRepository, schedulerService);
         auctionMenu = new AuctionMenu(this, configManager, auctionRepository, playerPreferences, itemDisplayFactory, schedulerService, profileInputService);
 

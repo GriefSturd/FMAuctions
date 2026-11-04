@@ -158,7 +158,6 @@ public final class H2AuctionRepository implements AuctionRepository {
             st.executeUpdate("ALTER TABLE auction_pending_payouts ADD COLUMN IF NOT EXISTS operation_id VARCHAR(100)");
             st.executeUpdate("ALTER TABLE auction_pending_payouts ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'READY'");
             st.executeUpdate("CREATE UNIQUE INDEX IF NOT EXISTS idx_payout_operation ON auction_pending_payouts(operation_id)");
-            // A provider may have committed a PAYING transfer before the previous process died.
             int uncertain = st.executeUpdate("UPDATE auction_pending_payouts SET status='REVIEW' WHERE status='PAYING'");
             if (uncertain > 0) plugin.getLogger().severe("Payouts require economy reconciliation: " + uncertain);
             try (ResultSet legacy = st.executeQuery("SELECT COUNT(*) FROM auction_pending_deliveries WHERE currency IS NULL")) {
@@ -712,7 +711,7 @@ public final class H2AuctionRepository implements AuctionRepository {
 
     @Override
     public SalesHistoryPage loadSalesHistory(String sellerName, AuctionCurrency currency, int requestedPage, int pageSize) {
-        if (pageSize < 1 || pageSize > 54) throw new IllegalArgumentException("Invalid history page size");
+        if (pageSize < 1 || pageSize > 54) throw new IllegalArgumentException("Недопустимый размер страницы истории");
         try (Connection conn = open()) {
             conn.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
             conn.setAutoCommit(false);
@@ -825,7 +824,7 @@ public final class H2AuctionRepository implements AuctionRepository {
             ps.setLong(11, now);
             ps.executeUpdate();
         } catch (SQLException e) {
-            throw new IllegalStateException("Cannot persist transaction journal", e);
+            throw new IllegalStateException("Не удалось сохранить журнал транзакций", e);
         }
     }
 
@@ -837,9 +836,9 @@ public final class H2AuctionRepository implements AuctionRepository {
             ps.setString(1, status);
             ps.setLong(2, now);
             ps.setString(3, operationId);
-            if (ps.executeUpdate() != 1) throw new SQLException("Transaction journal row missing: " + operationId);
+            if (ps.executeUpdate() != 1) throw new SQLException("Отсутствует запись журнала: " + operationId);
         } catch (SQLException e) {
-            throw new IllegalStateException("Cannot persist transaction status " + operationId, e);
+            throw new IllegalStateException("Не удалось сохранить статус транзакции " + operationId, e);
         }
     }
 
@@ -1155,7 +1154,7 @@ public final class H2AuctionRepository implements AuctionRepository {
                 }
             }
         } catch (Exception e) {
-            throw new IllegalStateException("Cannot load pending deliveries", e);
+            throw new IllegalStateException("Не удалось загрузить ожидающие доставки", e);
         }
         return list;
     }
@@ -1231,6 +1230,20 @@ public final class H2AuctionRepository implements AuctionRepository {
     }
 
     @Override
+    public void savePendingDelivery(String playerName, AuctionCurrency currency, List<ItemStack> items) {
+        if (items.isEmpty()) return;
+        try (Connection conn = open(); PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO auction_pending_deliveries(player_name,lot_type,item,inventory_data,created_at,currency) VALUES(?,'INVENTORY',?,?,?,?)")) {
+            ps.setString(1, playerName);
+            ps.setString(2, serialize(items.getFirst()));
+            ps.setString(3, serializeInventory(items));
+            ps.setLong(4, System.currentTimeMillis());
+            ps.setString(5, currency.name());
+            ps.executeUpdate();
+        } catch (SQLException e) { throw new IllegalStateException("Не удалось сохранить возвращаемые предметы", e); }
+    }
+
+    @Override
     public void claimPendingInventoryItems(String playerName, AuctionCurrency currency) {
         try (Connection conn = open()) {
             conn.setAutoCommit(false);
@@ -1249,7 +1262,7 @@ public final class H2AuctionRepository implements AuctionRepository {
                             break;
                         }
                     }
-                    if (icon == null) throw new IllegalStateException("Queued inventory has no items");
+                    if (icon == null) throw new IllegalStateException("В очереди инвентаря отсутствуют предметы");
                     try (PreparedStatement ps = conn.prepareStatement("INSERT INTO auction_pending_deliveries(player_name,lot_type,item,inventory_data,created_at,currency) VALUES(?,'INVENTORY',?,?,?,?)")) {
                         ps.setString(1, playerName); ps.setString(2, icon); ps.setString(3, data);
                         ps.setLong(4, System.currentTimeMillis()); ps.setString(5, currency.name()); ps.executeUpdate();
@@ -1258,7 +1271,7 @@ public final class H2AuctionRepository implements AuctionRepository {
                 }
                 conn.commit();
             } catch (Exception e) { conn.rollback(); throw e; }
-        } catch (Exception e) { throw new IllegalStateException("Cannot claim queued items", e); }
+        } catch (Exception e) { throw new IllegalStateException("Не удалось зарезервировать предметы", e); }
     }
 
     private void replacePendingInventoryItems(Connection conn, String playerName, AuctionCurrency currency, List<ItemStack> items) throws Exception {
@@ -1332,7 +1345,7 @@ public final class H2AuctionRepository implements AuctionRepository {
 
     private void savePayout(Connection conn, String operationId, String player, AuctionCurrency currency, double amount) throws SQLException {
         if (amount == 0) return;
-        if (!Double.isFinite(amount) || amount < 0) throw new SQLException("Invalid payout amount");
+        if (!Double.isFinite(amount) || amount < 0) throw new SQLException("Недопустимая сумма выплаты");
         try (PreparedStatement ps = conn.prepareStatement("INSERT INTO auction_pending_payouts(player_name,currency,amount,created_at,operation_id) SELECT ?,?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM auction_pending_payouts WHERE operation_id=?)")) {
             ps.setString(1, player);
             ps.setString(2, currency.name());
@@ -1348,7 +1361,7 @@ public final class H2AuctionRepository implements AuctionRepository {
         try (PreparedStatement ps = conn.prepareStatement("SELECT status FROM auction_transaction_journal WHERE operation_id=? FOR UPDATE")) {
             ps.setString(1, operationId);
             try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next() || !"MONEY_WITHDRAWN".equals(rs.getString(1))) throw new SQLException("Operation does not own a confirmed debit");
+                if (!rs.next() || !"MONEY_WITHDRAWN".equals(rs.getString(1))) throw new SQLException("Отсутствует подтверждённое списание для операции");
             }
         }
     }
@@ -1360,7 +1373,7 @@ public final class H2AuctionRepository implements AuctionRepository {
             ps.setString(2, operationId);
             return ps.executeUpdate() == 1;
         } catch (SQLException e) {
-            throw new IllegalStateException("Cannot prepare debit", e);
+            throw new IllegalStateException("Не удалось подготовить списание", e);
         }
     }
 
@@ -1389,7 +1402,7 @@ public final class H2AuctionRepository implements AuctionRepository {
                     liveOperations.remove(operationId);
                 }
             }
-        } catch (SQLException e) { throw new IllegalStateException("Cannot queue refund " + operationId, e); }
+        } catch (SQLException e) { throw new IllegalStateException("Не удалось поставить возврат в очередь " + operationId, e); }
     }
 
     @Override
@@ -1397,14 +1410,13 @@ public final class H2AuctionRepository implements AuctionRepository {
         List<PendingPayout> pending = new ArrayList<>();
         try (Connection conn = open(); PreparedStatement ps = conn.prepareStatement("SELECT * FROM auction_pending_payouts WHERE status='READY' ORDER BY id LIMIT 100" ); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) pending.add(new PendingPayout(rs.getLong("id"), rs.getString("player_name"), AuctionCurrency.valueOf(rs.getString("currency")), rs.getDouble("amount"), rs.getLong("created_at")));
-        } catch (SQLException e) { throw new IllegalStateException("Cannot load payouts", e); }
+        } catch (SQLException e) { throw new IllegalStateException("Не удалось загрузить выплаты", e); }
         for (PendingPayout payout : pending) {
             try (Connection conn = open(); PreparedStatement ps = conn.prepareStatement("UPDATE auction_pending_payouts SET status='PAYING' WHERE id=? AND status='READY'")) {
                 ps.setLong(1, payout.id());
                 if (ps.executeUpdate() != 1) continue;
-            } catch (SQLException e) { throw new IllegalStateException("Cannot claim payout", e); }
+            } catch (SQLException e) { throw new IllegalStateException("Не удалось зарезервировать выплату", e); }
             org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
-                // An exception / crash leaves PAYING for explicit reconciliation, never an automatic duplicate.
                 try {
                     boolean paid = economyProvider.deposit(org.bukkit.Bukkit.getOfflinePlayer(payout.playerName()), payout.currency(), payout.amount());
                     asyncExecutor.execute(() -> {
@@ -1431,13 +1443,11 @@ public final class H2AuctionRepository implements AuctionRepository {
                         cancelProcessing(rs.getLong(3), op);
                         updateJournalStatus(op, "CANCELLED");
                     } else {
-                        // Legacy LOT_UPDATED has no reliable payout receipt; WITHDRAW_INTENT may have debited.
                         updateJournalStatus(op, "REVIEW");
                         plugin.getLogger().severe("Transaction requires economy reconciliation: " + op + " (" + status + ")");
                     }
                 }
             }
-            // A crash between lot claim and journal insert is safe to release after the timeout.
             try (PreparedStatement orphan = conn.prepareStatement("SELECT id,operation_id FROM auction_items WHERE status=1 AND processing_started_at<? AND NOT EXISTS (SELECT 1 FROM auction_transaction_journal j WHERE j.operation_id=auction_items.operation_id)")) {
                 orphan.setLong(1, cutoff);
                 try (ResultSet rs = orphan.executeQuery()) {
@@ -1447,7 +1457,7 @@ public final class H2AuctionRepository implements AuctionRepository {
                     }
                 }
             }
-        } catch (SQLException e) { throw new IllegalStateException("Cannot recover transactions", e); }
+        } catch (SQLException e) { throw new IllegalStateException("Не удалось восстановить транзакции", e); }
         processPendingPayouts(economyProvider);
     }
 

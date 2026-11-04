@@ -81,7 +81,6 @@ public final class AuctionBuyService extends BaseAuctionService {
             }
             scheduler.runSync(() -> {
                 if (!buyer.isOnline()) { cancel(buyer, item.id(), op, config().messages().noId(), callback); return; }
-                // Public wrapper retains its historical contract: true means withdrawal failed.
                 if (transactionService.withdrawMoney(buyer, item.currency(), price)) {
                     cancel(buyer, item.id(), op, config().messages().nomoney(), callback);
                     return;

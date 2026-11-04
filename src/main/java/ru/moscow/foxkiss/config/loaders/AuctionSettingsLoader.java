@@ -78,10 +78,7 @@ public record AuctionSettingsLoader(JavaPlugin plugin) {
 
     private ConfigValues.InventoryActionButton loadActionBtn(ConfigurationSection section) {
         Material material = Material.matchMaterial(section.getString("material"));
-        List<Integer> slots = new ArrayList<>();
-        for (int s : section.getIntegerList("slots")) {
-            slots.add(s);
-        }
+        List<Integer> slots = List.copyOf(section.getIntegerList("slots"));
         return new ConfigValues.InventoryActionButton(
                 material,
                 section.getString("name"),

@@ -15,7 +15,7 @@ public final class VaultApi {
         RegisteredServiceProvider<Economy> provider = Bukkit.getServicesManager().getRegistration(Economy.class);
 
         if (provider == null) {
-            throw new IllegalStateException("Vault economy provider not found");
+            throw new IllegalStateException("Провайдер экономики Vault не найден");
         }
 
         this.economy = provider.getProvider();

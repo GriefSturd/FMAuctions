@@ -77,12 +77,12 @@ public final class AuctionTakeService extends BaseAuctionService {
                     finishWithMessage(player, configManager.getConfigValues().messages().noId(), callback);
                     return;
                 }
-                completeTake(player, item, result.pendingDeliveryId(), operationId, callback);
+                completeTake(player, item, callback);
             });
         });
     }
 
-    private void completeTake(Player player, AuctionItem item, long deliveryId, String operationId, Consumer<Boolean> callback) {
+    private void completeTake(Player player, AuctionItem item, Consumer<Boolean> callback) {
         if (!player.isOnline()) {
             if (callback != null) callback.accept(false);
             return;

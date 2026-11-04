@@ -92,6 +92,8 @@ public interface AuctionRepository {
 
     void claimPendingInventoryItems(String playerName, AuctionCurrency currency);
 
+    void savePendingDelivery(String playerName, AuctionCurrency currency, List<ItemStack> items);
+
     void close();
 
     record TopSeller(String name, int soldCount, double totalEarned) {}

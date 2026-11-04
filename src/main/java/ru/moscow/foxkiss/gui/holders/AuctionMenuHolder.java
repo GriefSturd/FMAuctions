@@ -9,6 +9,7 @@ import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionSort;
 import ru.moscow.foxkiss.gui.AuctionViewType;
 import ru.moscow.foxkiss.gui.actions.Action;
+import ru.moscow.foxkiss.gui.holders.records.LotSnapshot;
 
 import java.util.HashMap;
 import java.util.List;
@@ -28,10 +29,19 @@ public abstract class AuctionMenuHolder implements InventoryHolder {
     protected String searchFilter;
     protected String category;
 
+    private AuctionSort renderedSort;
+    private String renderedCategory;
+
+    private int renderedPage = -1;
+    private int renderedTotalPages = -1;
+    private int renderedSellingCount = -1;
+    private int renderedExpiredCount = -1;
+
     protected final Map<Integer, Long> lotsBySlot = new HashMap<>();
     protected final Map<Integer, Integer> lotsAmountBySlot = new HashMap<>();
     protected final Map<Integer, Boolean> inventoryLotBySlot = new HashMap<>();
     protected final Map<Integer, List<Action>> actionsBySlot = new HashMap<>();
+    protected final Map<Integer, LotSnapshot> lotSnapshots = new HashMap<>();
 
     protected int totalPages = 1;
     private long requestVersion = 0;
@@ -68,11 +78,6 @@ public abstract class AuctionMenuHolder implements InventoryHolder {
         return actionsBySlot.get(slot);
     }
 
-    public void clearLots() {
-        lotsBySlot.clear();
-        lotsAmountBySlot.clear();
-        inventoryLotBySlot.clear();
-    }
 
     public Long getLot(int slot) {
         return lotsBySlot.get(slot);

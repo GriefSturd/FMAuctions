@@ -8,6 +8,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.components.CustomModelDataComponent;
 import ru.moscow.foxkiss.FMAuction;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionRepository;
@@ -20,7 +21,6 @@ import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.ItemUtils;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 import ru.moscow.foxkiss.utils.PriceFormatter;
-import ru.moscow.foxkiss.utils.TextUtils;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -190,7 +190,11 @@ public final class SalesHistoryMenu {
             lore.add(PlaceholderUtils.applypapi(player, lineRaw, configManager));
         }
         meta.lore(lore);
-        if (configured.customModelData() != null) meta.setCustomModelData(configured.customModelData());
+        if (configured.customModelData() != null) {
+            CustomModelDataComponent component = meta.getCustomModelDataComponent();
+            component.setFloats(List.of(configured.customModelData().floatValue()));
+            meta.setCustomModelDataComponent(component);
+        }
         item.setItemMeta(meta);
     }
 }
