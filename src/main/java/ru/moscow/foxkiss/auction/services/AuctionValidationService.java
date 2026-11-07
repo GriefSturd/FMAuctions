@@ -70,27 +70,19 @@ public record AuctionValidationService(IConfigManager configManager, EconomyProv
         Inventory inv = player.getInventory();
 
         int needed = item.getAmount();
-        int emptySlots = 0;
+        int stackLimit = Math.min(item.getMaxStackSize(), inv.getMaxStackSize());
 
         for (ItemStack slot : inv.getStorageContents()) {
             if (slot == null || slot.getType() == Material.AIR) {
-                emptySlots++;
-                continue;
+                needed -= stackLimit;
+            } else if (slot.isSimilar(item)) {
+                int free = Math.min(slot.getMaxStackSize(), inv.getMaxStackSize()) - slot.getAmount();
+                if (free > 0) needed -= free;
             }
-
-            if (slot.isSimilar(item)) {
-
-                int free = slot.getMaxStackSize() - slot.getAmount();
-                if (free > 0) {
-                    needed -= Math.min(free, needed);
-                    if (needed == 0) return false;
-                }
-            }
+            if (needed <= 0) return true;
         }
 
-        int slotsNeeded = (needed + item.getMaxStackSize() - 1) / item.getMaxStackSize();
-
-        return emptySlots < slotsNeeded;
+        return false;
     }
 
 

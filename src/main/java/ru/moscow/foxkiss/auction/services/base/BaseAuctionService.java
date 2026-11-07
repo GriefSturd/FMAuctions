@@ -10,6 +10,7 @@ import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 import ru.moscow.foxkiss.utils.PriceFormatter;
+import ru.moscow.foxkiss.utils.TextUtils;
 
 import java.util.function.Consumer;
 
@@ -26,7 +27,7 @@ public abstract class BaseAuctionService {
 
     protected void sendMessage(Player player, String message) {
         if (player == null || !player.isOnline() || message == null || message.isEmpty()) return;
-        player.sendMessage(PlaceholderUtils.applypapi(player, message, configManager));
+        player.sendMessage(TextUtils.component(PlaceholderUtils.apply(player, message, configManager)));
     }
 
     protected void finishWithMessage(Player player, String message, Consumer<Boolean> callback) {
@@ -47,7 +48,7 @@ public abstract class BaseAuctionService {
 
     protected double chargeCommission(Player player, AuctionCurrency ignored, ConfigValues.CommissionRule rule, double price) {
         ConfigValues.CommissionConfig cfg = config().commission();
-        if (cfg == null || !cfg.enabled()) return 0;
+        if (!cfg.enabled()) return 0;
         double commission = computeCommission(rule, price);
         if (commission <= 0) return 0;
         AuctionCurrency currency = rule.currency();

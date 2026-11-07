@@ -1,6 +1,8 @@
 package ru.moscow.foxkiss.auction.services.sessions;
 
 import lombok.Getter;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import org.bukkit.entity.Player;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.PendingDelivery;
@@ -25,7 +27,7 @@ public final class DeliverySession {
     public boolean commandBatch;
     public boolean deliveredAny;
     public EnumSet<AuctionCurrency> currencies = EnumSet.noneOf(AuctionCurrency.class);
-    public long prioritizedId;
+    public final LongSet prioritizedIds = new LongOpenHashSet();
     public AuctionTransactionService.Receipt receipt;
     public List<PendingDelivery> pending = List.of();
     public int index;

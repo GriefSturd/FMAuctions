@@ -4,6 +4,7 @@ import com.destroystokyo.paper.profile.PlayerProfile;
 import com.destroystokyo.paper.profile.ProfileProperty;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.CustomModelData;
+import lombok.Getter;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -23,10 +24,15 @@ public final class ItemUtils {
     private static final Map<String, PlayerProfile> profileSkull = new HashMap<>();
     private static final Map<String, ItemStack> cacheSkull = new HashMap<>();
     private static final Map<String, String> perevod = new HashMap<>();
-    private static volatile MaterialSearchIndex searchIndex = new MaterialSearchIndex(Map.of());
+    @Getter
+    private static volatile MaterialSearchIndex searchIndex = createSearchIndex(Map.of());
 
-    public static MaterialSearchIndex getSearchIndex() {
-        return searchIndex;
+    private static MaterialSearchIndex createSearchIndex(Map<String, String> translations) {
+        List<String> ids = new ArrayList<>();
+        for (Material material : Material.values()) {
+            if (!material.name().startsWith("LEGACY_")) ids.add(material.name());
+        }
+        return new MaterialSearchIndex(translations, ids);
     }
 
     public static ItemStack named(Material material, String name, List<String> lore, Integer customModelData) {
@@ -94,7 +100,7 @@ public final class ItemUtils {
         FMAuction plugin = JavaPlugin.getPlugin(FMAuction.class);
 
         if (itemsFile == null || !itemsFile.exists()) {
-            searchIndex = new MaterialSearchIndex(Map.of());
+            searchIndex = createSearchIndex(Map.of());
             plugin.getLogger().warning("items.yml не найден, переводы не загружены.");
             return;
         }
@@ -106,7 +112,7 @@ public final class ItemUtils {
             }
             perevod.put(key, cfg.getString(key));
         }
-        searchIndex = new MaterialSearchIndex(perevod);
+        searchIndex = createSearchIndex(perevod);
     }
 
     public static String getItemDisplayName(ItemStack item) {

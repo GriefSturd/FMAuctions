@@ -27,14 +27,18 @@ public final class CommandUtils {
 
     public static Double parsePrice(CommandSender sender, String[] args, IConfigManager configManager) {
         if (args.length < 2) {
-            sender.sendMessage(PlaceholderUtils.applypapi(sender, configManager.getConfigValues().messages().noPrice(), configManager));
+            sendMessage(sender, configManager, configManager.getConfigValues().messages().noPrice());
             return null;
         }
         try {
             return Double.parseDouble(args[1]);
         } catch (NumberFormatException e) {
-            sender.sendMessage(PlaceholderUtils.applypapi(sender, configManager.getConfigValues().messages().noPrice(), configManager));
+            sendMessage(sender, configManager, configManager.getConfigValues().messages().noPrice());
             return null;
         }
+    }
+
+    private static void sendMessage(CommandSender sender, IConfigManager configManager, String message) {
+        sender.sendMessage(TextUtils.component(PlaceholderUtils.apply(sender, message, configManager)));
     }
 }

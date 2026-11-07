@@ -1,3 +1,4 @@
+
 package ru.moscow.foxkiss.commands;
 
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -11,6 +12,7 @@ import ru.moscow.foxkiss.FMAuction;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.utils.CommandUtils;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
+import ru.moscow.foxkiss.utils.TextUtils;
 
 import java.util.List;
 
@@ -19,24 +21,21 @@ public record AdminCommand(FMAuction plugin, IConfigManager configManager) imple
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
         if (!sender.hasPermission("fmauction.admin")) {
-            sender.sendMessage(PlaceholderUtils.applypapi(sender, configManager.getConfigValues().messages().noPermission(), configManager));
+            sendMessage(sender, configManager.getConfigValues().messages().noPermission());
             return true;
         }
 
         if (args.length != 1) {
-            sender.sendMessage(PlaceholderUtils.applypapi(sender, configManager.getConfigValues().messages().unknownSubcommand(), configManager));
+            sendMessage(sender, configManager.getConfigValues().messages().unknownSubcommand());
             return true;
         }
 
-        if (args[0].equalsIgnoreCase("sql")) {
-            for (String line : plugin.sqlReport()) sender.sendMessage(line);
-            return true;
-        }
         if (args[0].equalsIgnoreCase("reload")) {
             handleReload(sender);
             return true;
         }
-        sender.sendMessage(PlaceholderUtils.applypapi(sender, configManager.getConfigValues().messages().unknownSubcommand(), configManager));
+
+        sendMessage(sender, configManager.getConfigValues().messages().unknownSubcommand());
         return true;
     }
 
@@ -45,10 +44,15 @@ public record AdminCommand(FMAuction plugin, IConfigManager configManager) imple
 
         try {
             plugin.reloadAll();
-            sender.sendMessage(PlaceholderUtils.applypapi(sender, configManager.getConfigValues().messages().reload().replace("{time}", String.valueOf(System.currentTimeMillis() - start)), configManager));
+
+            sendMessage(sender, configManager.getConfigValues().messages().reload().replace("{time}", String.valueOf(System.currentTimeMillis() - start)));
         } catch (Exception e) {
-            sender.sendMessage(PlaceholderUtils.applypapi(sender, configManager.getConfigValues().messages().errorReload().replace("{error}", e.getClass().getSimpleName()), configManager));
+            sendMessage(sender, configManager.getConfigValues().messages().errorReload().replace("{error}", e.getClass().getSimpleName()));
         }
+    }
+
+    private void sendMessage(CommandSender sender, String message) {
+        sender.sendMessage(TextUtils.component(PlaceholderUtils.apply(sender, message, configManager)));
     }
 
     @Override
@@ -58,9 +62,9 @@ public record AdminCommand(FMAuction plugin, IConfigManager configManager) imple
         }
 
         final ObjectList<String> completions = new ObjectArrayList<>();
+
         if (args.length == 1) {
             completions.add("reload");
-            completions.add("sql");
         }
 
         return CommandUtils.getResult(args, completions);

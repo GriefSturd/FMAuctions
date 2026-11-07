@@ -1,6 +1,5 @@
 package ru.moscow.foxkiss.gui.holders.records;
 
-
 import ru.moscow.foxkiss.auction.AuctionLotType;
 import ru.moscow.foxkiss.auction.AuctionStatus;
 
@@ -12,7 +11,6 @@ public record LotSnapshot(
         AuctionLotType type,
         AuctionStatus status,
         String seller,
-        int itemHash,
         String discord,
         String store,
         long sales,

@@ -1,4 +1,4 @@
-package ru.moscow.foxkiss.database;
+package ru.moscow.foxkiss.database.h2;
 
 import javax.sql.DataSource;
 import java.lang.reflect.*;
@@ -7,7 +7,6 @@ import java.util.*;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
-/** Admission, invalidation epochs and bounded timing samples for this repository. */
 public final class SqlRuntime {
     private final Semaphore connections = new Semaphore(8, true);
     private final Semaphore requests = new Semaphore(72, true);
@@ -16,6 +15,7 @@ public final class SqlRuntime {
     private int writers;
 
     public synchronized long cacheRevision() { return writers == 0 ? revision : -1; }
+    public synchronized void invalidateCache() { revision++; }
     private synchronized void beginWrite() { writers++; revision++; }
     private synchronized void endWrite() { writers--; revision++; }
 
@@ -67,7 +67,7 @@ public final class SqlRuntime {
                     if (m.getName().equals("getConnection")) return proxy;
                     if (!m.getName().startsWith("execute")) return call(statement, m, values);
                     String query = values != null && values.length > 0 && values[0] instanceof String text ? text : sql;
-                    boolean write = !query.stripLeading().regionMatches(true, 0, "SELECT", 0, 6);
+                    boolean write = changesCatalog(query);
                     if (write) dirty();
                     long start = System.nanoTime();
                     boolean error = false;
@@ -81,6 +81,12 @@ public final class SqlRuntime {
             }
         }
         return (Connection) Proxy.newProxyInstance(SqlRuntime.class.getClassLoader(), new Class<?>[]{Connection.class}, new State());
+    }
+
+    private static boolean changesCatalog(String sql) {
+        if (sql.stripLeading().regionMatches(true, 0, "SELECT", 0, 6)) return false;
+        String query = sql.stripLeading().toLowerCase(java.util.Locale.ENGLISH);
+        return query.contains("auction_items") || query.contains("auction_player_profiles") || query.contains("sales_history");
     }
 
     private static Object call(Object target, Method method, Object[] args) throws Throwable {

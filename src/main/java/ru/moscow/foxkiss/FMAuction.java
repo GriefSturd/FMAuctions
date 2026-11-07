@@ -1,12 +1,14 @@
 package ru.moscow.foxkiss;
 
 import org.bstats.bukkit.Metrics;
+import org.bukkit.Bukkit;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionRepository;
 import ru.moscow.foxkiss.auction.AuctionService;
-import ru.moscow.foxkiss.auction.H2AuctionRepository;
+import ru.moscow.foxkiss.database.h2.H2AuctionRepository;
 import ru.moscow.foxkiss.commands.AdminCommand;
 import ru.moscow.foxkiss.commands.AuctionCommand;
 import ru.moscow.foxkiss.config.impl.ConfigManager;
@@ -22,6 +24,7 @@ import ru.moscow.foxkiss.placeholders.FMAuctionExpansion;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.ItemUtils;
 import ru.moscow.foxkiss.update.UpdateChecker;
+import ru.moscow.foxkiss.utils.PlaceholderUtils;
 
 public final class FMAuction extends JavaPlugin {
 
@@ -45,6 +48,7 @@ public final class FMAuction extends JavaPlugin {
 
         initializeManager();
         setupMetrics();
+        PlaceholderUtils.init();
 
         registerCommands();
         registerListeners();
@@ -57,6 +61,13 @@ public final class FMAuction extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (profileInputService != null) {
+            profileInputService.close();
+        }
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            player.saveData();
+        }
+
         if (schedulerService != null) {
             schedulerService.shutdown();
         }
@@ -67,6 +78,7 @@ public final class FMAuction extends JavaPlugin {
         if (auctionRepository != null) {
             auctionRepository.close();
         }
+
     }
 
     private void setupMetrics() {
@@ -100,10 +112,6 @@ public final class FMAuction extends JavaPlugin {
 
         auctionRepository.recoverStuckLots(economyProvider, true);
         schedulerService.runTimerAsync(() -> auctionRepository.recoverStuckLots(economyProvider, false), 20L * 60, 20L * 60);
-    }
-
-    public java.util.List<String> sqlReport() {
-        return auctionRepository instanceof H2AuctionRepository repository ? repository.sqlReport() : java.util.List.of();
     }
 
     public void reloadAll() {

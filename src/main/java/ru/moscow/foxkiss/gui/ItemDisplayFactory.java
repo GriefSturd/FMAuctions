@@ -5,7 +5,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
-
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -16,6 +15,7 @@ import ru.moscow.foxkiss.auction.AuctionSort;
 import ru.moscow.foxkiss.auction.PlayerProfile;
 import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
+import ru.moscow.foxkiss.gui.holders.records.LotDisplayKey;
 import ru.moscow.foxkiss.utils.ItemUtils;
 import ru.moscow.foxkiss.utils.PriceFormatter;
 import ru.moscow.foxkiss.utils.TextUtils;
@@ -25,7 +25,7 @@ import java.util.*;
 public final class ItemDisplayFactory {
     private final IConfigManager configManager;
 
-    private final Object2ObjectOpenHashMap<String, ItemStack> lotDisplayCache = new Object2ObjectOpenHashMap<>();
+    private final Object2ObjectOpenHashMap<LotDisplayKey, ItemStack> lotDisplayCache = new Object2ObjectOpenHashMap<>();
     private final Object2ObjectOpenHashMap<String, ItemStack> navCache = new Object2ObjectOpenHashMap<>();
     private final Object2ObjectOpenHashMap<String, ItemStack> sortButtonCache = new Object2ObjectOpenHashMap<>();
     private final Object2ObjectOpenHashMap<String, ItemStack> categoryButtonCache = new Object2ObjectOpenHashMap<>();
@@ -33,32 +33,21 @@ public final class ItemDisplayFactory {
     public ItemDisplayFactory(IConfigManager configManager) {
         this.configManager = configManager;
     }
-
-    public ItemStack createLotDisplay(AuctionItem item, PlayerProfile profile) {
-        long now = System.currentTimeMillis();
-        int maxStorageDays = configManager.getConfigValues().maxAuctionStorageDays();
-        long ageBucket = LotDisplayTime.ageBucket(item.createdAt(), now);
-        long daysLeft = LotDisplayTime.daysLeft(item.createdAt(), now, maxStorageDays);
-
-        return createLotDisplay(item, profile, ageBucket, daysLeft, item.itemStack().hashCode());
+    public ItemStack createLotDisplay(AuctionItem item, PlayerProfile profile, long ageBucket, long daysLeft) {
+        LotDisplayKey key = new LotDisplayKey(item, profile, ageBucket, daysLeft);
+        ItemStack cachedItem = lotDisplayCache.get(key);
+        if (cachedItem != null) {
+            return cachedItem.clone();
+        }
+        ItemStack built = buildLotDisplay(item, profile, ageBucket, daysLeft);
+        if (lotDisplayCache.size() >= 1024) {
+            Iterator<LotDisplayKey> it = lotDisplayCache.keySet().iterator();
+            it.next();
+            it.remove();
+        }
+        lotDisplayCache.put(key, built);
+        return built.clone();
     }
-
-    public ItemStack createLotDisplay(AuctionItem item, PlayerProfile profile, long ageBucket, long daysLeft, int itemHash) {
-        String key = item.id()
-                + "|" + item.amount()
-                + "|" + item.price()
-                + "|" + item.createdAt()
-                + "|" + item.status()
-                + "|" + itemHash
-                + "|" + profile.discord()
-                + "|" + profile.storeName()
-                + "|" + profile.sales()
-                + "|" + ageBucket
-                + "|" + daysLeft;
-
-        return cached(lotDisplayCache, key, 1024, () -> buildLotDisplay(item, profile, ageBucket, daysLeft));
-    }
-
 
     private ItemStack buildLotDisplay(AuctionItem item, PlayerProfile profile, long ageBucket, long daysLeft) {
         ItemStack base = item.itemStack().clone();
@@ -75,14 +64,14 @@ public final class ItemDisplayFactory {
         ConfigValues config = configManager.getConfigValues();
         ConfigValues.AuctionGuiConfig gui = config.gui(item.currency());
         ConfigValues.ItemLoreConfig loreConfig = gui.itemLore();
-        
+
         boolean hasProfile = !profile.discord().isEmpty() || !profile.storeName().isEmpty();
-        
+
         if (!hasProfile && meta.hasLore()) {
             List<Component> original = meta.lore();
             if (original != null) lore.addAll(original);
         }
-        
+
         List<String> template = loreTemplate(item, profile, loreConfig);
 
         String symbol = item.currency().symbol(config);
@@ -123,7 +112,7 @@ public final class ItemDisplayFactory {
     }
 
     public void invalidateLotCache(long lotId) {
-        lotDisplayCache.entrySet().removeIf(entry -> entry.getKey().startsWith(lotId + "|"));
+        lotDisplayCache.keySet().removeIf(key -> key.id() == lotId);
     }
 
     public ItemStack createInventoryDisplay(AuctionItem item) {

@@ -69,7 +69,7 @@ public final class AuctionBuyService extends BaseAuctionService {
         else if (item.type() == AuctionLotType.ITEM) {
             ItemStack purchased = item.itemStack().clone();
             purchased.setAmount(count);
-            if (validationService.canFit(buyer, purchased)) error = config().messages().inventoryFull();
+            if (!validationService.canFit(buyer, purchased)) error = config().messages().inventoryFull();
         }
         if (error == null && validationService.hasEnoughMoney(buyer, item.currency(), price)) error = config().messages().nomoney();
         if (error != null) { cancel(buyer, item.id(), op, error, callback); return; }

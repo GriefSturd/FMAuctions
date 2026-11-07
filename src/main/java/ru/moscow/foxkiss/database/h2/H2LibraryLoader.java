@@ -1,4 +1,4 @@
-package ru.moscow.foxkiss.database;
+package ru.moscow.foxkiss.database.h2;
 
 import org.bukkit.plugin.java.JavaPlugin;
 

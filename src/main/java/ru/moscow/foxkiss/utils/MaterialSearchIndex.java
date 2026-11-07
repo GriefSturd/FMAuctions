@@ -2,20 +2,18 @@ package ru.moscow.foxkiss.utils;
 
 import java.util.*;
 
-/** Immutable after construction; safe to publish as one snapshot to SQL workers. */
 public final class MaterialSearchIndex {
     private final Node root = new Node();
 
-    public MaterialSearchIndex(Map<String, String> translations) {
+    public MaterialSearchIndex(Map<String, String> translations, Collection<String> materialIds) {
+        for (String material : materialIds) {
+            char[] alias = material.toCharArray();
+            for (int i = 0; i < alias.length; i++) alias[i] = Character.toLowerCase(alias[i]);
+            add(material, new String(alias));
+        }
         for (Map.Entry<String, String> entry : translations.entrySet()) {
             String name = entry.getValue();
-            if (name == null || name.isBlank()) continue;
-            Node node = root;
-            for (int i = 0; i < name.length(); i++) {
-                char key = Character.toLowerCase(name.charAt(i));
-                node = node.children.computeIfAbsent(key, ignored -> new Node());
-            }
-            node.items.add(new Match(entry.getKey(), name));
+            if (name != null && !name.isBlank()) add(entry.getKey(), name);
         }
         ArrayDeque<Node> pending = new ArrayDeque<>();
         pending.push(root);
@@ -30,6 +28,26 @@ public final class MaterialSearchIndex {
             Arrays.sort(node.edges);
             node.items.sort(Comparator.comparing(Match::material));
         }
+    }
+
+    private void add(String material, String name) {
+        Node node = root;
+        for (int i = 0; i < name.length(); i++) {
+            node = node.children.computeIfAbsent(Character.toLowerCase(name.charAt(i)), ignored -> new Node());
+        }
+        for (Match existing : node.items) {
+            if (existing.material().equals(material) && existing.name().equalsIgnoreCase(name)) return;
+        }
+        node.items.add(new Match(material, name));
+    }
+
+    public List<String> findMaterials(String prefix) {
+        List<String> ids = new ArrayList<>();
+        Set<String> unique = new HashSet<>();
+        for (Match match : find(prefix, Integer.MAX_VALUE)) {
+            if (unique.add(match.material())) ids.add(match.material());
+        }
+        return List.copyOf(ids);
     }
 
     public List<Match> find(String prefix, int limit) {

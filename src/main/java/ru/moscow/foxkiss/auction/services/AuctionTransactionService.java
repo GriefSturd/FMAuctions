@@ -2,10 +2,16 @@ package ru.moscow.foxkiss.auction.services;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+import it.unimi.dsi.fastutil.longs.LongList;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import org.bukkit.NamespacedKey;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import ru.moscow.foxkiss.auction.*;
 import ru.moscow.foxkiss.auction.services.sessions.DeliverySession;
@@ -14,8 +20,10 @@ import ru.moscow.foxkiss.economy.EconomyProvider;
 import ru.moscow.foxkiss.gui.ItemDisplayFactory;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
+import ru.moscow.foxkiss.utils.TextUtils;
 
 import java.util.*;
+import java.util.function.Consumer;
 
 @Getter
 @RequiredArgsConstructor
@@ -30,7 +38,15 @@ public final class AuctionTransactionService {
     private final Map<UUID, DeliverySession> sessions = new HashMap<>();
     private static final NamespacedKey receipte = new NamespacedKey("fmauction", "delivery_receipt");
 
+    @Getter
+    private final Map<UUID, Consumer<Player>> completionCallbacks = new HashMap<>();
+    private final Set<UUID> hasReceipt = new HashSet<>();
+
     public void deliverPending(Player player, AuctionCurrency currency, IConfigManager config) {
+        deliverPending(player, currency, config, null);
+    }
+
+    public void deliverPending(Player player, AuctionCurrency currency, IConfigManager config, Consumer<Player> onComplete) {
         if (!player.isOnline()) return;
         UUID uuid = player.getUniqueId();
         synchronized (delivering) {
@@ -39,6 +55,7 @@ public final class AuctionTransactionService {
                 running.player = player;
                 if (currency == null) { running.rescan = true; running.allRequested = true; }
                 else running.claims.add(currency);
+                if (onComplete != null) completionCallbacks.put(uuid, onComplete);
                 return;
             }
         }
@@ -49,6 +66,7 @@ public final class AuctionTransactionService {
         synchronized (delivering) {
             sessions.put(uuid, session);
             delivering.add(uuid);
+            if (onComplete != null) completionCallbacks.put(uuid, onComplete);
         }
         loadDeliveries(session);
     }
@@ -65,7 +83,7 @@ public final class AuctionTransactionService {
     }
 
     private boolean isCurrent(DeliverySession session) {
-        synchronized (delivering) { return sessions.get(session.uuid) == session; }
+        synchronized (delivering) { return sessions.get(session.uuid) != session; }
     }
 
     private void loadDeliveries(DeliverySession session) {
@@ -89,7 +107,12 @@ public final class AuctionTransactionService {
                     session.pending = repository.getPendingDeliveries(session.name);
                     session.index = 0;
                     session.receiptPending = true;
-                    session.prioritizedId = session.receipt == null ? -1 : session.receipt.deliveryId();
+                    session.prioritizedIds.clear();
+                    if (session.receipt != null) {
+                        List<Receipt> entries = session.receipt.entries();
+                        if (entries.isEmpty()) session.prioritizedIds.add(session.receipt.deliveryId());
+                        else for (Receipt entry : entries) session.prioritizedIds.add(entry.deliveryId());
+                    }
                     session.inFlight = false;
                     if (session.player == null) { finishDelivery(session); return; }
                     scheduleNext(session);
@@ -101,7 +124,7 @@ public final class AuctionTransactionService {
     private void scheduleNext(DeliverySession session) {
         try {
             scheduler.runSync(() -> {
-                if (!isCurrent(session)) return;
+                if (isCurrent(session)) return;
                 try { deliverNext(session); }
                 catch (RuntimeException e) { finishDelivery(session); throw e; }
             });
@@ -111,21 +134,22 @@ public final class AuctionTransactionService {
     private void deliverNext(DeliverySession session) {
         Player player = session.player;
         if (player == null || !player.isOnline()) { finishDelivery(session); return; }
-        PendingDelivery next = null;
+        List<PendingDelivery> batch = new ArrayList<>(8);
         if (session.receiptPending && session.receipt != null) {
             for (PendingDelivery candidate : session.pending) {
-                if (candidate.id() == session.prioritizedId) { next = candidate; break; }
+                if (session.prioritizedIds.contains(candidate.id())) batch.add(candidate);
             }
         }
         session.receiptPending = false;
-        while (next == null && session.index < session.pending.size()) {
+        boolean replay = !batch.isEmpty();
+        while (!replay && batch.size() < 8 && session.index < session.pending.size()) {
             PendingDelivery candidate = session.pending.get(session.index++);
-            if (session.receipt != null && candidate.id() == session.prioritizedId) continue;
-            if (candidate.currency() != null && (session.all || session.currencies.contains(candidate.currency()))) next = candidate;
+            if (session.prioritizedIds.contains(candidate.id())) continue;
+            if (candidate.currency() != null && (session.all || session.currencies.contains(candidate.currency()))) batch.add(candidate);
         }
-        if (next != null) {
+        if (!batch.isEmpty()) {
             session.deliveredAny = true;
-            processDelivery(session, player, next);
+            processDelivery(session, player, batch, replay);
             return;
         }
         boolean more;
@@ -134,55 +158,86 @@ public final class AuctionTransactionService {
         else {
             try {
                 if (session.commandBatch && !session.deliveredAny) {
-                    player.sendMessage(PlaceholderUtils.applypapi(player, session.config.getConfigValues().messages().pendingItemsEmpty(), session.config));
+                    sendMessage(player, session.config, session.config.getConfigValues().messages().pendingItemsEmpty());
                 }
             } finally { finishDelivery(session); }
         }
     }
 
-    private void processDelivery(DeliverySession session, Player player, PendingDelivery delivery) {
-        if (delivery.currency() == null) throw new IllegalStateException("Для старой доставки необходимо установить валюту: " + delivery.id());
-        Receipt receipt = readReceipt(player);
-        List<ItemStack> contents = delivery.lotType() == AuctionLotType.INVENTORY ? delivery.inventoryContents() : List.of(delivery.item());
-        boolean replay = receipt != null && receipt.deliveryId() == delivery.id();
-        List<ItemStack> leftovers;
-        if (replay) {
-            leftovers = receipt.leftovers();
-            validateRemainder(contents, leftovers);
-        } else {
-            ItemStack[] before = snapshotStorage(player);
-            String previous = player.getPersistentDataContainer().get(receipte, PersistentDataType.STRING);
-            try {
-                leftovers = giveItems(player, contents);
-                String encoded = encodeItems(leftovers);
-                player.getPersistentDataContainer().set(receipte, PersistentDataType.STRING, encodeReceipt(delivery.id(), encoded));
-            } catch (RuntimeException e) {
-                player.getInventory().setStorageContents(before);
-                if (previous == null) player.getPersistentDataContainer().remove(receipte);
-                else player.getPersistentDataContainer().set(receipte, PersistentDataType.STRING, previous);
-                throw e;
+    private void processDelivery(DeliverySession session, Player player, List<PendingDelivery> batch, boolean replay) {
+        Receipt[] resolved = replay ? new Receipt[batch.size()] : null;
+        for (int i = 0; i < batch.size(); i++) {
+            PendingDelivery delivery = batch.get(i);
+            if (delivery.currency() == null) {
+                throw new IllegalStateException("Для старой доставки необходимо установить валюту: " + delivery.id());
             }
-            player.saveData();
+            if (replay) {
+                Receipt entry = findReceipt(session.receipt, delivery.id());
+                validateRemainder(deliveryContents(delivery), entry.leftovers());
+                resolved[i] = entry;
+            }
         }
-        session.receipt = new Receipt(delivery.id(), leftovers);
-        long received = replay ? 0 : countItems(contents) - countItems(leftovers);
-        confirmDelivery(session, delivery, List.copyOf(leftovers), received);
+        List<Receipt> entries = new ArrayList<>(batch.size());
+        List<AuctionRepository.DeliveryConfirmation> confirmations = new ArrayList<>(batch.size());
+        LongList received = new LongArrayList(batch.size());
+        for (int i = 0; i < batch.size(); i++) {
+            PendingDelivery delivery = batch.get(i);
+            List<ItemStack> leftovers;
+            long receivedCount;
+            if (replay) {
+                leftovers = resolved[i].leftovers();
+                receivedCount = 0;
+            } else {
+                List<ItemStack> contents = deliveryContents(delivery);
+                leftovers = giveItems(player, contents);
+                receivedCount = countItems(contents) - countItems(leftovers);
+            }
+            entries.add(new Receipt(delivery.id(), leftovers));
+            confirmations.add(new AuctionRepository.DeliveryConfirmation(delivery.id(), delivery.currency(), leftovers));
+            received.add(receivedCount);
+        }
+
+        if (!replay) {
+            UUID uuid = player.getUniqueId();
+            boolean anyLeftovers = false;
+            for (Receipt entry : entries) {
+                if (!entry.leftovers().isEmpty()) { anyLeftovers = true; break; }
+            }
+            if (anyLeftovers) {
+                player.getPersistentDataContainer().set(receipte, PersistentDataType.STRING, encodeBatchReceipt(entries));
+                synchronized (hasReceipt) { hasReceipt.add(uuid); }
+                Receipt first = entries.getFirst();
+                session.receipt = new Receipt(first.deliveryId(), first.leftovers(), List.copyOf(entries));
+            } else {
+                player.getPersistentDataContainer().remove(receipte);
+                synchronized (hasReceipt) { hasReceipt.remove(uuid); }
+                session.receipt = null;
+            }
+        }
+        confirmDelivery(session, List.copyOf(confirmations), received);
     }
 
-    private void confirmDelivery(DeliverySession session, PendingDelivery delivery, List<ItemStack> leftovers, long received) {
+    private static List<ItemStack> deliveryContents(PendingDelivery delivery) {
+        return delivery.lotType() == AuctionLotType.INVENTORY ? delivery.inventoryContents() : List.of(delivery.item());
+    }
+
+    private void confirmDelivery(DeliverySession session, List<AuctionRepository.DeliveryConfirmation> confirmations, LongList received) {
         session.inFlight = true;
         try {
             scheduler.runAsync(() -> {
                 try {
-                    boolean confirmed = repository.completeInventoryDelivery(delivery.id(), null, session.name, delivery.currency(), leftovers);
+                    boolean confirmed = repository.completeInventoryDeliveries(session.name, confirmations);
                     session.inFlight = false;
                     if (!confirmed || session.player == null) { finishDelivery(session); return; }
                     scheduler.runSync(() -> {
-                        if (!isCurrent(session)) return;
+                        if (isCurrent(session)) return;
                         try {
                             Player player = session.player;
                             if (player == null || !player.isOnline()) { finishDelivery(session); return; }
-                            notifyDelivery(player, session, delivery.currency(), leftovers, received);
+                            for (int i = 0; i < confirmations.size(); i++) {
+                                AuctionRepository.DeliveryConfirmation delivery = confirmations.get(i);
+                                notifyDelivery(player, session, delivery.currency(), delivery.items(), received.getLong(i));
+                            }
                             deliverNext(session);
                         } catch (RuntimeException e) { finishDelivery(session); throw e; }
                     });
@@ -192,25 +247,67 @@ public final class AuctionTransactionService {
     }
 
     private void finishDelivery(DeliverySession session) {
+        Consumer<Player> callback;
+        Player player;
         synchronized (delivering) {
             if (sessions.get(session.uuid) != session) return;
             sessions.remove(session.uuid);
             delivering.remove(session.uuid);
+            callback = completionCallbacks.remove(session.uuid);
+            player = session.player;
+        }
+        if (player != null) {
+            clearReceiptIfDone(player, session);
+        }
+        if (callback != null && player != null) {
+            scheduler.runSync(() -> { if (player.isOnline()) callback.accept(player); });
         }
     }
 
-    private Receipt readReceipt(Player player) {
-        String raw = player.getPersistentDataContainer().get(receipte, PersistentDataType.STRING);
-        if (raw == null && player.getPersistentDataContainer().has(receipte)) {
-            throw new IllegalStateException("Неверный тип доставки; необходима сверка");
+    private void clearReceiptIfDone(Player player, DeliverySession session) {
+        Receipt receipt = session.receipt;
+        if (receipt == null) return;
+        boolean hasLeftovers = !receipt.leftovers().isEmpty();
+        if (!hasLeftovers) {
+            List<Receipt> entries = receipt.entries();
+            for (int i = 0; i < entries.size(); i++) {
+                if (!entries.get(i).leftovers().isEmpty()) { hasLeftovers = true; break; }
+            }
         }
-        return parseReceipt(raw);
+        if (hasLeftovers) return;
+        UUID uuid = player.getUniqueId();
+        synchronized (hasReceipt) { hasReceipt.remove(uuid); }
+        player.getPersistentDataContainer().remove(receipte);
+    }
+
+    private void sendMessage(CommandSender sender, IConfigManager config, String message) {
+        sender.sendMessage(TextUtils.component(PlaceholderUtils.apply(sender, message, config)));
+    }
+
+    private Receipt readReceipt(Player player) {
+        UUID uuid = player.getUniqueId();
+        synchronized (hasReceipt) {
+            if (!hasReceipt.contains(uuid)) {
+                return null;
+            }
+        }
+        PersistentDataContainer pdc = player.getPersistentDataContainer();
+        String raw = pdc.get(receipte, PersistentDataType.STRING);
+        if (raw != null) {
+            return parseReceipt(raw);
+        }
+        if (pdc.has(receipte)) {
+            throw new IllegalStateException("Неверный тип данных по ключу " + receipte.getKey() + "; необходима сверка");
+        }
+        synchronized (hasReceipt) { hasReceipt.remove(uuid); }
+        return null;
     }
 
     private Receipt parseReceipt(String raw) {
         if (raw == null) return null;
         try {
-            if (raw.startsWith("v2:")) {
+            boolean batch = raw.startsWith("v3:");
+            if (batch || raw.startsWith("v2:")) {
                 int checksumAt = raw.lastIndexOf(':');
                 if (checksumAt <= 3) throw new IllegalArgumentException("Отсутствует контрольная сумма");
                 String body = raw.substring(3, checksumAt);
@@ -219,23 +316,56 @@ public final class AuctionTransactionService {
                 }
                 raw = body;
             }
-            int separator = raw.indexOf(':');
-            if (separator <= 0) throw new IllegalArgumentException("Отсутствует идентификатор");
-            for (int i = 0; i < separator; i++) {
-                char c = raw.charAt(i);
-                if (c < '0' || c > '9') throw new IllegalArgumentException("Некорректный идентификатор");
+            if (batch) {
+                String[] parts = raw.split("\\|", -1);
+                if (parts.length == 0 || parts.length > 8) throw new IllegalArgumentException("Неверный размер пакета доставок");
+                List<Receipt> entries = new ArrayList<>(parts.length);
+                LongSet ids = new LongOpenHashSet();
+                for (String part : parts) {
+                    Receipt entry = parseReceiptEntry(part);
+                    if (!ids.add(entry.deliveryId())) throw new IllegalArgumentException("Повторный идентификатор доставки");
+                    entries.add(entry);
+                }
+                Receipt first = entries.getFirst();
+                return new Receipt(first.deliveryId(), first.leftovers(), List.copyOf(entries));
             }
-            long id = Long.parseLong(raw.substring(0, separator));
-            if (id <= 0) throw new IllegalArgumentException("Идентификатор должен быть положительным");
-            return new Receipt(id, decodeItems(raw.substring(separator + 1)));
+            return parseReceiptEntry(raw);
         } catch (RuntimeException e) {
             throw new IllegalStateException("Квитанция повреждена; выдача остановлена до сверки", e);
         }
     }
 
-    private static String encodeReceipt(long id, String payload) {
-        String body = id + ":" + payload;
-        return "v2:" + body + ":" + receiptChecksum(body);
+    private static Receipt parseReceiptEntry(String raw) {
+        int separator = raw.indexOf(':');
+        if (separator <= 0) throw new IllegalArgumentException("Отсутствует идентификатор");
+        for (int i = 0; i < separator; i++) {
+            char c = raw.charAt(i);
+            if (c < '0' || c > '9') throw new IllegalArgumentException("Некорректный идентификатор");
+        }
+        long id = Long.parseLong(raw.substring(0, separator));
+        if (id <= 0) throw new IllegalArgumentException("Идентификатор должен быть положительным");
+        return new Receipt(id, decodeItems(raw.substring(separator + 1)));
+    }
+
+    private static String encodeBatchReceipt(List<Receipt> entries) {
+        StringBuilder body = new StringBuilder();
+        for (Receipt entry : entries) {
+            if (!body.isEmpty()) body.append('|');
+            body.append(entry.deliveryId()).append(':').append(encodeItems(entry.leftovers()));
+        }
+        return "v3:" + body + ":" + receiptChecksum(body.toString());
+    }
+
+    private static Receipt findReceipt(Receipt receipt, long id) {
+        if (receipt != null) {
+            List<Receipt> entries = receipt.entries();
+            if (entries.isEmpty()) {
+                if (receipt.deliveryId() == id) return receipt;
+            } else {
+                for (Receipt entry : entries) if (entry.deliveryId() == id) return entry;
+            }
+        }
+        throw new IllegalStateException("В квитанции отсутствует доставка " + id);
     }
 
     private static String receiptChecksum(String body) {
@@ -267,12 +397,6 @@ public final class AuctionTransactionService {
         }
     }
 
-    private static ItemStack[] snapshotStorage(Player player) {
-        ItemStack[] items = player.getInventory().getStorageContents();
-        for (int i = 0; i < items.length; i++) if (items[i] != null) items[i] = items[i].clone();
-        return items;
-    }
-
     private static long countItems(List<ItemStack> items) {
         long count = 0;
         for (ItemStack item : items) if (item != null) count += item.getAmount();
@@ -282,15 +406,15 @@ public final class AuctionTransactionService {
     private void notifyDelivery(Player player, DeliverySession session, AuctionCurrency currency, List<ItemStack> items, long received) {
         IConfigManager config = session.config;
         if (session.commandBatch && received > 0) {
-            player.sendMessage(PlaceholderUtils.applypapi(player, config.getConfigValues().messages().pendingItemsReceived()
-                    .replace("{amount}", String.valueOf(received)), config));
+            sendMessage(player, config, config.getConfigValues().messages().pendingItemsReceived()
+                    .replace("{amount}", String.valueOf(received)));
         }
         if (items.isEmpty()) return;
-        String message = session.commandBatch ? config.getConfigValues().messages().pendingItemsRemaining()
+        String raw = session.commandBatch ? config.getConfigValues().messages().pendingItemsRemaining()
                 : config.getConfigValues().messages().pendingItemsSaved();
-        player.sendMessage(PlaceholderUtils.applypapi(player, message
+        sendMessage(player, config, raw
                 .replace("{amount}", String.valueOf(countItems(items)))
-                .replace("{command}", currency == AuctionCurrency.VAULT ? "/ah items" : "/dah items"), config));
+                .replace("{command}", currency == AuctionCurrency.VAULT ? "/ah items" : "/dah items"));
     }
 
     private static String encodeItems(List<ItemStack> items) {
@@ -317,7 +441,9 @@ public final class AuctionTransactionService {
         return List.copyOf(items);
     }
 
-    public record Receipt(long deliveryId, List<ItemStack> leftovers) {}
+    public record Receipt(long deliveryId, List<ItemStack> leftovers, List<Receipt> entries) {
+        public Receipt(long deliveryId, List<ItemStack> leftovers) { this(deliveryId, leftovers, List.of()); }
+    }
 
     public boolean beginListing(Player player) {
         return pendingListings.add(player.getUniqueId());
@@ -349,12 +475,14 @@ public final class AuctionTransactionService {
     }
 
     public List<ItemStack> giveItems(Player player, List<ItemStack> items) {
-        List<ItemStack> leftovers = new ArrayList<>();
+        List<ItemStack> leftovers = null;
         for (ItemStack item : items) {
             if (item == null || item.getType().isAir()) continue;
-            Map<Integer, ItemStack> remaining = player.getInventory().addItem(item.clone());
+            Map<Integer, ItemStack> remaining = player.getInventory().addItem(item);
+            if (remaining.isEmpty()) continue;
+            if (leftovers == null) leftovers = new ArrayList<>(remaining.size());
             for (ItemStack left : remaining.values()) leftovers.add(left);
         }
-        return leftovers;
+        return leftovers == null ? List.of() : leftovers;
     }
 }

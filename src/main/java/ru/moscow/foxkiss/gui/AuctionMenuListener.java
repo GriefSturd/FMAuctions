@@ -2,6 +2,7 @@ package ru.moscow.foxkiss.gui;
 
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
+import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -25,6 +26,7 @@ import ru.moscow.foxkiss.gui.holders.InventoryMenuHolder;
 import ru.moscow.foxkiss.gui.holders.QuantityMenuHolder;
 import ru.moscow.foxkiss.gui.holders.SalesHistoryMenuHolder;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
+import ru.moscow.foxkiss.utils.TextUtils;
 
 import java.util.*;
 
@@ -37,6 +39,7 @@ public final class AuctionMenuListener implements Listener {
     private final Object2LongOpenHashMap<UUID> quantityMessageCooldowns = new Object2LongOpenHashMap<>();
     private final Object2LongOpenHashMap<UUID> updateCooldowns = new Object2LongOpenHashMap<>();
     private final Object2LongOpenHashMap<UUID> takeCooldowns = new Object2LongOpenHashMap<>();
+    private final Object2LongOpenHashMap<UUID> selectionTimes = new Object2LongOpenHashMap<>();
     private final Object2IntOpenHashMap<UUID> cooldownMessageSkips = new Object2IntOpenHashMap<>();
 
     public AuctionMenuListener(IConfigManager configManager, AuctionMenu auctionMenu, AuctionService auctionService) {
@@ -165,9 +168,8 @@ public final class AuctionMenuListener implements Listener {
             long now = System.currentTimeMillis();
             long last = quantityMessageCooldowns.getLong(uuid);
             if (now - last >= 5000L) {
-                player.sendMessage(PlaceholderUtils.applypapi(player,
-                        configManager.getConfigValues().messages().quantityExceeded().replace("{max}", String.valueOf(holder.getMaxAmount())),
-                        configManager));
+                sendMessage(player, configManager.getConfigValues().messages().quantityExceeded()
+                        .replace("{max}", String.valueOf(holder.getMaxAmount())));
                 quantityMessageCooldowns.put(uuid, now);
             }
             amount = holder.getMaxAmount();
@@ -282,7 +284,7 @@ public final class AuctionMenuListener implements Listener {
             case REFRESH -> auctionMenu.refreshInventory(player, holder);
 
             case SORT -> {
-                if (auctionMenu.isRefreshing(player)) return;
+                if (auctionMenu.isRefreshing(player) || trySwitchSelection(player.getUniqueId())) return;
                 List<AuctionSort> order = sortOrders.get(holder.getCurrency());
                 if (order.isEmpty()) return;
                 int index = order.indexOf(holder.getSort());
@@ -294,7 +296,7 @@ public final class AuctionMenuListener implements Listener {
                 auctionMenu.refreshInventory(player, holder);
             }
             case CATEGORIES -> {
-                if (auctionMenu.isRefreshing(player)) return;
+                if (auctionMenu.isRefreshing(player) || trySwitchSelection(player.getUniqueId())) return;
                 if (cats.get(holder.getCurrency()).isEmpty()) return;
                 String currentCat = holder.getCategory();
                 String newCat = rightClick ? getPreviousCategory(currentCat, holder.getCurrency()) : getNextCategory(currentCat, holder.getCurrency());
@@ -319,7 +321,7 @@ public final class AuctionMenuListener implements Listener {
 
             auctionService.take(player, lotId, success -> {
                 if (!success || !player.isOnline()) return;
-                auctionMenu.refreshInventory(player, holder);
+                auctionMenu.refreshAfterTake(player, holder, slot, lotId);
             });
             return;
         }
@@ -349,6 +351,8 @@ public final class AuctionMenuListener implements Listener {
         UUID uuid = event.getPlayer().getUniqueId();
         updateCooldowns.removeLong(uuid);
         takeCooldowns.removeLong(uuid);
+        selectionTimes.removeLong(uuid);
+        auctionMenu.onPlayerQuit(uuid);
         cooldownMessageSkips.removeInt(uuid);
         quantityMessageCooldowns.removeLong(uuid);
     }
@@ -366,24 +370,37 @@ public final class AuctionMenuListener implements Listener {
         long cooldownMillis = Math.round(seconds * 1000D);
         if (cooldownMillis <= 0L) return false;
 
+        UUID uuid = player.getUniqueId();
         long now = System.currentTimeMillis();
-        UUID playerId = player.getUniqueId();
-        long lastUse = cooldowns.getLong(playerId);
 
-        if (now - lastUse >= cooldownMillis) {
-            cooldowns.put(playerId, now);
-            cooldownMessageSkips.removeInt(playerId);
+        if (now - cooldowns.getLong(uuid) >= cooldownMillis) {
+            cooldowns.put(uuid, now);
+            cooldownMessageSkips.removeInt(uuid);
             return false;
         }
 
-        int skips = cooldownMessageSkips.getInt(playerId);
-        if (settings.cooldownMessageEnabled() && skips == 0) {
-            player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().cooldownItem(), configManager));
-            cooldownMessageSkips.put(playerId, 2);
-        } else if (settings.cooldownMessageEnabled()) {
-            cooldownMessageSkips.put(playerId, skips - 1);
+        if (!settings.cooldownMessageEnabled()) return true;
+
+        int skips = cooldownMessageSkips.getInt(uuid);
+
+        if (skips > 0) {
+            cooldownMessageSkips.put(uuid, skips - 1);
+            return true;
         }
+
+        cooldownMessageSkips.put(uuid, 2);
+
+        sendMessage(player, configManager.getConfigValues().messages().cooldownItem());
+
         return true;
+    }
+
+    private boolean trySwitchSelection(UUID uuid) {
+        long now = System.nanoTime();
+        long previous = selectionTimes.getLong(uuid);
+        if (selectionTimes.containsKey(uuid) && now - previous < 10_000_000L) return true;
+        selectionTimes.put(uuid, now);
+        return false;
     }
 
     private String getNextCategory(String current, AuctionCurrency currency) {
@@ -398,5 +415,9 @@ public final class AuctionMenuListener implements Listener {
         int index = categories.indexOf(current.toLowerCase());
         if (index < 0) return categories.getLast();
         return categories.get((index - 1 + categories.size()) % categories.size());
+    }
+
+    private void sendMessage(CommandSender sender, String message) {
+        sender.sendMessage(TextUtils.component(PlaceholderUtils.apply(sender, message, configManager)));
     }
 }

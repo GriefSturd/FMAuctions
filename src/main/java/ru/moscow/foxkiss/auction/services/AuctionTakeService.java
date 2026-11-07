@@ -10,6 +10,7 @@ import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.ItemDisplayFactory;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
+import ru.moscow.foxkiss.utils.TextUtils;
 
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -27,6 +28,7 @@ public final class AuctionTakeService extends BaseAuctionService {
 
     public void take(Player player, long lotId, Consumer<Boolean> callback) {
         String operationId = UUID.randomUUID().toString();
+        String playerName = player.getName();
         long now = System.currentTimeMillis();
         scheduler.runAsync(() -> {
             if (!repository.markAsProcessing(lotId, operationId, now)) {
@@ -41,44 +43,49 @@ public final class AuctionTakeService extends BaseAuctionService {
                 return;
             }
 
-            repository.logTransaction(operationId, lotId, "TAKE", player.getName(), item.sellerName(), item.currency(), item.amount(), 0.0, "STARTED");
+            repository.logTransaction(operationId, lotId, "TAKE", playerName, item.sellerName(), item.currency(), item.amount(), 0.0, "STARTED");
             scheduler.runSync(() -> processTake(player, item, lotId, operationId, callback));
         });
     }
 
     private void processTake(Player player, AuctionItem item, long lotId, String operationId, Consumer<Boolean> callback) {
         if (!player.isOnline()) {
-            repository.cancelProcessing(lotId, operationId);
-            repository.updateJournalStatus(operationId, "CANCELLED");
-            if (callback != null) callback.accept(false);
+            cancelTake(lotId, operationId, () -> { if (callback != null) callback.accept(false); });
             return;
         }
 
         if (!validationService.isOwner(player, item)) {
-            repository.cancelProcessing(lotId, operationId);
-            repository.updateJournalStatus(operationId, "CANCELLED");
-            finishWithMessage(player, configManager.getConfigValues().messages().noOwn(), callback);
+            cancelTake(lotId, operationId, () -> finishWithMessage(player, configManager.getConfigValues().messages().noOwn(), callback));
             return;
         }
 
-        if (item.type() != AuctionLotType.INVENTORY && validationService.canFit(player, item.itemStack())) {
-            repository.cancelProcessing(lotId, operationId);
-            repository.updateJournalStatus(operationId, "CANCELLED");
-            finishWithMessage(player, configManager.getConfigValues().messages().inventoryFull(), callback);
+        if (item.type() != AuctionLotType.INVENTORY && !validationService.canFit(player, item.itemStack())) {
+            cancelTake(lotId, operationId, () -> finishWithMessage(player, configManager.getConfigValues().messages().inventoryFull(), callback));
             return;
         }
 
+        String playerName = player.getName();
         scheduler.runAsync(() -> {
-            TakeResult result = repository.processTake(lotId, operationId, player.getName());
+            TakeResult result = repository.processTake(lotId, operationId, playerName);
+            if (!result.success()) {
+                repository.cancelProcessing(lotId, operationId);
+                repository.updateJournalStatus(operationId, "CANCELLED");
+            }
             scheduler.runSync(() -> {
                 if (!result.success()) {
-                    repository.cancelProcessing(lotId, operationId);
-                    repository.updateJournalStatus(operationId, "CANCELLED");
                     finishWithMessage(player, configManager.getConfigValues().messages().noId(), callback);
                     return;
                 }
                 completeTake(player, item, callback);
             });
+        });
+    }
+
+    private void cancelTake(long lotId, String operationId, Runnable callback) {
+        scheduler.runAsync(() -> {
+            repository.cancelProcessing(lotId, operationId);
+            repository.updateJournalStatus(operationId, "CANCELLED");
+            scheduler.runSync(callback);
         });
     }
 
@@ -95,7 +102,7 @@ public final class AuctionTakeService extends BaseAuctionService {
         String message = key.equals("takeExpired")
                 ? configManager.getConfigValues().messages().takeExpired()
                 : configManager.getConfigValues().messages().takeSelling();
-        player.sendMessage(PlaceholderUtils.applypapi(player, message, configManager));
+        player.sendMessage(TextUtils.component(PlaceholderUtils.apply(player, message, configManager)));
         if (callback != null) callback.accept(true);
     }
 }

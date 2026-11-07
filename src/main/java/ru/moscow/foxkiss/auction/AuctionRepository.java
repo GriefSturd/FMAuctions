@@ -74,6 +74,12 @@ public interface AuctionRepository {
 
     boolean completeInventoryDelivery(long pendingDeliveryId, String operationId, String playerName, AuctionCurrency currency, List<ItemStack> items);
 
+    default boolean completeInventoryDeliveries(String playerName, List<DeliveryConfirmation> deliveries) {
+        if (deliveries.size() != 1) throw new UnsupportedOperationException("Хранилище не поддерживает атомарное подтверждение пакета");
+        DeliveryConfirmation delivery = deliveries.getFirst();
+        return completeInventoryDelivery(delivery.id(), null, playerName, delivery.currency(), delivery.items());
+    }
+
     void savePendingPayout(String playerName, AuctionCurrency currency, double amount);
 
     List<PendingPayout> getPendingPayouts(String playerName);
@@ -97,6 +103,7 @@ public interface AuctionRepository {
     void close();
 
     record TopSeller(String name, int soldCount, double totalEarned) {}
+    record DeliveryConfirmation(long id, AuctionCurrency currency, List<ItemStack> items) {}
     record PlayerStats(int soldCount, double totalEarned) {}
     record MenuData(List<AuctionItem> items, int totalCount, int sellingCount, int expiredCount, java.util.Map<String, PlayerProfile> profiles) {}
     record SalesHistoryPage(List<SaleHistoryEntry> entries, int totalCount, int page, int totalPages) {}

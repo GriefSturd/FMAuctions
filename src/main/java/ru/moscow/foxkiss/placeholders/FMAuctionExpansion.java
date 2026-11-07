@@ -169,11 +169,12 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
         synchronized (statsCache) {
             statsCache.values().removeIf(cachedPlayerStats -> cachedPlayerStats.isExpired(now, 3_600_000));
         }
-        scheduler.runAsyncThenSync(() -> {
+        scheduler.runAsync(() -> {
             List<AuctionRepository.TopSeller> list = repository.getTopSellers(AuctionCurrency.VAULT, 1000);
             list.sort((a, b) -> Double.compare(b.totalEarned(), a.totalEarned()));
-            return List.copyOf(list.subList(0, Math.min(5, list.size())));
-        }, this::publishTop);
+            List<AuctionRepository.TopSeller> top = List.copyOf(list.subList(0, Math.min(5, list.size())));
+            scheduler.runSync(() -> publishTop(top));
+        });
     }
 
     private void publishTop(List<AuctionRepository.TopSeller> sellers) {

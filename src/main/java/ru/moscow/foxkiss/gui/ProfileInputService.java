@@ -1,17 +1,25 @@
 package ru.moscow.foxkiss.gui;
 
+import io.papermc.paper.event.packet.UncheckedSignChangeEvent;
+import io.papermc.paper.math.Position;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Location;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
-import org.bukkit.block.Block;
-import org.bukkit.block.BlockState;
 import org.bukkit.block.Sign;
+import org.bukkit.block.TileState;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.block.sign.Side;
+import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.block.SignChangeEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 import ru.moscow.foxkiss.auction.AuctionRepository;
 import ru.moscow.foxkiss.auction.PlayerProfile;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
@@ -20,16 +28,20 @@ import ru.moscow.foxkiss.utils.PlaceholderUtils;
 import ru.moscow.foxkiss.utils.TextUtils;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.logging.Level;
 
 public final class ProfileInputService implements Listener {
-
     private final IConfigManager configManager;
     private final AuctionRepository repository;
     private final SchedulerService scheduler;
     private final JavaPlugin plugin;
     private final Map<UUID, Input> inputs = new HashMap<>();
+    private final Set<UUID> saving = new HashSet<>();
+    private volatile boolean closed;
 
     public ProfileInputService(JavaPlugin plugin, IConfigManager configManager, AuctionRepository repository, SchedulerService scheduler) {
         this.plugin = plugin;
@@ -39,133 +51,148 @@ public final class ProfileInputService implements Listener {
     }
 
     public void open(Player player, boolean discord) {
+        UUID uuid = player.getUniqueId();
+        if (closed || !player.isOnline() || saving.contains(uuid)) return;
+        cancelInput(uuid);
         player.closeInventory();
+        Location location = player.getLocation().toBlockLocation();
+        location.setY(Math.max(location.getWorld().getMinHeight(),
+                Math.min(location.getWorld().getMaxHeight() - 1, location.getBlockY() + 2)));
 
-        Location hidden = findSafeLocation(player.getLocation());
-        Block block = hidden.getBlock();
+        BlockData data = Bukkit.createBlockData(Material.OAK_SIGN);
+        Sign sign = (Sign) data.createBlockState();
+        sign.getSide(Side.FRONT).line(0, Component.empty());
+        sign.getSide(Side.FRONT).line(1, Component.empty());
+        sign.getSide(Side.FRONT).line(2, Component.text("^^^^^^^^"));
+        sign.getSide(Side.FRONT).line(3, Component.text("Введите текст"));
 
-        if (!block.getType().isAir()) {
-            block.setType(Material.AIR, false);
-        }
-
-        BlockState previous = block.getState();
-        block.setType(Material.OAK_SIGN, false);
-        
-        Sign sign = (Sign) block.getState(true);
-        org.bukkit.block.sign.SignSide front = sign.getSide(Side.FRONT);
-        front.setLine(0, "");
-        front.setLine(1, "");
-        front.setLine(2, "^^^^^^^^");
-        front.setLine(3, "Введите текст");
-        sign.update(true);
-
-        inputs.put(player.getUniqueId(), new Input(block, previous, discord));
-
-        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            if (player.isOnline()) {
+        Input input = new Input(player, location, discord);
+        inputs.put(uuid, input);
+        try {
+            player.sendBlockChange(location, data);
+            player.sendBlockUpdate(location, sign);
+            input.openTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                if (inputs.get(uuid) != input) return;
+                if (!player.isOnline() || player.getWorld() != location.getWorld()) {
+                    cancelInput(uuid);
+                    return;
+                }
                 try {
-                    player.openSign(sign, Side.FRONT);
-                } catch (Exception e) {
-                    plugin.getLogger().severe("Ошибка при открытии таблички: " + e.getMessage());
+                    player.openVirtualSign(Position.block(location.getBlockX(), location.getBlockY(), location.getBlockZ()), Side.FRONT);
+                } catch (RuntimeException error) {
+                    cancelInput(uuid);
+                    plugin.getLogger().log(Level.WARNING, "Не удалось открыть ввод профиля", error);
+                    sendMessage(player, configManager.getConfigValues().messages().databaseError());
                 }
-            }
-            plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                Input remainingInput = inputs.remove(player.getUniqueId());
-                if (remainingInput != null) {
-                    String message = remainingInput.discord() 
-                        ? configManager.getConfigValues().messages().discordCleared()
-                        : configManager.getConfigValues().messages().storeCleared();
-                    if (player.isOnline()) {
-                        player.sendMessage(PlaceholderUtils.applypapi(player, message, configManager));
-                    }
-                    scheduler.runAsync(() -> repository.savePlayerProfile(player.getName(), "", ""));
-                }
-                if (block.getType() == Material.OAK_SIGN) {
-                    block.setType(Material.AIR, false);
-                }
+            }, 1L);
+            input.timeout = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                // Старый таймер не должен отменять новый редактор этого игрока.
+                if (inputs.get(uuid) == input) cancelInput(uuid);
             }, 400L);
-        }, 5L);
-    }
-
-    private Location findSafeLocation(Location playerLoc) {
-        Location safeLoc = playerLoc.clone().add(0, 2, 0);
-        
-        if (safeLoc.getBlock().getType().isAir()) {
-            return safeLoc;
+        } catch (RuntimeException error) {
+            cancelInput(uuid);
+            throw error;
         }
-        
-        for (int x = -2; x <= 2; x++) {
-            for (int z = -2; z <= 2; z++) {
-                Location testLoc = playerLoc.clone().add(x, 2, z);
-                if (testLoc.getBlock().getType().isAir()) {
-                    return testLoc;
-                }
-            }
-        }
-        
-        return playerLoc.clone().add(0, 2, 0);
-    }
-
-    @EventHandler(ignoreCancelled = true)
-    public void onSignChange(SignChangeEvent event) {
-        Input input = inputs.remove(event.getPlayer().getUniqueId());
-        if (input == null || !event.getBlock().equals(input.block())) return;
-
-        StringBuilder value = new StringBuilder();
-        for (int i = 0; i < 2; i++) {
-            value.append(event.getLine(i));
-        }
-        String raw = value.toString().trim();
-        String colored = raw.isEmpty() ? "" : TextUtils.colorize(raw);
-        
-        if (TextUtils.plain(colored).length() > configManager.getConfigValues().profileMenu().maxLength()) {
-            String message = configManager.getConfigValues().messages().tooLong()
-                .replace("{max_length}", String.valueOf(configManager.getConfigValues().profileMenu().maxLength()));
-            event.getPlayer().sendMessage(PlaceholderUtils.applypapi(event.getPlayer(), message, configManager));
-            input.state().update(true, false);
-            return;
-        }
-
-        input.state().update(true, false);
-        Player player = event.getPlayer();
-        String playerName = player.getName();
-        
-        scheduler.runAsync(() -> {
-            PlayerProfile profile = repository.getPlayerProfile(playerName);
-            
-            if (colored.isEmpty()) {
-                repository.savePlayerProfile(playerName, "", "");
-                String message = input.discord() 
-                    ? configManager.getConfigValues().messages().discordCleared()
-                    : configManager.getConfigValues().messages().storeCleared();
-                scheduler.runSync(() -> {
-                    if (player.isOnline()) {
-                        player.sendMessage(PlaceholderUtils.applypapi(player, message, configManager));
-                    }
-                });
-                return;
-            }
-            
-            repository.savePlayerProfile(playerName, 
-                input.discord() ? colored : profile.discord(), 
-                input.discord() ? profile.storeName() : colored);
-            String messageTemplate = input.discord() 
-                ? configManager.getConfigValues().messages().discordSet()
-                : configManager.getConfigValues().messages().storeSet();
-            String message = messageTemplate.replace("{tag}", colored);
-            scheduler.runSync(() -> {
-                if (player.isOnline()) {
-                    player.sendMessage(PlaceholderUtils.applypapi(player, message, configManager));
-                }
-            });
-        });
     }
 
     @EventHandler
-    public void onPlayerQuit(PlayerQuitEvent event) {
-        inputs.remove(event.getPlayer().getUniqueId());
+    public void onSignChange(UncheckedSignChangeEvent event) {
+        Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+        Input input = inputs.get(uuid);
+        if (input == null || input.player != player || event.getSide() != Side.FRONT
+                || player.getWorld() != input.location.getWorld()) return;
+        var position = event.getEditedBlockPosition();
+        if (position.blockX() != input.location.getBlockX() || position.blockY() != input.location.getBlockY()
+                || position.blockZ() != input.location.getBlockZ()) return;
+
+        event.setCancelled(true);
+        cancelInput(uuid);
+        StringBuilder value = new StringBuilder();
+        for (int i = 0; i < Math.min(2, event.lines().size()); i++) {
+            value.append(PlainTextComponentSerializer.plainText().serialize(event.lines().get(i)));
+        }
+        String colored = TextUtils.colorize(value.toString().trim());
+        int maxLength = configManager.getConfigValues().profileMenu().maxLength();
+        if (colored.length() > maxLength) {
+            sendMessage(player, configManager.getConfigValues().messages().tooLong()
+                    .replace("{max_length}", String.valueOf(maxLength)));
+            return;
+        }
+
+        String playerName = player.getName();
+        saving.add(uuid);
+        scheduler.runAsync(() -> {
+            try {
+                PlayerProfile profile = repository.getPlayerProfile(playerName);
+                repository.savePlayerProfile(playerName,
+                        input.discord ? colored : profile.discord(),
+                        input.discord ? profile.storeName() : colored);
+                scheduler.runSync(() -> {
+                    saving.remove(uuid);
+                    if (closed || !player.isOnline()) return;
+                    var messages = configManager.getConfigValues().messages();
+                    String message = colored.isEmpty()
+                            ? (input.discord ? messages.discordCleared() : messages.storeCleared())
+                            : (input.discord ? messages.discordSet() : messages.storeSet()).replace("{tag}", colored);
+                    sendMessage(player, message);
+                });
+            } catch (RuntimeException error) {
+                if (closed) return;
+                plugin.getLogger().log(Level.WARNING, "Не удалось сохранить профиль игрока " + playerName, error);
+                scheduler.runSync(() -> {
+                    saving.remove(uuid);
+                    if (player.isOnline()) sendMessage(player, configManager.getConfigValues().messages().databaseError());
+                });
+            }
+        });
     }
 
-    private record Input(Block block, BlockState state, boolean discord) {
+    private void cancelInput(UUID uuid) {
+        Input input = inputs.remove(uuid);
+        if (input == null) return;
+        if (input.openTask != null) input.openTask.cancel();
+        if (input.timeout != null) input.timeout.cancel();
+        Location location = input.location;
+        if (input.player.isOnline() && input.player.getWorld() == location.getWorld()
+                && location.getWorld().isChunkLoaded(location.getBlockX() >> 4, location.getBlockZ() >> 4)) {
+            input.player.sendBlockChange(location, location.getBlock().getBlockData());
+            if (location.getBlock().getState() instanceof TileState tile) {
+                input.player.sendBlockUpdate(location, tile);
+            }
+        }
+    }
+
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) { cancelInput(event.getPlayer().getUniqueId()); }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onTeleport(PlayerTeleportEvent event) { cancelInput(event.getPlayer().getUniqueId()); }
+
+    @EventHandler
+    public void onWorldChange(PlayerChangedWorldEvent event) { cancelInput(event.getPlayer().getUniqueId()); }
+
+    public void close() {
+        closed = true;
+        for (UUID uuid : new HashSet<>(inputs.keySet())) cancelInput(uuid);
+        saving.clear();
+    }
+
+    private void sendMessage(CommandSender sender, String message) {
+        sender.sendMessage(TextUtils.component(PlaceholderUtils.apply(sender, message, configManager)));
+    }
+
+    private static final class Input {
+        final Player player;
+        final Location location;
+        final boolean discord;
+        BukkitTask openTask;
+        BukkitTask timeout;
+
+        Input(Player player, Location location, boolean discord) {
+            this.player = player;
+            this.location = location;
+            this.discord = discord;
+        }
     }
 }

@@ -21,6 +21,7 @@ import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.ItemUtils;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
 import ru.moscow.foxkiss.utils.PriceFormatter;
+import ru.moscow.foxkiss.utils.TextUtils;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -77,7 +78,7 @@ public final class SalesHistoryMenu {
                 if (!player.isOnline() || player.getOpenInventory().getTopInventory() != origin
                         || configManager.getConfigValues().salesHistory() != settings) return;
                 if (result == null) {
-                    player.sendMessage(PlaceholderUtils.applypapi(player, configManager.getConfigValues().messages().databaseError(), configManager));
+                    sendMessage(player, configManager.getConfigValues().messages().databaseError());
                     return;
                 }
                 build(player, currency, settings, result);
@@ -100,7 +101,7 @@ public final class SalesHistoryMenu {
                 .replace("{symbol}", symbol)
                 .replace("{symbol_value}", symbol);
         Inventory inventory = Bukkit.createInventory(holder, settings.size(),
-                PlaceholderUtils.applypapi(player, common.apply(settings.title()), configManager));
+                applyComponent(player, common.apply(settings.title())));
         holder.setInventory(inventory);
 
         for (ConfigValues.ButtonConfig configured : settings.items()) {
@@ -182,12 +183,12 @@ public final class SalesHistoryMenu {
         if (meta == null) return;
 
         String nameRaw = replacements.apply(configured.name());
-        meta.displayName(PlaceholderUtils.applypapi(player, nameRaw, configManager));
+        meta.displayName(applyComponent(player, nameRaw));
 
         List<Component> lore = new ArrayList<>();
         for (String line : configured.lore()) {
             String lineRaw = replacements.apply(line);
-            lore.add(PlaceholderUtils.applypapi(player, lineRaw, configManager));
+            lore.add(applyComponent(player, lineRaw));
         }
         meta.lore(lore);
         if (configured.customModelData() != null) {
@@ -196,5 +197,13 @@ public final class SalesHistoryMenu {
             meta.setCustomModelDataComponent(component);
         }
         item.setItemMeta(meta);
+    }
+
+    private Component applyComponent(Player player, String message) {
+        return TextUtils.component(TextUtils.colorize(PlaceholderUtils.apply(player, message, configManager)));
+    }
+
+    private void sendMessage(Player player, String message) {
+        player.sendMessage(applyComponent(player, message));
     }
 }

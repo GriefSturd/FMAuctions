@@ -1,4 +1,3 @@
-
 package ru.moscow.foxkiss.commands;
 
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -20,6 +19,7 @@ import ru.moscow.foxkiss.utils.CommandUtils;
 import ru.moscow.foxkiss.utils.ItemUtils;
 import ru.moscow.foxkiss.utils.MaterialSearchIndex;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
+import ru.moscow.foxkiss.utils.TextUtils;
 
 import java.util.Collections;
 import java.util.List;
@@ -102,7 +102,7 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
     }
 
     private void sendSearchUsage(Player p) {
-        p.sendMessage(PlaceholderUtils.applypapi(p, cfg.getConfigValues().messages().enterPlayerName(), cfg));
+        sendMessage(p, cfg.getConfigValues().messages().enterPlayerName());
     }
 
     @Override
@@ -158,5 +158,9 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
 
     public void clearCache() {
         updateCache();
+    }
+
+    private void sendMessage(CommandSender sender, String message) {
+        sender.sendMessage(TextUtils.component(PlaceholderUtils.apply(sender, message, cfg)));
     }
 }
