@@ -3,6 +3,7 @@ package ru.moscow.foxkiss.auction.services.sessions;
 import lombok.Getter;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import lombok.Setter;
 import org.bukkit.entity.Player;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.PendingDelivery;
@@ -14,6 +15,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Getter
+@Setter
 public final class DeliverySession {
     public final UUID uuid;
     public final String name;

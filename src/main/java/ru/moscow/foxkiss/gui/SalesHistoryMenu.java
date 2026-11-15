@@ -115,7 +115,12 @@ public final class SalesHistoryMenu {
         List<Integer> slots = settings.entrySlots();
         int count = Math.min(entries.size(), slots.size());
         for (int i = 0; i < count; i++) {
-            inventory.setItem(slots.get(i), entry(player, entries.get(i), settings, common));
+            int slot = slots.get(i);
+            SaleHistoryEntry sale = entries.get(i);
+
+            if (slot >= 0 && slot < inventory.getSize()) {
+                inventory.setItem(slot, entry(player, sale, settings, common));
+            }
         }
 
         if (entries.isEmpty()) {

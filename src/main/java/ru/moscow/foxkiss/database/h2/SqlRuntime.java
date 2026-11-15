@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 public final class SqlRuntime {
     private final Semaphore connections = new Semaphore(8, true);
     private final Semaphore requests = new Semaphore(72, true);
+
     private final Map<String, Samples> metrics = new HashMap<>();
     private long revision;
     private int writers;
@@ -26,9 +27,11 @@ public final class SqlRuntime {
     public synchronized long cacheRevision() {
         return writers == 0 ? revision : -1;
     }
+
     public synchronized void invalidateCache() {
         revision++;
     }
+
     private synchronized void beginWrite() {
         writers++; revision++;
     }
@@ -70,6 +73,7 @@ public final class SqlRuntime {
         private final SqlRuntime outer;
         private final Connection raw;
         private boolean closed, dirty;
+        private boolean autoCommit = true;
 
         ConnectionHandler(SqlRuntime outer, Connection raw) {
             this.outer = outer;
@@ -98,9 +102,13 @@ public final class SqlRuntime {
                     outer.requests.release();
                 }
             }
+
+            if ("setAutoCommit".equals(name)) {
+                autoCommit = Boolean.TRUE.equals(args[0]);
+            }
+
             Object result = call(raw, method, args);
-            if ("commit".equals(name) || "rollback".equals(name)
-                    || ("setAutoCommit".equals(name) && Boolean.TRUE.equals(args[0]))) {
+            if ("commit".equals(name) || "rollback".equals(name) || ("setAutoCommit".equals(name) && Boolean.TRUE.equals(args[0]))) {
                 clean();
             }
             if (!(result instanceof Statement statement)) return result;
@@ -121,7 +129,7 @@ public final class SqlRuntime {
                     throw failure;
                 } finally {
                     outer.record(query.isEmpty() ? m.getName() : query, System.nanoTime() - start, error);
-                    if (write && raw.getAutoCommit()) clean();
+                    if (write && autoCommit) clean();
                 }
             });
         }
@@ -129,8 +137,7 @@ public final class SqlRuntime {
 
     private static boolean changesCatalog(String sql) {
         String query = sql.stripLeading().toLowerCase(Locale.ENGLISH);
-        if (query.startsWith("select")) return false;
-        return query.contains("auction_items") || query.contains("auction_player_profiles") || query.contains("sales_history");
+        return !query.startsWith("select") && !query.startsWith("pragma");
     }
 
     private static Object call(Object target, Method method, Object[] args) throws Throwable {
@@ -138,17 +145,21 @@ public final class SqlRuntime {
         catch (InvocationTargetException e) { throw e.getCause(); }
     }
 
-    private synchronized void record(String sql, long nanos, boolean error) {
+    private void record(String sql, long nanos, boolean error) {
         String key = (!metrics.containsKey(sql) && metrics.size() >= 64) ? "Прочие запросы" : sql;
-        Samples sample = metrics.computeIfAbsent(key, ignored -> new Samples());
-        sample.times[(int) (sample.count++ % sample.times.length)] = nanos;
-        if (error) sample.errors++;
+        synchronized (metrics) {
+            Samples sample = metrics.computeIfAbsent(key, ignored -> new Samples());
+            sample.times[(int) (sample.count++ % sample.times.length)] = nanos;
+            if (error) sample.errors++;
+        }
     }
 
-    public synchronized void clearSamples() { metrics.clear(); }
+    public synchronized void clearSamples() {
+        metrics.clear();
+    }
 
     private static final class Samples {
-        final long[] times = new long[1024];
+        final long[] times = new long[256];
         long count, errors;
     }
 }

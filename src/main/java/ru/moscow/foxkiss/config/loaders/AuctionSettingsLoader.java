@@ -89,15 +89,7 @@ public record AuctionSettingsLoader(JavaPlugin plugin) {
     }
 
     private List<Action> parseActions(ConfigurationSection section) {
-        List<Action> actions = new ArrayList<>();
-        for (String raw : section.getStringList("actions")) {
-            raw = raw.trim();
-            Action action = Action.fromString(raw);
-            if (action != null) {
-                actions.add(action);
-            }
-        }
-        return List.copyOf(actions);
+        return ActionLoader.load(section);
     }
 
     private Map<String, Set<Material>> loadCategories(ConfigurationSection section) {

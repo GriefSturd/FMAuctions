@@ -12,7 +12,6 @@ import lombok.Getter;
 import lombok.Setter;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
-import org.jetbrains.annotations.NotNull;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionSort;
 import ru.moscow.foxkiss.gui.AuctionViewType;
@@ -91,15 +90,10 @@ public abstract class AuctionMenuHolder implements InventoryHolder {
 
 
     public Long getLot(int slot) {
-        return lotsBySlot.isEmpty() || !lotsBySlot.containsKey(slot) ? null : lotsBySlot.get(slot);
+        return lotsBySlot.containsKey(slot) ? lotsBySlot.get(slot) : null;
     }
 
     public Integer getLotAmount(int slot) {
-        return lotsAmountBySlot.isEmpty() || !lotsAmountBySlot.containsKey(slot) ? null : lotsAmountBySlot.get(slot);
-    }
-
-    @Override
-    public @NotNull Inventory getInventory() {
-        return inventory;
+        return lotsAmountBySlot.containsKey(slot) ? lotsAmountBySlot.get(slot) : null;
     }
 }

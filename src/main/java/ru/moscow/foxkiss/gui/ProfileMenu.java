@@ -58,15 +58,4 @@ public record ProfileMenu(IConfigManager configManager, AuctionRepository reposi
             });
         });
     }
-
-    private ConfigValues.ButtonConfig replace(ConfigValues.ButtonConfig item, ProfileMenuConfig config, PlayerProfile profile) {
-        String discord = profile.discord().isEmpty() ? config.emptyValue() : profile.discord();
-        String store = profile.storeName().isEmpty() ? config.emptyValue() : profile.storeName();
-        String sales = String.valueOf(profile.sales());
-        List<String> lore = new ArrayList<>();
-        for (String line : item.lore()) {
-            lore.add(line.replace("{discord}", discord).replace("{store}", store).replace("{sales}", sales));
-        }
-        return new ConfigValues.ButtonConfig(item.material(), item.name().replace("{discord}", discord).replace("{store}", store).replace("{sales}", sales), lore, item.skullTexture(), item.actions(), item.slots(), item.customModelData());
-    }
 }

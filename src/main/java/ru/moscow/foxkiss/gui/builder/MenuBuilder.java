@@ -41,6 +41,7 @@
         private static final List<Action> PROFILE_ACTIONS = List.of(new Action(ActionType.PROFILE));
         private final Object2ObjectOpenHashMap<ConfigValues.GlassPane, ItemStack> glassPaneCache = new Object2ObjectOpenHashMap<>();
         private final EnumMap<AuctionViewType, EnumMap<AuctionCurrency, List<Integer>>> slotCache = new EnumMap<>(AuctionViewType.class);
+        private final Object2ObjectOpenHashMap<String, ItemStack> buttonCache = new Object2ObjectOpenHashMap<>();
         private static final List<Action> HISTORY_ACTIONS = List.of(new Action(ActionType.HISTORY));
 
         public MenuBuilder(IConfigManager configManager, ItemDisplayFactory itemFactory) {
@@ -100,18 +101,19 @@
             ConfigValues config = configManager.getConfigValues();
             int maxStorageDays = config.maxAuctionStorageDays();
 
-            Map<String, PlayerProfile> emptyProfiles = new HashMap<>();
-
             for (int i = 0; i < slots.size(); i++) {
                 int slot = slots.get(i);
 
                 if (i >= count) {
-                    if (snapshots.remove(slot) != null || holder.getLot(slot) != null) {
+                    boolean hadSnapshot = snapshots.remove(slot) != null;
+
+                    if (hadSnapshot || holder.getLotsBySlot().containsKey(slot)) {
                         inventory.setItem(slot, null);
-                        holder.getLotsBySlot().remove(slot);
-                        holder.getLotsAmountBySlot().remove(slot);
-                        holder.getInventoryLotBySlot().remove(slot);
                     }
+
+                    holder.getLotsBySlot().remove(slot);
+                    holder.getLotsAmountBySlot().remove(slot);
+                    holder.getInventoryLotBySlot().remove(slot);
                     continue;
                 }
 
@@ -119,68 +121,91 @@
                 boolean inventoryLot = item.type() == AuctionLotType.INVENTORY;
 
                 PlayerProfile profile = profiles.get(item.sellerName());
+
                 if (profile == null) {
-                    profile = emptyProfiles.get(item.sellerName());
-                    if (profile == null) {
-                        profile = PlayerProfile.empty(item.sellerName());
-                        emptyProfiles.put(item.sellerName(), profile);
-                    }
+                    profile = PlayerProfile.empty(item.sellerName());
                 }
 
                 long ageBucket = LotDisplayTime.ageBucket(item.createdAt(), now);
                 long daysLeft = LotDisplayTime.daysLeft(item.createdAt(), now, maxStorageDays);
 
-                LotSnapshot next = new LotSnapshot(
-                        item.id(), item.amount(), item.price(), item.createdAt(),
-                        item.type(), item.status(), item.sellerName(),
-                        profile.discord(), profile.storeName(), profile.sales(),
-                        ageBucket, daysLeft
-                );
+                LotSnapshot previous = snapshots.get(slot);
 
-                if (next.equals(snapshots.get(slot))) {
+                if (previous != null && previous.matches(item, profile, ageBucket, daysLeft)) {
                     continue;
                 }
 
-                ItemStack display = inventoryLot
-                        ? itemFactory.createInventoryDisplay(item)
-                        : itemFactory.createLotDisplay(item, profile, ageBucket, daysLeft);
+                ItemStack display = inventoryLot ? itemFactory.createInventoryDisplay(item) : itemFactory.createLotDisplay(item, profile, ageBucket, daysLeft);
 
                 inventory.setItem(slot, display);
                 holder.addLot(slot, item.id(), item.amount(), inventoryLot);
-                snapshots.put(slot, next);
+
+                snapshots.put(slot, new LotSnapshot(item.id(), item.amount(), item.price(), item.createdAt(), item.type(), item.status(), item.sellerName(), profile.discord(), profile.storeName(), profile.sales(), ageBucket, daysLeft));
             }
         }
+
         private void refreshMaterialCards(Inventory inventory, AuctionMenuHolder holder, List<AuctionItem> items, List<Integer> slots, Map<String, Integer> materialLots, Long2ObjectMap<String> itemGroups) {
             ConfigValues.AuctionGuiConfig gui = configManager.getConfigValues().moneyGui();
-            boolean changedTemplate = !gui.materialCardName().equals(holder.getRenderedMaterialCardName()) || !gui.materialCardLore().equals(holder.getRenderedMaterialCardLore());
+
+            boolean changedTemplate = !Objects.equals(gui.materialCardName(), holder.getRenderedMaterialCardName()) || !Objects.equals(gui.materialCardLore(), holder.getRenderedMaterialCardLore());
+
             holder.setRenderedMaterialCardName(gui.materialCardName());
             holder.setRenderedMaterialCardLore(gui.materialCardLore());
+
+
             holder.getLotsBySlot().clear();
             holder.getLotsAmountBySlot().clear();
             holder.getInventoryLotBySlot().clear();
             holder.getLotSnapshots().clear();
-            int itemCount = items.size();
-            int slotCount = slots.size();
-            for (int i = 0; i < slotCount; i++) {
+
+            int count = Math.min(items.size(), slots.size());
+
+            for (int i = 0, size = slots.size(); i < size; i++) {
                 int slot = slots.get(i);
-                if (i >= itemCount) {
-                    holder.getMaterialGroups().remove(slot);
+
+                if (i >= count) {
+                    String previousGroup =
+                            holder.getMaterialGroups().remove(slot);
+
+                    boolean hadCount =
+                            holder.getMaterialGroupCounts().containsKey(slot);
+
                     holder.getMaterialGroupCounts().remove(slot);
-                    inventory.setItem(slot, null);
+
+                    if (previousGroup != null || hadCount) {
+                        inventory.setItem(slot, null);
+                    }
+
                     continue;
                 }
+
                 AuctionItem item = items.get(i);
+
                 String group = itemGroups.get(item.id());
+
                 String id = group == null ? item.itemStack().getType().name() : group;
+
                 String selector = group == null ? id : "group:" + group;
+
                 int lots = materialLots.getOrDefault(id, 1);
-                if (!changedTemplate && selector.equals(holder.getMaterialGroups().get(slot))
-                        && holder.getMaterialGroupCounts().get(slot) == lots) continue;
-                inventory.setItem(slot, itemFactory.createMaterialCard(item.itemStack(), id, lots));
+
+                String previousSelector = holder.getMaterialGroups().get(slot);
+
+                int previousCount = holder.getMaterialGroupCounts().get(slot);
+
+                if (!changedTemplate && selector.equals(previousSelector) && previousCount == lots) {
+                    continue;
+                }
+
+                ItemStack display = itemFactory.createMaterialCard(item.itemStack(), id, lots);
+
+                inventory.setItem(slot, display);
+
                 holder.getMaterialGroups().put(slot, selector);
                 holder.getMaterialGroupCounts().put(slot, lots);
             }
         }
+
 
         public void refreshNavigationButtons(Inventory inventory, AuctionMenuHolder holder) {
             ConfigValues.NavigationConfig nav = configManager.getConfigValues().gui(holder.getCurrency()).navigation();
@@ -270,10 +295,17 @@
         public void addSalesHistoryButton(Inventory inventory, AuctionMenuHolder holder) {
             ConfigValues values = configManager.getConfigValues();
             if (holder.getViewType() != AuctionViewType.SELLING || !values.salesHistory().enabled()) return;
-            ItemStack button = itemFactory.createButton(values.salesHistory().button());
+
+            String key = "history_" + holder.getCurrency().name();
+            ItemStack button = buttonCache.get(key);
+            if (button == null) {
+                button = itemFactory.createButton(values.salesHistory().button());
+                buttonCache.put(key, button.clone());
+            }
+
             for (int slot : values.salesHistory().button().slots()) {
                 if (slot >= inventory.getSize()) continue;
-                inventory.setItem(slot, button);
+                inventory.setItem(slot, button.clone());
                 holder.addActions(slot, HISTORY_ACTIONS);
             }
         }
@@ -289,7 +321,12 @@
 
             ConfigValues.ButtonConfig formatted = ProfileButtonFormatter.format(configured, values.profileMenu().emptyValue(), profile);
 
-            ItemStack button = itemFactory.createButton(formatted);
+            String key = "profile_" + profile.playerName() + "_" + profile.discord() + "_" + profile.storeName() + "_" + profile.sales();
+            ItemStack button = buttonCache.get(key);
+            if (button == null) {
+                button = itemFactory.createButton(formatted);
+                buttonCache.put(key, button.clone());
+            }
 
             for (int slot : configured.slots()) {
                 if (slot < 0 || slot >= inventory.getSize()) {
@@ -300,7 +337,6 @@
                 holder.addActions(slot, PROFILE_ACTIONS);
             }
         }
-
         private String buildTitle(AuctionViewType viewType, String pageDisplay, ConfigValues.TitlesConfig titles) {
             String raw = switch (viewType) {
                 case MAIN -> titles.main();
@@ -325,7 +361,13 @@
 
             ConfigValues.ButtonConfig replaced = getButtonConfig(pageDisplay, exit);
 
-            ItemStack button = itemFactory.createButton(replaced);
+            String key = "exit_" + viewType.name() + "_" + pageDisplay;
+            ItemStack button = buttonCache.get(key);
+            if (button == null) {
+                button = itemFactory.createButton(replaced);
+                buttonCache.put(key, button.clone());
+            }
+
             for (int slot : replaced.slots()) {
                 inv.setItem(slot, button.clone());
                 holder.addActions(slot, replaced.actions());
@@ -510,6 +552,7 @@
         public void buildGlassCache() {
             slotCache.clear();
             glassPaneCache.clear();
+            buttonCache.clear();
             ConfigValues config = configManager.getConfigValues();
             cachePanes(config.moneyGui().mainGlass());
             cachePanes(config.moneyGui().expiredGlass());

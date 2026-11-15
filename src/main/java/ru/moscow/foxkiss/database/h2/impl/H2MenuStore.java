@@ -343,13 +343,13 @@ public final class H2MenuStore {
             }
             if (TextUtils.isNotBlank(searchFilter)) {
                 String pattern = "%" + searchFilter + "%";
-                List<String> materials = ItemUtils.getSearchIndex().findMaterials(searchFilter);
+
                 baseWhere.append(" AND (");
-                if (!materials.isEmpty()) {
-                    baseWhere.append("material IN (?").append(",?".repeat(materials.size() - 1)).append(") OR ");
-                    params.addAll(materials);
-                }
-                baseWhere.append("material LIKE ? OR seller_name LIKE ? OR seller_name IN (SELECT player_name FROM auction_player_profiles WHERE discord_plain LIKE ? OR store_name_plain LIKE ?))");
+                baseWhere.append("material LIKE ? OR ");
+                baseWhere.append("seller_name LIKE ? OR ");
+                baseWhere.append("seller_name IN (SELECT player_name FROM auction_player_profiles WHERE discord_plain LIKE ? OR store_name_plain LIKE ?)");
+                baseWhere.append(")");
+
                 params.add(pattern);
                 params.add(pattern);
                 params.add(pattern);

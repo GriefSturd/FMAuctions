@@ -115,22 +115,29 @@ public final class H2Schema {
                 """);
 
             ensureColumns(conn);
+
             st.executeUpdate("ALTER TABLE auction_items ADD COLUMN IF NOT EXISTS group_key VARCHAR(64)");
             migrateGroupKeys(conn);
+
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_auction_group_currency_status ON auction_items(currency,status,group_key,created_at)");
             st.executeUpdate("ALTER TABLE sales_history ADD COLUMN IF NOT EXISTS item TEXT");
             st.executeUpdate("ALTER TABLE sales_history ADD COLUMN IF NOT EXISTS operation_id VARCHAR(64)");
             st.executeUpdate("ALTER TABLE auction_pending_deliveries ADD COLUMN IF NOT EXISTS currency VARCHAR(32)");
+            st.executeUpdate("ALTER TABLE auction_pending_deliveries ADD COLUMN IF NOT EXISTS allow_overflow BOOLEAN DEFAULT TRUE NOT NULL");
             st.executeUpdate("ALTER TABLE auction_pending_payouts ADD COLUMN IF NOT EXISTS operation_id VARCHAR(100)");
             st.executeUpdate("ALTER TABLE auction_pending_payouts ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'READY'");
             st.executeUpdate("CREATE UNIQUE INDEX IF NOT EXISTS idx_payout_operation ON auction_pending_payouts(operation_id)");
+
             int uncertain = st.executeUpdate("UPDATE auction_pending_payouts SET status='REVIEW' WHERE status='PAYING'");
             if (uncertain > 0) plugin.getLogger().severe("Payouts require economy reconciliation: " + uncertain);
+
             try (ResultSet legacy = st.executeQuery("SELECT COUNT(*) FROM auction_pending_deliveries WHERE currency IS NULL")) {
                 if (legacy.next() && legacy.getInt(1) > 0) plugin.getLogger().severe("Legacy deliveries have no currency; reconcile before delivery: " + legacy.getInt(1));
             }
+
             st.executeUpdate("CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_operation ON sales_history(operation_id)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_sales_seller_time ON sales_history(seller_name,currency,sold_at,id)");
+
             migrateAmounts(conn);
             migratePricePerItem(conn);
 
@@ -149,90 +156,72 @@ public final class H2Schema {
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_pending_payout_player ON auction_pending_payouts(player_name)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_profile_discord ON auction_player_profiles(discord_plain)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS idx_profile_store ON auction_player_profiles(store_name_plain)");
-
         }
+    }
+
+    private boolean columnExists(DatabaseMetaData meta, String table, String column) throws SQLException {
+        try (ResultSet rs = meta.getColumns(null, null, table.toUpperCase(), column.toUpperCase())) {
+            return rs.next();
+        }
+    }
+
+    private boolean isFloatOrReal(DatabaseMetaData meta, String table, String column) throws SQLException {
+        try (ResultSet rs = meta.getColumns(null, null, table.toUpperCase(), column.toUpperCase())) {
+            if (rs.next()) {
+                int type = rs.getInt("DATA_TYPE");
+                return type == Types.REAL || type == Types.FLOAT;
+            }
+        }
+        return false;
     }
 
     private void ensureColumns(Connection conn) throws SQLException {
         DatabaseMetaData meta = conn.getMetaData();
-        try (ResultSet rs = meta.getColumns(null, null, "AUCTION_ITEMS", "CREATED_AT")) {
-            if (!rs.next() || rs.getInt("DATA_TYPE") != Types.BIGINT) {
-                try (Statement st = conn.createStatement()) {
-                    st.executeUpdate("ALTER TABLE auction_items ALTER COLUMN created_at BIGINT");
-                }
+        try (Statement st = conn.createStatement()) {
+            if (!columnExists(meta, "AUCTION_ITEMS", "CREATED_AT") || !isBigInt(meta, "AUCTION_ITEMS", "CREATED_AT")) {
+                st.executeUpdate("ALTER TABLE auction_items ALTER COLUMN created_at BIGINT");
             }
-        }
-        try (ResultSet rs = meta.getColumns(null, null, "AUCTION_ITEMS", "AMOUNT")) {
-            if (!rs.next()) {
-                try (Statement st = conn.createStatement()) {
-                    st.executeUpdate("ALTER TABLE auction_items ADD COLUMN amount INTEGER DEFAULT 1");
-                }
+            if (!columnExists(meta, "AUCTION_ITEMS", "AMOUNT")) {
+                st.executeUpdate("ALTER TABLE auction_items ADD COLUMN amount INTEGER DEFAULT 1");
             }
-        }
-        try (ResultSet rs = meta.getColumns(null, null, "AUCTION_ITEMS", "PRICE_PER_ITEM")) {
-            if (!rs.next()) {
-                try (Statement st = conn.createStatement()) {
-                    st.executeUpdate("ALTER TABLE auction_items ADD COLUMN price_per_item DECIMAL(18,2)");
-                }
+            if (!columnExists(meta, "AUCTION_ITEMS", "PRICE_PER_ITEM")) {
+                st.executeUpdate("ALTER TABLE auction_items ADD COLUMN price_per_item DECIMAL(18,2)");
             }
-        }
-        try (ResultSet rs = meta.getColumns(null, null, "AUCTION_ITEMS", "LOT_TYPE")) {
-            if (!rs.next()) {
-                try (Statement st = conn.createStatement()) {
-                    st.executeUpdate("ALTER TABLE auction_items ADD COLUMN lot_type VARCHAR DEFAULT 'ITEM'");
-                }
+            if (!columnExists(meta, "AUCTION_ITEMS", "LOT_TYPE")) {
+                st.executeUpdate("ALTER TABLE auction_items ADD COLUMN lot_type VARCHAR DEFAULT 'ITEM'");
             }
-        }
-        try (ResultSet rs = meta.getColumns(null, null, "AUCTION_ITEMS", "INVENTORY_DATA")) {
-            if (!rs.next()) {
-                try (Statement st = conn.createStatement()) {
-                    st.executeUpdate("ALTER TABLE auction_items ADD COLUMN inventory_data TEXT");
-                }
+            if (!columnExists(meta, "AUCTION_ITEMS", "INVENTORY_DATA")) {
+                st.executeUpdate("ALTER TABLE auction_items ADD COLUMN inventory_data TEXT");
             }
-        }
-        try (ResultSet rs = meta.getColumns(null, null, "AUCTION_ITEMS", "OPERATION_ID")) {
-            if (!rs.next()) {
-                try (Statement st = conn.createStatement()) {
-                    st.executeUpdate("ALTER TABLE auction_items ADD COLUMN operation_id VARCHAR(64)");
-                }
+            if (!columnExists(meta, "AUCTION_ITEMS", "OPERATION_ID")) {
+                st.executeUpdate("ALTER TABLE auction_items ADD COLUMN operation_id VARCHAR(64)");
             }
-        }
-        try (ResultSet rs = meta.getColumns(null, null, "AUCTION_ITEMS", "PROCESSING_STARTED_AT")) {
-            if (!rs.next()) {
-                try (Statement st = conn.createStatement()) {
-                    st.executeUpdate("ALTER TABLE auction_items ADD COLUMN processing_started_at BIGINT DEFAULT 0");
-                }
+            if (!columnExists(meta, "AUCTION_ITEMS", "PROCESSING_STARTED_AT")) {
+                st.executeUpdate("ALTER TABLE auction_items ADD COLUMN processing_started_at BIGINT DEFAULT 0");
             }
-        }
 
-        try (ResultSet rs = meta.getColumns(null, null, "AUCTION_ITEMS", "PRICE")) {
-            if (rs.next() && (rs.getInt("DATA_TYPE") == Types.REAL || rs.getInt("DATA_TYPE") == Types.FLOAT)) {
-                try (Statement st = conn.createStatement()) {
-                    st.executeUpdate("ALTER TABLE auction_items ALTER COLUMN price DECIMAL(18,2)");
-                }
+            if (isFloatOrReal(meta, "AUCTION_ITEMS", "PRICE")) {
+                st.executeUpdate("ALTER TABLE auction_items ALTER COLUMN price DECIMAL(18,2)");
+            }
+            if (isFloatOrReal(meta, "AUCTION_ITEMS", "PRICE_PER_ITEM")) {
+                st.executeUpdate("ALTER TABLE auction_items ALTER COLUMN price_per_item DECIMAL(18,2)");
+            }
+            if (isFloatOrReal(meta, "SALES_HISTORY", "PRICE")) {
+                st.executeUpdate("ALTER TABLE sales_history ALTER COLUMN price DECIMAL(18,2)");
+            }
+            if (isFloatOrReal(meta, "AUCTION_TRANSACTION_JOURNAL", "PRICE")) {
+                st.executeUpdate("ALTER TABLE auction_transaction_journal ALTER COLUMN price DECIMAL(18,2)");
             }
         }
-        try (ResultSet rs = meta.getColumns(null, null, "AUCTION_ITEMS", "PRICE_PER_ITEM")) {
-            if (rs.next() && (rs.getInt("DATA_TYPE") == Types.REAL || rs.getInt("DATA_TYPE") == Types.FLOAT)) {
-                try (Statement st = conn.createStatement()) {
-                    st.executeUpdate("ALTER TABLE auction_items ALTER COLUMN price_per_item DECIMAL(18,2)");
-                }
+    }
+
+    private boolean isBigInt(DatabaseMetaData meta, String table, String column) throws SQLException {
+        try (ResultSet rs = meta.getColumns(null, null, table.toUpperCase(), column.toUpperCase())) {
+            if (rs.next()) {
+                return rs.getInt("DATA_TYPE") == Types.BIGINT;
             }
         }
-        try (ResultSet rs = meta.getColumns(null, null, "SALES_HISTORY", "PRICE")) {
-            if (rs.next() && (rs.getInt("DATA_TYPE") == Types.REAL || rs.getInt("DATA_TYPE") == Types.FLOAT)) {
-                try (Statement st = conn.createStatement()) {
-                    st.executeUpdate("ALTER TABLE sales_history ALTER COLUMN price DECIMAL(18,2)");
-                }
-            }
-        }
-        try (ResultSet rs = meta.getColumns(null, null, "AUCTION_TRANSACTION_JOURNAL", "PRICE")) {
-            if (rs.next() && (rs.getInt("DATA_TYPE") == Types.REAL || rs.getInt("DATA_TYPE") == Types.FLOAT)) {
-                try (Statement st = conn.createStatement()) {
-                    st.executeUpdate("ALTER TABLE auction_transaction_journal ALTER COLUMN price DECIMAL(18,2)");
-                }
-            }
-        }
+        return false;
     }
 
     private void migrateGroupKeys(Connection conn) throws SQLException {
@@ -246,8 +235,8 @@ public final class H2Schema {
                     update.setString(1, groupKey(deserialize(rows.getString("item")),
                             AuctionLotType.valueOf(rows.getString("lot_type")), rows.getString("inventory_data")));
                 } catch (Exception e) {
-                    plugin.getLogger().log(Level.WARNING, "Не удалось определить вариант лота " + id, e);
-                    continue;
+                    plugin.getLogger().log(Level.WARNING, "Не удалось определить вариант лота " + id + ", ставим дефолт", e);
+                    update.setString(1, "unknown");
                 }
                 update.setLong(2, id);
                 update.addBatch();
@@ -260,6 +249,7 @@ public final class H2Schema {
             if (pending > 0) update.executeBatch();
         }
     }
+
     private void migrateAmounts(Connection conn) {
         try (PreparedStatement select = conn.prepareStatement("SELECT id,item,amount FROM auction_items WHERE amount IS NULL OR amount<=0");
              PreparedStatement update = conn.prepareStatement("UPDATE auction_items SET amount=? WHERE id=?");
@@ -270,10 +260,14 @@ public final class H2Schema {
                     update.setInt(1, Math.max(1, item.getAmount()));
                     update.setLong(2, rs.getLong("id"));
                     update.addBatch();
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    plugin.getLogger().log(Level.WARNING, "Не удалось мигрировать amount для лота " + rs.getLong("id"), e);
+                }
             }
             update.executeBatch();
-        } catch (SQLException ignored) {}
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Ошибка при миграции amount", e);
+        }
     }
 
     private void migratePricePerItem(Connection conn) {
@@ -291,6 +285,8 @@ public final class H2Schema {
                 update.addBatch();
             }
             update.executeBatch();
-        } catch (SQLException ignored) {}
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.SEVERE, "Ошибка при миграции price_per_item", e);
+        }
     }
 }

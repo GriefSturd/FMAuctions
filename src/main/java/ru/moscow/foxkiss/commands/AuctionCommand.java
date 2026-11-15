@@ -61,7 +61,7 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
             case "sell" -> handleSell(p, args);
             case "sellinv" -> handleSellInventory(p, args);
             case "search" -> handleSearch(p, args);
-            case "items" -> service.takePendingInventoryItems(p, cur);
+            case "items" -> handleItems(p);
             default -> menu.openSeller(p, cur, args[0]);
         }
 
@@ -82,6 +82,10 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
         service.sellInventory(p, cur, price);
     }
 
+    private void handleItems(Player p) {
+        service.takePendingInventoryItems(p, cur);
+    }
+
     private void handleSearch(Player p, String[] args) {
         if (args.length < 2) {
             sendSearchUsage(p);
@@ -89,7 +93,7 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
         }
 
         String query = String.join(" ", Arrays.copyOfRange(args, 1, args.length)).trim();
-        if (query.isEmpty() || query.equals("начните*вводить*название")) {
+        if (query.isEmpty() || query.equals("начните_вводить_название")) {
             sendSearchUsage(p);
             return;
         }
@@ -131,7 +135,6 @@ public final class AuctionCommand implements CommandExecutor, TabCompleter {
         if (sender.hasPermission("fmauction.admin")) {
             completions.add("sell");
             completions.add("sellinv");
-
         }
 
         completions.add("search");

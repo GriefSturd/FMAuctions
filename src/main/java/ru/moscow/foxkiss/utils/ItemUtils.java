@@ -113,11 +113,18 @@ public final class ItemUtils {
     }
 
     public static String getItemDisplayName(ItemStack item) {
-        Material material = item.getType();
-        String materialName = material.name();
-        String translated = perevod.get(materialName);
+        if (item == null || item.isEmpty()) return "";
 
-        return translated != null ? translated : materialName.toLowerCase().replace('_', ' ');
+        if (item.hasItemMeta()) {
+            ItemMeta meta = item.getItemMeta();
+            if (meta != null && meta.hasDisplayName()) {
+                return TextUtils.toPlainString(meta.displayName());
+            }
+        }
+
+        Material material = item.getType();
+        String translated = perevod.get(material.name());
+        return translated != null ? translated : material.name().toLowerCase().replace('_', ' ');
     }
 
     public static String getTranslation(Material material) {

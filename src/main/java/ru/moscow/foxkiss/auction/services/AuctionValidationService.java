@@ -1,6 +1,5 @@
 package ru.moscow.foxkiss.auction.services;
 
-import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -9,8 +8,7 @@ import ru.moscow.foxkiss.auction.AuctionItem;
 import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.economy.EconomyProvider;
-import ru.moscow.foxkiss.utils.ItemUtils;
-
+import java.util.List;
 public record AuctionValidationService(IConfigManager configManager, EconomyProvider economyProvider) {
 
     public boolean isEconomyUnavailable(AuctionCurrency currency) {
@@ -27,60 +25,83 @@ public record AuctionValidationService(IConfigManager configManager, EconomyProv
     }
 
     public boolean isPriceOutOfRange(double price, AuctionCurrency currency, boolean donate) {
-
-        ConfigValues.PriceLimits limits = configManager.getConfigValues().priceLimits();
-
-        double min;
-        double max;
-
-        if (currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS) {
-            min = donate ? limits.minPriceMoneyDauc() : limits.minPriceMoneyAuc();
-            max = donate ? limits.maxPriceMoneyDauc() : limits.maxPriceMoneyAuc();
-        } else {
-            min = 0.01;
-            max = Double.MAX_VALUE;
-        }
-
+        double min = getPriceLimit(currency, donate, true);
+        double max = getPriceLimit(currency, donate, false);
         return !(price >= min) || !(price <= max);
     }
 
     public double getMinPrice(AuctionCurrency currency, boolean donate) {
-        if (currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS)
-            return donate ? configManager.getConfigValues().priceLimits().minPriceMoneyDauc() : configManager.getConfigValues().priceLimits().minPriceMoneyAuc();
-
-        return 0.01;
+        return getPriceLimit(currency, donate, true);
     }
 
     public double getMaxPrice(AuctionCurrency currency, boolean donate) {
-        if (currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS)
-            return donate ? configManager.getConfigValues().priceLimits().maxPriceMoneyDauc() : configManager.getConfigValues().priceLimits().maxPriceMoneyAuc();
-
-        return Double.MAX_VALUE;
-    }
-
-    public boolean isSellableItem(ItemStack item) {
-        return ItemUtils.isSellable(item);
+        return getPriceLimit(currency, donate, false);
     }
 
     public boolean canFit(Player player, ItemStack item) {
         Inventory inv = player.getInventory();
-
-        int needed = item.getAmount();
         int stackLimit = Math.min(item.getMaxStackSize(), inv.getMaxStackSize());
+        int needed = item.getAmount();
 
-        for (ItemStack slot : inv.getStorageContents()) {
-            if (slot == null || slot.getType() == Material.AIR) {
+        ItemStack[] contents = inv.getStorageContents();
+        for (ItemStack slot : contents) {
+            if (slot == null || slot.isEmpty()) {
                 needed -= stackLimit;
             } else if (slot.isSimilar(item)) {
-                int free = Math.min(slot.getMaxStackSize(), inv.getMaxStackSize()) - slot.getAmount();
+                int free = stackLimit - slot.getAmount();
                 if (free > 0) needed -= free;
             }
+
             if (needed <= 0) return true;
         }
-
         return false;
     }
 
+
+    static boolean canFitAll(Player player, List<ItemStack> items) {
+        Inventory inventory = player.getInventory();
+        ItemStack[] slots = inventory.getStorageContents().clone();
+
+        int[] amounts = new int[slots.length];
+        for (int i = 0; i < slots.length; i++) {
+            ItemStack slot = slots[i];
+            if (slot != null && !slot.isEmpty()) {
+                amounts[i] = slot.getAmount();
+            }
+        }
+
+        int inventoryLimit = inventory.getMaxStackSize();
+
+        for (ItemStack item : items) {
+            if (item == null || item.isEmpty()) continue;
+
+            int limit = Math.min(inventoryLimit, item.getMaxStackSize());
+            int remaining = item.getAmount();
+
+            for (int i = 0; i < slots.length; i++) {
+                if (remaining <= 0) break;
+
+                if (amounts[i] == 0) {
+                    int moved = Math.min(remaining, limit);
+                    amounts[i] = moved;
+                    remaining -= moved;
+                    continue;
+                }
+
+                ItemStack slot = slots[i];
+                if (amounts[i] < limit && slot != null && slot.isSimilar(item)) {
+                    int moved = Math.min(remaining, limit - amounts[i]);
+                    amounts[i] += moved;
+                    remaining -= moved;
+                }
+            }
+
+            if (remaining > 0) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     public boolean isExpired(AuctionItem item) {
         return item.expired(configManager.getConfigValues().maxAuctionStorageDays());
@@ -92,5 +113,14 @@ public record AuctionValidationService(IConfigManager configManager, EconomyProv
 
     public boolean isOwner(Player player, AuctionItem item) {
         return player.getName().equalsIgnoreCase(item.sellerName());
+    }
+
+    private double getPriceLimit(AuctionCurrency currency, boolean donate, boolean min) {
+        if (currency == AuctionCurrency.VAULT || currency == AuctionCurrency.PLAYER_POINTS) {
+            ConfigValues.PriceLimits limits = configManager.getConfigValues().priceLimits();
+            return min ? (donate ? limits.minPriceMoneyDauc() : limits.minPriceMoneyAuc())
+                    : (donate ? limits.maxPriceMoneyDauc() : limits.maxPriceMoneyAuc());
+        }
+        return min ? 0.01 : Double.MAX_VALUE;
     }
 }

@@ -26,15 +26,15 @@ public final class H2ListingStore {
         for (int i = 0; i < listingLocks.length; i++) listingLocks[i] = new ReentrantLock();
     }
 
-    public long createWithinLimit(String sellerName, AuctionCurrency currency, ItemStack itemStack, double price, int limit) {
-        return createListing(sellerName, currency, itemStack, null, price, limit);
+    public long createWithinLimit(String sellerName, AuctionCurrency currency, ItemStack itemStack, double price, int limit, long cutoff) {
+        return createListing(sellerName, currency, itemStack, null, price, limit, cutoff);
     }
 
-    public long createInventoryWithinLimit(String sellerName, AuctionCurrency currency, ItemStack displayItem, List<ItemStack> contents, double price, int limit) {
-        return createListing(sellerName, currency, displayItem, contents, price, limit);
+    public long createInventoryWithinLimit(String sellerName, AuctionCurrency currency, ItemStack displayItem, List<ItemStack> contents, double price, int limit, long cutoff) {
+        return createListing(sellerName, currency, displayItem, contents, price, limit, cutoff);
     }
 
-    private long createListing(String sellerName, AuctionCurrency currency, ItemStack item, List<ItemStack> contents, double price, Integer limit) {
+    private long createListing(String sellerName, AuctionCurrency currency, ItemStack item, List<ItemStack> contents, double price, Integer limit, long cutoff) {
         ReentrantLock listingLock = listingLocks[Math.floorMod(Objects.hash(sellerName, currency), listingLocks.length)];
         listingLock.lock();
         try {
@@ -45,7 +45,7 @@ public final class H2ListingStore {
                 conn.setAutoCommit(false);
                 try {
                     lockSeller(conn, sellerName, currency);
-                    if (limit != null && countActiveBySellerSince(conn, sellerName, currency, 0) >= limit) {
+                    if (limit != null && countActiveBySellerSince(conn, sellerName, currency, cutoff) >= limit) {
                         conn.rollback();
                         return richi_limit;
                     }

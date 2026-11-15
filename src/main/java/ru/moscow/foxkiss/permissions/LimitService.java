@@ -29,13 +29,16 @@ public final class LimitService {
         Map<String, Integer> limits = currency == AuctionCurrency.VAULT
                 ? configManager.getConfigValues().vaultGroupLimits()
                 : configManager.getConfigValues().playerPointsGroupLimits();
-        int limit = limits.getOrDefault("default", 1);
-        if (permission == null) return limit;
+        int defaultLimit = limits.getOrDefault("default", 1);
+        if (permission == null) return defaultLimit;
 
-        for (Map.Entry<String, Integer> entry : limits.entrySet()) {
-            String group = entry.getKey();
-            if (!"default".equalsIgnoreCase(group) && permission.playerInGroup(player, group)) {
-                limit = Math.max(limit, entry.getValue());
+        String[] playerGroups = permission.getPlayerGroups(player);
+        int limit = defaultLimit;
+
+        for (String group : playerGroups) {
+            Integer groupLimit = limits.get(group.toLowerCase());
+            if (groupLimit != null) {
+                limit = Math.max(limit, groupLimit);
             }
         }
         return limit;

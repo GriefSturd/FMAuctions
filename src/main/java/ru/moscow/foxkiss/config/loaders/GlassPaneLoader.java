@@ -16,9 +16,8 @@ public final class GlassPaneLoader {
         for (Map<?, ?> entry : entries) {
             Material material = Material.matchMaterial((String) entry.get("glass-type"));
             String name = (String) entry.get("display-name");
-            Integer modelData = entry.containsKey("custom-model-data")
-                    ? (Integer) entry.get("custom-model-data")
-                    : null;
+            Object rawModel = entry.get("custom-model-data");
+            Integer modelData = rawModel instanceof Number num ? num.intValue() : null;
 
             ConfigValues.GlassPane pane = new ConfigValues.GlassPane(material, name, modelData);
 

@@ -66,6 +66,7 @@ public record MessagesLoader(String prefix) {
     }
 
     private String msg(String raw) {
+        if (raw == null) return "";
         return TextUtils.colorize(raw.replace("%prefix%", prefix));
     }
 }

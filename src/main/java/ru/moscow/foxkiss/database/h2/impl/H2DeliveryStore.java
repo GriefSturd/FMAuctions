@@ -33,7 +33,10 @@ public final class H2DeliveryStore {
                     ItemStack item = deserialize(rs.getString("item"));
                     List<ItemStack> contents = deserializeInventory(rs.getString("inventory_data"));
                     long createdAt = rs.getLong("created_at");
-                    list.add(new PendingDelivery(id, name, type, item, contents, createdAt, rs.getString("currency") == null ? null : AuctionCurrency.valueOf(rs.getString("currency"))));
+                    String currency = rs.getString("currency");
+                    list.add(new PendingDelivery(id, name, type, item, contents, createdAt,
+                            currency == null ? null : AuctionCurrency.valueOf(currency),
+                            type == AuctionLotType.INVENTORY && rs.getBoolean("allow_overflow")));
                 }
             }
         } catch (Exception e) {
@@ -84,7 +87,7 @@ public final class H2DeliveryStore {
     public void savePendingDelivery(String playerName, AuctionCurrency currency, List<ItemStack> items) {
         if (items.isEmpty()) return;
         try (Connection conn = storage.open(); PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO auction_pending_deliveries(player_name,lot_type,item,inventory_data,created_at,currency) VALUES(?,'INVENTORY',?,?,?,?)")) {
+                "INSERT INTO auction_pending_deliveries(player_name,lot_type,item,inventory_data,created_at,currency,allow_overflow) VALUES(?,'INVENTORY',?,?,?,?,FALSE)")) {
             ps.setString(1, playerName);
             ps.setString(2, serialize(items.getFirst()));
             ps.setString(3, serializeInventory(items));

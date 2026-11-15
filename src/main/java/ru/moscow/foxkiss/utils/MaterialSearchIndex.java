@@ -45,15 +45,6 @@ public final class MaterialSearchIndex {
         node.items.add(new Match(material, name));
     }
 
-    public List<String> findMaterials(String prefix) {
-        List<String> ids = new ArrayList<>();
-        Set<String> unique = new HashSet<>();
-        for (Match match : find(prefix, Integer.MAX_VALUE)) {
-            if (unique.add(match.material())) ids.add(match.material());
-        }
-        return List.copyOf(ids);
-    }
-
     public List<Match> find(String prefix, int limit) {
         if (limit <= 0 || prefix.isEmpty()) return List.of();
         Node node = root;

@@ -25,12 +25,8 @@ public final class VaultPermissionApi {
     }
 
     public String getPrimaryGroup(OfflinePlayer player) {
-        String[] groups = permission.getPlayerGroups(null, player);
+        String group = permission.getPrimaryGroup(null, player);
 
-        if (groups.length == 0) {
-            return "default";
-        }
-
-        return groups[0];
+        return (group.isEmpty()) ? "default" : group;
     }
 }

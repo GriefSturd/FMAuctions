@@ -182,29 +182,20 @@ public final class GuiLoader {
     }
 
     private ConfigValues.ConfirmButtonConfig loadConfirmButton(ConfigurationSection section) {
-        MaterialParser.ParsedMaterial parsed = MaterialParser.parse(section);
+        ConfigValues.ButtonConfig button = ButtonLoader.loadAuctionButton(section);
         return new ConfigValues.ConfirmButtonConfig(
-                parsed.material(),
-                section.getString("name", ""),
-                section.getStringList("lore"),
-                parsed.skullTexture(),
-                SlotLoader.loadSlots(section),
-                ActionLoader.load(section),
-                loadModelData(section)
+                button.material(),
+                button.name(),
+                button.lore(),
+                button.skullTexture(),
+                button.slots(),
+                button.actions(),
+                button.customModelData()
         );
     }
 
     private ConfigValues.ButtonConfig loadButton(ConfigurationSection section) {
-        MaterialParser.ParsedMaterial parsed = MaterialParser.parse(section);
-        return new ConfigValues.ButtonConfig(
-                parsed.material(),
-                section.getString("name", ""),
-                List.copyOf(section.getStringList("lore")),
-                parsed.skullTexture(),
-                ActionLoader.load(section),
-                SlotLoader.loadSlots(section),
-                loadModelData(section)
-        );
+        return ButtonLoader.loadAuctionButton(section);
     }
 
     private ConfigValues.NavigationButton loadNavButton(ConfigurationSection section) {

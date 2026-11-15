@@ -22,6 +22,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 import ru.moscow.foxkiss.auction.AuctionRepository;
 import ru.moscow.foxkiss.auction.PlayerProfile;
+import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
 import ru.moscow.foxkiss.utils.PlaceholderUtils;
@@ -98,11 +99,9 @@ public final class ProfileInputService implements Listener {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
         Input input = inputs.get(uuid);
-        if (input == null || input.player != player || event.getSide() != Side.FRONT
-                || player.getWorld() != input.location.getWorld()) return;
-        var position = event.getEditedBlockPosition();
-        if (position.blockX() != input.location.getBlockX() || position.blockY() != input.location.getBlockY()
-                || position.blockZ() != input.location.getBlockZ()) return;
+        if (input == null || input.player != player || event.getSide() != Side.FRONT || player.getWorld() != input.location.getWorld()) return;
+        Position position = event.getEditedBlockPosition();
+        if (position.blockX() != input.location.getBlockX() || position.blockY() != input.location.getBlockY() || position.blockZ() != input.location.getBlockZ()) return;
 
         event.setCancelled(true);
         cancelInput(uuid);
@@ -129,7 +128,7 @@ public final class ProfileInputService implements Listener {
                 scheduler.runSync(() -> {
                     saving.remove(uuid);
                     if (closed || !player.isOnline()) return;
-                    var messages = configManager.getConfigValues().messages();
+                    ConfigValues.ConfigMessages messages = configManager.getConfigValues().messages();
                     String message = colored.isEmpty()
                             ? (input.discord ? messages.discordCleared() : messages.storeCleared())
                             : (input.discord ? messages.discordSet() : messages.storeSet()).replace("{tag}", colored);

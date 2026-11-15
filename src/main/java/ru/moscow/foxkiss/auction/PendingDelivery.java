@@ -11,5 +11,6 @@ public record PendingDelivery(
         ItemStack item,
         List<ItemStack> inventoryContents,
         long createdAt,
-        AuctionCurrency currency) {
+        AuctionCurrency currency,
+        boolean allowOverflow) {
 }

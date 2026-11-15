@@ -9,6 +9,7 @@ import ru.moscow.foxkiss.auction.services.base.BaseAuctionSellService;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.permissions.LimitService;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
+import ru.moscow.foxkiss.utils.ItemUtils;
 
 import java.util.Map;
 
@@ -30,12 +31,13 @@ public final class AuctionSellService extends BaseAuctionSellService {
 
         ItemStack hand = player.getInventory().getItemInMainHand();
 
-        if (!validationService.isSellableItem(hand)) {
+        if (!ItemUtils.isSellable(hand)) {
             sendMessage(player, config().messages().air());
             return;
         }
 
         int limit = limitService.getLimit(player, currency);
+        long cutoff = System.currentTimeMillis() - config().maxAuctionStorageDays() * 86_400_000L;
         String playerName = player.getName();
         ItemStack soldItem = hand.clone();
 
@@ -46,10 +48,10 @@ public final class AuctionSellService extends BaseAuctionSellService {
                 config().commission().sell(),
                 Map.of(player.getInventory().getHeldItemSlot(), soldItem),
                 () -> repository.countActiveBySellerSince(
-                        playerName, currency, 0
+                        playerName, currency, cutoff
                 ) >= limit,
                 () -> repository.createWithinLimit(
-                        playerName, currency, soldItem, price, limit
+                        playerName, currency, soldItem, price, limit, cutoff
                 )
         );
     }

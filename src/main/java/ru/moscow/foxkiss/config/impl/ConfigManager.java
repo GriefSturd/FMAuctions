@@ -5,6 +5,8 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.config.ConfigValues;
+import ru.moscow.foxkiss.config.ProfileMenuConfig;
+import ru.moscow.foxkiss.config.SalesHistoryConfig;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.config.loaders.*;
 import ru.moscow.foxkiss.utils.ItemUtils;
@@ -38,6 +40,13 @@ public final class ConfigManager implements IConfigManager {
         loadItemsYml();
 
         FileConfiguration config = plugin.getConfig();
+
+        ConfigurationSection lotAgeSection = config.getConfigurationSection("lot-age");
+        ConfigValues.LotAgeConfig lotAge = new ConfigValues.LotAgeConfig(
+                lotAgeSection.getString("minutes"),
+                lotAgeSection.getString("hours"),
+                lotAgeSection.getString("days")
+        );
 
         String prefix = config.getString("prefix");
 
@@ -82,6 +91,9 @@ public final class ConfigManager implements IConfigManager {
         ConfigValues.ConfirmMenuConfig confirmMenu = guiLoader.loadConfirmMenu(YamlConfiguration.loadConfiguration(getMenuFile("menus/menu_confirm_buy.yml")));
         ConfigValues.QuantityMenuConfig quantityMenu = guiLoader.loadQuantityMenu(YamlConfiguration.loadConfiguration(getMenuFile("menus/menu_quantity.yml")));
 
+        SalesHistoryConfig a = new SalesHistoryLoader().load(YamlConfiguration.loadConfiguration(getMenuFile("menus/menu_sales_history.yml")));
+        ProfileMenuConfig b = new ProfileMenuLoader().load(YamlConfiguration.loadConfiguration(getMenuFile("menus/menu_profile.yml")));
+
         this.configValues = new ConfigValues(
                 prefix,
                 vaultGroups,
@@ -99,8 +111,9 @@ public final class ConfigManager implements IConfigManager {
                 quantityMenu,
                 inventorySelling,
                 commission,
-                new SalesHistoryLoader().load(YamlConfiguration.loadConfiguration(getMenuFile("menus/menu_sales_history.yml"))),
-                new ProfileMenuLoader().load(YamlConfiguration.loadConfiguration(getMenuFile("menus/menu_profile.yml")))
+                a,
+                b,
+                lotAge
         );
     }
 
@@ -121,10 +134,7 @@ public final class ConfigManager implements IConfigManager {
     }
 
     private void loadItemsYml() {
-        File file = new File(plugin.getDataFolder(), "items.yml");
-        if (!file.exists()) {
-            plugin.saveResource("items.yml", false);
-        }
-        ItemUtils.loadTranslations(file, plugin.getLogger());
+        copyResourceIfMissing("items.yml");
+        ItemUtils.loadTranslations(getMenuFile("items.yml"), plugin.getLogger());
     }
 }

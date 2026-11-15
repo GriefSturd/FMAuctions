@@ -13,6 +13,7 @@ public final class ActionLoader {
         List<Action> actions = new ArrayList<>(rawActions.size());
 
         for (String raw : rawActions) {
+            raw = raw.trim();
             Action action = Action.fromString(raw);
 
             if (action != null) {

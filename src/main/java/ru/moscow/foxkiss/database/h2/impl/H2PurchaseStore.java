@@ -83,7 +83,7 @@ public final class H2PurchaseStore {
 
                 long deliveryId = 0;
                 try (PreparedStatement ps = conn.prepareStatement(
-                        "INSERT INTO auction_pending_deliveries(player_name, lot_type, item, inventory_data, created_at, currency) VALUES(?,?,?,?,?,?)",
+                        "INSERT INTO auction_pending_deliveries(player_name, lot_type, item, inventory_data, created_at, currency, allow_overflow) VALUES(?,?,?,?,?,?,FALSE)",
                         Statement.RETURN_GENERATED_KEYS)) {
                     ps.setString(1, buyerName);
                     ps.setString(2, AuctionLotType.ITEM.name());
@@ -224,7 +224,7 @@ public final class H2PurchaseStore {
 
                 long deliveryId = 0;
                 try (PreparedStatement ps = conn.prepareStatement(
-                        "INSERT INTO auction_pending_deliveries(player_name, lot_type, item, inventory_data, created_at, currency) VALUES(?,?,?,?,?,?)",
+                        "INSERT INTO auction_pending_deliveries(player_name, lot_type, item, inventory_data, created_at, currency, allow_overflow) VALUES(?,?,?,?,?,?,FALSE)",
                         Statement.RETURN_GENERATED_KEYS)) {
                     ps.setString(1, playerName);
                     ps.setString(2, item.type().name());

@@ -5,8 +5,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.economy.EconomyProvider;
 import ru.moscow.foxkiss.gui.AuctionViewType;
-
-import javax.sql.DataSource;
+import org.h2.jdbcx.JdbcConnectionPool;
 import java.nio.file.Path;
 import java.sql.*;
 import java.util.*;
@@ -22,7 +21,7 @@ public final class H2AuctionRepository implements AuctionRepository {
 
     private final JavaPlugin plugin;
     private final String jdbcUrl;
-    private DataSource dataSource;
+    private JdbcConnectionPool dataSource;
     private final SqlRuntime sqlRuntime = new SqlRuntime();
     private H2MenuStore menus;
     private H2ListingStore listings;
@@ -47,7 +46,7 @@ public final class H2AuctionRepository implements AuctionRepository {
             plugin.getLogger().severe("Не удалось создать папку плагина!");
             return;
         }
-        dataSource = H2LibraryLoader.loadDataSource(plugin, jdbcUrl);
+        dataSource = createPool();
         H2Storage storage = new H2Storage(plugin, dataSource, sqlRuntime, asyncExecutor);
         listings = new H2ListingStore(storage);
         sales = new H2SalesStore(storage);
@@ -68,13 +67,13 @@ public final class H2AuctionRepository implements AuctionRepository {
 
 
     @Override
-    public long createWithinLimit(String sellerName, AuctionCurrency currency, ItemStack itemStack, double price, int limit) {
-        return listings.createWithinLimit(sellerName, currency, itemStack, price, limit);
+    public long createWithinLimit(String sellerName, AuctionCurrency currency, ItemStack itemStack, double price, int limit, long cutoff) {
+        return listings.createWithinLimit(sellerName, currency, itemStack, price, limit, cutoff);
     }
 
     @Override
-    public long createInventoryWithinLimit(String sellerName, AuctionCurrency currency, ItemStack displayItem, List<ItemStack> contents, double price, int limit) {
-        return listings.createInventoryWithinLimit(sellerName, currency, displayItem, contents, price, limit);
+    public long createInventoryWithinLimit(String sellerName, AuctionCurrency currency, ItemStack displayItem, List<ItemStack> contents, double price, int limit, long cutoff) {
+        return listings.createInventoryWithinLimit(sellerName, currency, displayItem, contents, price, limit, cutoff);
     }
 
     @Override
@@ -149,7 +148,7 @@ public final class H2AuctionRepository implements AuctionRepository {
 
     @Override
     public boolean completeInventoryDelivery(long pendingDeliveryId, String operationId, String playerName, AuctionCurrency currency, List<ItemStack> items) {
-        return false;
+        return completeInventoryDeliveries(playerName, List.of(new DeliveryConfirmation(pendingDeliveryId, currency, items)));
     }
 
     @Override
@@ -228,11 +227,23 @@ public final class H2AuctionRepository implements AuctionRepository {
             Thread.currentThread().interrupt();
             return;
         }
-        if (dataSource == null) return;
-        try {
-            dataSource.getClass().getMethod("dispose").invoke(dataSource);
-        } catch (ReflectiveOperationException e) {
-            plugin.getLogger().log(Level.WARNING, "Ошибка закрытия пула подключений", e);
+        if (dataSource != null) dataSource.dispose();
+    }
+
+    private JdbcConnectionPool createPool() {
+        JdbcConnectionPool pool = JdbcConnectionPool.create(jdbcUrl, "SA", "");
+        try (Connection ignored = pool.getConnection()) {
+            return pool;
+        } catch (SQLException primaryFailure) {
+            pool.dispose();
+            JdbcConnectionPool fallback = JdbcConnectionPool.create(jdbcUrl, "", "");
+            try (Connection ignored = fallback.getConnection()) {
+                return fallback;
+            } catch (SQLException fallbackFailure) {
+                fallback.dispose();
+                primaryFailure.addSuppressed(fallbackFailure);
+                throw new IllegalStateException("Не удалось подключиться к H2", primaryFailure);
+            }
         }
     }
 

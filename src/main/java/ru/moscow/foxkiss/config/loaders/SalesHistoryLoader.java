@@ -26,7 +26,7 @@ public final class SalesHistoryLoader {
             ConfigurationSection itemSection = itemsSection.getConfigurationSection(key);
             if (!itemSection.getBoolean("enabled", true)) continue;
 
-            ConfigValues.ButtonConfig item = loadItem(itemSection, true);
+            ConfigValues.ButtonConfig item = ButtonLoader.load(itemSection, true);
             reserved.addAll(item.slots());
             items.add(item);
         }
@@ -41,37 +41,11 @@ public final class SalesHistoryLoader {
                 menu.getString("title"),
                 menu.getInt("size"),
                 List.copyOf(slots),
-                loadItem(button, true),
+                ButtonLoader.load(button, true),
                 entry.getBoolean("use-original-item"),
-                loadItem(entry, false),
-                loadItem(empty, true),
+                ButtonLoader.load(entry, false),
+                ButtonLoader.load(empty, true),
                 List.copyOf(items)
-        );
-    }
-
-    private ConfigValues.ButtonConfig loadItem(ConfigurationSection section, boolean withSlots) {
-        MaterialParser.ParsedMaterial parsed = MaterialParser.parse(section);
-        List<Integer> slots = new ArrayList<>();
-
-        if (withSlots) {
-            for (int slot : SlotLoader.loadSlots(section)) {
-                slots.add(slot - 1);
-            }
-        }
-
-        List<Action> actions = new ArrayList<>();
-        for (String raw : section.getStringList("actions")) {
-            actions.add(Action.fromString(raw));
-        }
-
-        return new ConfigValues.ButtonConfig(
-                parsed.material(),
-                section.getString("display_name"),
-                List.copyOf(section.getStringList("lore")),
-                parsed.skullTexture(),
-                List.copyOf(actions),
-                List.copyOf(slots),
-                section.isInt("custom-model-data") ? section.getInt("custom-model-data") : null
         );
     }
 }

@@ -6,6 +6,7 @@ import ru.moscow.foxkiss.auction.AuctionLotType;
 import ru.moscow.foxkiss.auction.AuctionRepository;
 import ru.moscow.foxkiss.auction.TakeResult;
 import ru.moscow.foxkiss.auction.services.base.BaseAuctionService;
+import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.gui.ItemDisplayFactory;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
@@ -59,7 +60,8 @@ public final class AuctionTakeService extends BaseAuctionService {
             return;
         }
 
-        if (item.type() != AuctionLotType.INVENTORY && !validationService.canFit(player, item.itemStack())) {
+        boolean fits = item.type() == AuctionLotType.INVENTORY ? AuctionValidationService.canFitAll(player, item.inventoryContents()) : validationService.canFit(player, item.itemStack());
+        if (!fits) {
             cancelTake(lotId, operationId, () -> finishWithMessage(player, configManager.getConfigValues().messages().inventoryFull(), callback));
             return;
         }
@@ -76,7 +78,7 @@ public final class AuctionTakeService extends BaseAuctionService {
                     finishWithMessage(player, configManager.getConfigValues().messages().noId(), callback);
                     return;
                 }
-                completeTake(player, item, callback);
+                completeTake(player, result, callback);
             });
         });
     }
@@ -89,19 +91,18 @@ public final class AuctionTakeService extends BaseAuctionService {
         });
     }
 
-    private void completeTake(Player player, AuctionItem item, Consumer<Boolean> callback) {
+    private void completeTake(Player player, TakeResult result, Consumer<Boolean> callback) {
         if (!player.isOnline()) {
             if (callback != null) callback.accept(false);
             return;
         }
 
-        transactionService.deliverPending(player, null, configManager);
+        AuctionItem item = result.item();
+        transactionService.deliverTakenLot(player, result, configManager);
         itemFactory.invalidateLotCache(item.id());
 
-        String key = validationService.isExpired(item) ? "takeExpired" : "takeSelling";
-        String message = key.equals("takeExpired")
-                ? configManager.getConfigValues().messages().takeExpired()
-                : configManager.getConfigValues().messages().takeSelling();
+        ConfigValues.ConfigMessages messages = configManager.getConfigValues().messages();
+        String message = validationService.isExpired(item) ? messages.takeExpired() : messages.takeSelling();
         player.sendMessage(TextUtils.component(PlaceholderUtils.apply(player, message, configManager)));
         if (callback != null) callback.accept(true);
     }

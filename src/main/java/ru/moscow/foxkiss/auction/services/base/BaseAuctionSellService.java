@@ -239,8 +239,22 @@ public abstract class BaseAuctionSellService extends BaseAuctionService {
             int slot = entry.getKey();
             ItemStack item = entry.getValue();
             ItemStack current = inventory.getItem(slot);
+
             if (current == null || current.getType().isAir()) {
                 inventory.setItem(slot, item.clone());
+            } else if (current.isSimilar(item)) {
+                int total = current.getAmount() + item.getAmount();
+                int max = current.getMaxStackSize();
+                if (total <= max) {
+                    current.setAmount(total);
+                } else {
+                    current.setAmount(max);
+                    int remainder = total - max;
+                    if (displaced == null) displaced = new ArrayList<>();
+                    ItemStack extra = item.clone();
+                    extra.setAmount(remainder);
+                    displaced.add(extra);
+                }
             } else {
                 if (displaced == null) displaced = new ArrayList<>();
                 displaced.add(item.clone());

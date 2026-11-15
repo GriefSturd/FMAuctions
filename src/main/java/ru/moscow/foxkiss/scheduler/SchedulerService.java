@@ -1,11 +1,9 @@
-
 package ru.moscow.foxkiss.scheduler;
 
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.IllegalPluginAccessException;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -17,11 +15,8 @@ public final class SchedulerService {
 
     private final ExecutorService dbExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
-    private final Executor mainExecutor;
-
     public SchedulerService(JavaPlugin plugin) {
         this.plugin = plugin;
-        this.mainExecutor = task -> Bukkit.getScheduler().runTask(plugin, task);
     }
 
     public void runAsync(Runnable task) {
@@ -34,7 +29,16 @@ public final class SchedulerService {
     }
 
     public void runSync(Runnable task) {
-        submitMain(() -> execute(task, "Ошибка синхронной задачи"));
+        if (!plugin.isEnabled()) return;
+
+        if (Bukkit.isPrimaryThread()) {
+            execute(task, "Ошибка синхронной задачи");
+        } else {
+            try {
+                Bukkit.getScheduler().runTask(plugin, () -> execute(task, "Ошибка синхронной задачи"));
+            } catch (IllegalPluginAccessException ignored) {
+            }
+        }
     }
 
     public void runTimerAsync(Runnable task, long delayTicks, long periodTicks) {
@@ -46,25 +50,12 @@ public final class SchedulerService {
         }
     }
 
-    private void submitMain(Runnable task) {
-        if (!plugin.isEnabled()) return;
-
-        try {
-            mainExecutor.execute(task);
-        } catch (IllegalPluginAccessException ignored) {
-        }
-    }
-
     private void execute(Runnable task, String errorMessage) {
         try {
             task.run();
         } catch (Exception e) {
-            logError(errorMessage, e);
+            plugin.getLogger().log(Level.SEVERE, errorMessage, e);
         }
-    }
-
-    private void logError(String message, Exception e) {
-        plugin.getLogger().log(Level.SEVERE, message, e);
     }
 
     public void shutdown() {

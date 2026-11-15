@@ -36,4 +36,7 @@ replay_pid*.log
 .DS_Store
 Thumbs.db
 Desktop.ini
+AGENTS.MD
+auction-index-jmh
+config-jmh
 *~

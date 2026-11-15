@@ -1,37 +1,38 @@
+
 package ru.moscow.foxkiss.utils;
 
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
+import java.util.Locale;
 
 public final class PriceFormatter {
 
-    private static final DecimalFormat DECIMALS;
-    private static final DecimalFormat INTEGERS;
+    private static final ThreadLocal<DecimalFormat> DECIMALS = ThreadLocal.withInitial(() -> createFormat("#,##0.00"));
 
-    static {
-        DecimalFormatSymbols symbols = new DecimalFormatSymbols();
+    private static final ThreadLocal<DecimalFormat> INTEGERS = ThreadLocal.withInitial(() -> createFormat("#,##0"));
+
+    private static DecimalFormat createFormat(String pattern) {
+        DecimalFormatSymbols symbols = DecimalFormatSymbols.getInstance(Locale.ROOT);
+
         symbols.setGroupingSeparator('.');
-        symbols.setDecimalSeparator('.');
+        symbols.setDecimalSeparator(',');
 
-        DECIMALS = new DecimalFormat("#,##0.00", symbols);
-        INTEGERS = new DecimalFormat("#,##0", symbols);
+        return new DecimalFormat(pattern, symbols);
     }
 
     public static String format(double amount) {
-        DecimalFormat formatter = amount < 1_000 ? DECIMALS : INTEGERS;
+        DecimalFormat formatter = amount < 1_000
+                ? DECIMALS.get()
+                : INTEGERS.get();
 
-        synchronized (formatter) {
-            return formatter.format(amount);
-        }
+        return formatter.format(amount);
     }
 
     public static String format(double amount, AuctionCurrency currency) {
         if (currency != null && currency.isIntegerOnly()) {
-            synchronized (INTEGERS) {
-                return INTEGERS.format(Math.round(amount));
-            }
+            return INTEGERS.get().format(Math.round(amount));
         }
 
         return format(amount);

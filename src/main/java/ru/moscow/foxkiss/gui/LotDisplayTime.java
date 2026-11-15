@@ -1,6 +1,8 @@
 
 package ru.moscow.foxkiss.gui;
 
+import ru.moscow.foxkiss.config.ConfigValues.LotAgeConfig;
+
 public final class LotDisplayTime {
 
     public static long ageBucket(long createdAt, long now) {
@@ -23,15 +25,15 @@ public final class LotDisplayTime {
         return Math.max(0, (long) maxStorageDays - elapsedDays);
     }
 
-    public static String formatAge(long bucket) {
+    public static String formatAge(long bucket, LotAgeConfig templates) {
         if (bucket < 60) {
-            return bucket + " мин. назад";
+            return templates.minutes().replace("{amount}", Long.toString(bucket));
         }
 
         if (bucket < 84) {
-            return (bucket - 60) + " ч. назад";
+            return templates.hours().replace("{amount}", Long.toString(bucket - 60));
         }
 
-        return (bucket - 84) + " дн. назад";
+        return templates.days().replace("{amount}", Long.toString(bucket - 84));
     }
 }

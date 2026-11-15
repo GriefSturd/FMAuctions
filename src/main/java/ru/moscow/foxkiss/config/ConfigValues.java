@@ -26,8 +26,15 @@ public record ConfigValues(
         InventorySellingConfig inventorySelling,
         CommissionConfig commission,
         SalesHistoryConfig salesHistory,
-        ProfileMenuConfig profileMenu
+        ProfileMenuConfig profileMenu,
+        LotAgeConfig lotAge
 ) {
+
+    public record LotAgeConfig(
+            String minutes,
+            String hours,
+            String days
+    ) {}
 
     public AuctionGuiConfig gui(AuctionCurrency currency) {
         return switch (currency) {

@@ -67,4 +67,9 @@ public final class TextUtils {
 
         return b.deserialize(colorize(message)).decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
     }
+
+    public static String toPlainString(Component component) {
+        if (component == null) return "";
+        return b.serialize(component);
+    }
 }

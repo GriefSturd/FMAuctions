@@ -1,7 +1,6 @@
 package ru.moscow.foxkiss.placeholders;
 
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
@@ -33,8 +32,7 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
     private volatile List<TopPlayerInfo> topBySold = List.of();
     private volatile boolean disabled;
 
-    private final Object2ObjectOpenHashMap<UUID, CachedPlayerStats> statsCache = new Object2ObjectOpenHashMap<>();
-    private final ObjectOpenHashSet<UUID> loadingStats = new ObjectOpenHashSet<>();
+    private final Map<UUID, CachedPlayerStats> statsCache = new Object2ObjectOpenHashMap<>();
     private final Object2ObjectOpenHashMap<String, String> prefixCache = new Object2ObjectOpenHashMap<>();
 
     public FMAuctionExpansion(JavaPlugin plugin, AuctionRepository repository, SchedulerService scheduler) {
@@ -96,34 +94,26 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
         UUID uuid = player.getUniqueId();
         long now = System.currentTimeMillis();
 
+        CachedPlayerStats cached;
         synchronized (statsCache) {
-            CachedPlayerStats cached = statsCache.get(uuid);
-            if (cached != null && !cached.isExpired(now, 60000)) {
-                return "sold".equals(field) ? String.valueOf(cached.sold()) : formatMoney(cached.money());
-            }
+            cached = statsCache.isEmpty() ? null : statsCache.get(uuid);
+        }
+        if (cached != null && !cached.isExpired(now, 60000)) {
+            return "sold".equals(field) ? String.valueOf(cached.sold()) : formatMoney(cached.money());
         }
 
-        synchronized (loadingStats) {
-            if (!disabled && !loadingStats.contains(uuid)) {
-                loadingStats.add(uuid);
-                scheduler.runAsync(() -> loadStatsAsync(uuid, name));
-            }
+        if (!disabled) {
+            scheduler.runAsync(() -> loadStatsAsync(uuid, name));
         }
 
         return "0";
     }
 
     private void loadStatsAsync(UUID uuid, String name) {
-        try {
-            AuctionRepository.PlayerStats stats = repository.getPlayerStats(name, AuctionCurrency.VAULT);
-            synchronized (statsCache) {
-                if (!disabled) {
-                    statsCache.put(uuid, new CachedPlayerStats(stats.soldCount(), stats.totalEarned(), System.currentTimeMillis()));
-                }
-            }
-        } finally {
-            synchronized (loadingStats) {
-                loadingStats.remove(uuid);
+        AuctionRepository.PlayerStats stats = repository.getPlayerStats(name, AuctionCurrency.VAULT);
+        synchronized (statsCache) {
+            if (!disabled) {
+                statsCache.put(uuid, new CachedPlayerStats(stats.soldCount(), stats.totalEarned(), System.currentTimeMillis()));
             }
         }
     }
@@ -162,11 +152,12 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
 
     public void disable() {
         disabled = true;
-        synchronized (statsCache) { statsCache.clear(); }
-        synchronized (prefixCache) { prefixCache.clear(); }
+        synchronized (statsCache) {
+            statsCache.clear();
+        }
+        prefixCache.clear();
         topByMoney = List.of();
         topBySold = List.of();
-        synchronized (loadingStats) { loadingStats.clear(); }
     }
 
     private void updateCache() {
@@ -183,18 +174,12 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
         }
 
         scheduler.runAsync(() -> {
-            // Codex start - Независимые топы по выручке и продажам
             List<AuctionRepository.TopSeller> byMoney = repository.getTopSellersByRevenue(AuctionCurrency.VAULT, 5);
             List<AuctionRepository.TopSeller> bySold = repository.getTopSellers(AuctionCurrency.VAULT, 5);
-            // Codex end
 
             Set<String> names = new LinkedHashSet<>();
-            for (AuctionRepository.TopSeller seller : byMoney) {
-                names.add(seller.name());
-            }
-            for (AuctionRepository.TopSeller seller : bySold) {
-                names.add(seller.name());
-            }
+            for (AuctionRepository.TopSeller seller : byMoney) names.add(seller.name());
+            for (AuctionRepository.TopSeller seller : bySold) names.add(seller.name());
 
             scheduler.runSync(() -> prepareTop(names, byMoney, bySold));
         });
@@ -279,6 +264,7 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
                 : vaultPerm.getPrimaryGroup(player);
         return Objects.toString(vaultChat.getGroupPrefix(target.world(), group), "");
     }
+
     private String formatMoney(double amount) {
         return PriceFormatter.format(amount);
     }

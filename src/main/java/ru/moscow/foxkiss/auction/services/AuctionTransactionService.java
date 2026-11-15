@@ -18,6 +18,7 @@ import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import ru.moscow.foxkiss.auction.*;
 import ru.moscow.foxkiss.auction.services.sessions.DeliverySession;
+import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import ru.moscow.foxkiss.economy.EconomyProvider;
 import ru.moscow.foxkiss.gui.ItemDisplayFactory;
@@ -40,6 +41,7 @@ public final class AuctionTransactionService {
     @Getter
     private final Map<UUID, DeliverySession> sessions = new HashMap<>();
     private static final NamespacedKey receipte = new NamespacedKey("fmauction", "delivery_receipt");
+    private static final HexFormat HEX = HexFormat.of();
 
     @Getter
     private final Map<UUID, Consumer<Player>> completionCallbacks = new HashMap<>();
@@ -49,6 +51,17 @@ public final class AuctionTransactionService {
     }
 
     public void deliverPending(Player player, AuctionCurrency currency, IConfigManager config, Consumer<Player> onComplete) {
+        startDelivery(player, currency, config, onComplete, null);
+    }
+
+    void deliverTakenLot(Player player, TakeResult result, IConfigManager config) {
+        AuctionItem item = result.item();
+        PendingDelivery delivery = result.pendingDeliveryId() > 0 ? new PendingDelivery(result.pendingDeliveryId(), player.getName(), item.type(), item.itemStack(), item.inventoryContents(), item.createdAt(), item.currency(), false) : null;
+        startDelivery(player, null, config, null, delivery);
+    }
+
+    private void startDelivery(Player player, AuctionCurrency currency, IConfigManager config,
+                               Consumer<Player> onComplete, PendingDelivery ready) {
         if (!player.isOnline()) return;
         UUID uuid = player.getUniqueId();
         synchronized (delivering) {
@@ -70,7 +83,14 @@ public final class AuctionTransactionService {
             delivering.add(uuid);
             if (onComplete != null) completionCallbacks.put(uuid, onComplete);
         }
-        loadDeliveries(session);
+        if (ready != null && receipt == null) {
+            session.pending = List.of(ready);
+            session.all = true;
+            session.rescan = true;
+            continueDelivery(session);
+        } else {
+            loadDeliveries(session);
+        }
     }
 
     public void onPlayerQuit(Player player) {
@@ -149,9 +169,22 @@ public final class AuctionTransactionService {
         session.receiptPending = false;
         boolean replay = !batch.isEmpty();
         while (!replay && batch.size() < 8 && session.index < session.pending.size()) {
-            PendingDelivery candidate = session.pending.get(session.index++);
-            if (session.prioritizedIds.contains(candidate.id())) continue;
-            if (candidate.currency() != null && (session.all || session.currencies.contains(candidate.currency()))) batch.add(candidate);
+            PendingDelivery candidate = session.pending.get(session.index);
+            boolean eligible = !session.prioritizedIds.contains(candidate.id())
+                    && (!session.commandBatch || candidate.allowOverflow())
+                    && candidate.currency() != null && (session.all || session.currencies.contains(candidate.currency()));
+            if (eligible && !candidate.allowOverflow() && !batch.isEmpty()) break;
+            session.index++;
+            if (!eligible) continue;
+            if (!candidate.allowOverflow()) {
+                if (!AuctionValidationService.canFitAll(player, deliveryContents(candidate))) {
+                    sendMessage(player, session.config, session.config.getConfigValues().messages().inventoryFull());
+                    continue;
+                }
+                batch.add(candidate);
+                break;
+            }
+            batch.add(candidate);
         }
         if (!batch.isEmpty()) {
             session.deliveredAny = true;
@@ -208,7 +241,6 @@ public final class AuctionTransactionService {
             Receipt first = entries.getFirst();
             session.receipt = new Receipt(first.deliveryId(), first.leftovers(), List.copyOf(entries));
         }
-        player.saveData();
         confirmDelivery(session, List.copyOf(confirmations), received);
     }
 
@@ -347,13 +379,19 @@ public final class AuctionTransactionService {
         throw new IllegalStateException("В квитанции отсутствует доставка " + id);
     }
 
-    private static String receiptChecksum(String body) {
+    private static final ThreadLocal<MessageDigest> SHA256 = ThreadLocal.withInitial(() -> {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(body.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
+            return MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("Алгоритм SHA-256 недоступен", e);
         }
+    });
+
+    private static String receiptChecksum(String body) {
+        MessageDigest md = SHA256.get();
+        md.reset();
+        byte[] digest = md.digest(body.getBytes(StandardCharsets.UTF_8));
+        return HEX.formatHex(digest);
     }
 
     private static void validateRemainder(List<ItemStack> contents, List<ItemStack> leftovers) {
@@ -383,12 +421,13 @@ public final class AuctionTransactionService {
 
     private void notifyDelivery(Player player, DeliverySession session, AuctionCurrency currency, List<ItemStack> items, long received) {
         IConfigManager config = session.config;
+        ConfigValues.ConfigMessages messages = config.getConfigValues().messages();
         if (session.commandBatch && received > 0) {
-            sendMessage(player, config, config.getConfigValues().messages().pendingItemsReceived().replace("{amount}", String.valueOf(received)));
+            sendMessage(player, config, messages.pendingItemsReceived().replace("{amount}", String.valueOf(received)));
         }
         if (items.isEmpty()) return;
-        String raw = session.commandBatch ? config.getConfigValues().messages().pendingItemsRemaining() : config.getConfigValues().messages().pendingItemsSaved();
-        sendMessage(player, config, raw.replace("{amount}", String.valueOf(countItems(items))).replace("{command}", currency == AuctionCurrency.VAULT ? "/ah items" : "/dah items"));
+        String raw = session.commandBatch ? messages.pendingItemsRemaining() : messages.pendingItemsSaved();
+        sendMessage(player, config, raw.replace("{amount}", Integer.toString(items.size())).replace("{command}", currency == AuctionCurrency.VAULT ? "/ah items" : "/dah items"));
     }
 
     private static String encodeItems(List<ItemStack> items) {
@@ -455,7 +494,7 @@ public final class AuctionTransactionService {
             Map<Integer, ItemStack> remaining = player.getInventory().addItem(item.clone());
             if (remaining.isEmpty()) continue;
             if (leftovers == null) leftovers = new ArrayList<>(remaining.size());
-            for (ItemStack left : remaining.values()) leftovers.add(left);
+            leftovers.addAll(remaining.values());
         }
         return leftovers == null ? List.of() : leftovers;
     }

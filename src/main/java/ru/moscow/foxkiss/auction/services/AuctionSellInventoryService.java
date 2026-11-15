@@ -13,10 +13,9 @@ import ru.moscow.foxkiss.permissions.LimitService;
 import ru.moscow.foxkiss.scheduler.SchedulerService;
 
 import java.util.ArrayList;
-import java.util.List;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 
 public final class AuctionSellInventoryService extends BaseAuctionSellService {
@@ -103,20 +102,23 @@ public final class AuctionSellInventoryService extends BaseAuctionSellService {
         }
 
         int limit = limitService.getLimit(player, currency);
+        long cutoff = System.currentTimeMillis() - config().maxAuctionStorageDays() * 86_400_000L;
         String playerName = player.getName();
+
         List<Material> shulkerMaterials = inv.shulkerMaterials();
-        Material displayMaterial = shulkerMaterials.get(ThreadLocalRandom.current().nextInt(shulkerMaterials.size()));
+        Material displayMaterial = shulkerMaterials.isEmpty()
+                ? Material.SHULKER_BOX
+                : shulkerMaterials.get(ThreadLocalRandom.current().nextInt(shulkerMaterials.size()));
+
         ItemStack displayItem = new ItemStack(displayMaterial, 1);
+
         Map<Integer, ItemStack> reserved = new HashMap<>();
         for (int slot = 0; slot < contents.size(); slot++) {
             ItemStack item = contents.get(slot);
             if (item != null && !item.getType().isAir()) reserved.put(slot, item);
         }
 
-        submitListing(player, currency, price, config().commission().sellInventory(),
-                reserved,
-                () -> repository.countActiveBySellerSince(playerName, currency, 0) >= limit,
-                () -> repository.createInventoryWithinLimit(playerName, currency, displayItem, contents, price, limit));
+        submitListing(player, currency, price, config().commission().sellInventory(), reserved, () -> repository.countActiveBySellerSince(playerName, currency, cutoff) >= limit, () -> repository.createInventoryWithinLimit(playerName, currency, displayItem, contents, price, limit, cutoff));
     }
 
     private List<ItemStack> collectInventory(Player player) {
