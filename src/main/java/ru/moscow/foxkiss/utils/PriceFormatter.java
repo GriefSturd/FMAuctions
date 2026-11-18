@@ -5,7 +5,6 @@ import ru.moscow.foxkiss.auction.AuctionCurrency;
 
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
-import java.util.Locale;
 
 public final class PriceFormatter {
 
@@ -23,10 +22,8 @@ public final class PriceFormatter {
     }
 
     public static String format(double amount) {
-        DecimalFormat formatter = amount < 1_000
-                ? DECIMALS.get()
-                : INTEGERS.get();
-
+        boolean hasFraction = amount != Math.floor(amount);
+        DecimalFormat formatter = hasFraction ? DECIMALS.get() : INTEGERS.get();
         return formatter.format(amount);
     }
 

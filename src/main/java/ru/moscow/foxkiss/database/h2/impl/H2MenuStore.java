@@ -30,9 +30,9 @@ public final class H2MenuStore {
     private final JavaPlugin plugin;
     private final DataSource dataSource;
     private final SqlRuntime sqlRuntime;
-    private final boolean separatePageCount;
-    private volatile Map<String, List<String>> categoryMaterials;
-    private volatile boolean showAllLots;
+    private volatile boolean separatePageCount;
+    private  Map<String, List<String>> categoryMaterials;
+    private boolean showAllLots;
 
     public H2MenuStore(JavaPlugin plugin, DataSource dataSource, SqlRuntime sqlRuntime, ConfigValues values) {
         this.plugin = plugin;
@@ -56,6 +56,7 @@ public final class H2MenuStore {
         synchronized (pages) {
             categoryMaterials = categories;
             showAllLots = values.showAllLots();
+            separatePageCount = values.separatePageCount();
             sqlRuntime.invalidateCache();
             pages.clear(); rowPages.clear();
         }
@@ -235,8 +236,8 @@ public final class H2MenuStore {
             ps.setString(1, playerName);
             ps.setString(2, discord);
             ps.setString(3, storeName);
-            ps.setString(4, TextUtils.colorize(discord));
-            ps.setString(5, TextUtils.colorize(storeName));
+            ps.setString(4, TextUtils.stripColors(discord));
+            ps.setString(5, TextUtils.stripColors(storeName));
             ps.executeUpdate();
         } catch (SQLException e) {
             throw new IllegalStateException("Не удалось сохранить профиль игрока " + playerName, e);
@@ -246,7 +247,7 @@ public final class H2MenuStore {
     public Optional<String> findProfileOwner(String value) {
         try (Connection conn = open();
              PreparedStatement ps = conn.prepareStatement("SELECT player_name FROM auction_player_profiles WHERE LOWER(discord_plain)=? OR LOWER(store_name_plain)=? LIMIT 1")) {
-            String plain = TextUtils.colorize(value).toLowerCase();
+            String plain = TextUtils.stripColors(value).toLowerCase();
             ps.setString(1, plain);
             ps.setString(2, plain);
             try (ResultSet rs = ps.executeQuery()) {

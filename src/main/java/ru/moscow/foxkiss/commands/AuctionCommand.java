@@ -51,7 +51,12 @@ public record AuctionCommand(IConfigManager cfg, AuctionCurrency cur, AuctionMen
             case "items" -> handleItems(p);
             case "active" -> menu.openSelling(p, cur, 0);
             case "expired" -> menu.openExpired(p, cur, 0);
-            default -> menu.openSeller(p, cur, args[0]);
+            default -> {
+                String query = TextUtils.stripColors(String.join(" ", args)).trim();
+                if (!query.isEmpty()) {
+                    menu.openSeller(p, cur, query);
+                }
+            }
         }
 
         return true;

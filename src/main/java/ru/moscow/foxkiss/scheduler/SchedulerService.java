@@ -60,6 +60,14 @@ public final class SchedulerService {
 
     public void shutdown() {
         dbExecutor.shutdown();
+        try {
+            if (!dbExecutor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                dbExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            dbExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 
     public ExecutorService executor() {

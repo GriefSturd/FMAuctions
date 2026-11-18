@@ -63,21 +63,17 @@ public final class FMAuction extends JavaPlugin {
         if (profileInputService != null) {
             profileInputService.close();
         }
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            player.saveData();
-        }
 
-        if (schedulerService != null) {
-            schedulerService.shutdown();
+        if (auctionRepository != null) {
+            auctionRepository.close();
         }
         if (placeholderExpansion != null) {
             placeholderExpansion.disable();
             placeholderExpansion.unregister();
         }
-        if (auctionRepository != null) {
-            auctionRepository.close();
+        if (schedulerService != null) {
+            schedulerService.shutdown();
         }
-
     }
 
     private void setupMetrics() {

@@ -3,6 +3,7 @@ package ru.moscow.foxkiss.utils;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -10,6 +11,7 @@ import java.util.regex.Pattern;
 public final class TextUtils {
     private static final Pattern HEX_PATTERN = Pattern.compile("&#([a-fA-F\\d]{6})");
     private static final LegacyComponentSerializer b = LegacyComponentSerializer.legacySection();
+    private static final PlainTextComponentSerializer c = PlainTextComponentSerializer.plainText();
     public static final char COLOR_CHAR = '§';
 
     public static boolean isNotBlank(String str) {
@@ -71,5 +73,10 @@ public final class TextUtils {
     public static String toPlainString(Component component) {
         if (component == null) return "";
         return b.serialize(component);
+    }
+
+    public static String stripColors(String message) {
+        if (message == null || message.isEmpty()) return message;
+        return c.serialize(component(message));
     }
 }

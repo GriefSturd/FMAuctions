@@ -44,21 +44,32 @@ public final class SqlRuntime {
         if (!requests.tryAcquire()) {
             throw new SQLTransientConnectionException("Очередь запросов к базе данных заполнена");
         }
+
         long start = System.nanoTime();
+        boolean connectionAcquired = false;
+
         try {
-            if (!connections.tryAcquire(2, TimeUnit.SECONDS))
+            if (!connections.tryAcquire(2, TimeUnit.SECONDS)) {
+                requests.release();
                 throw new SQLTransientConnectionException("Истекло время ожидания доступа к базе данных");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            requests.release();
-            throw new SQLTransientConnectionException("Ожидание соединения прервано", e);
-        }
-        try {
+            }
+            connectionAcquired = true;
+
             Connection raw = source.getConnection();
             record("Ожидание соединения", System.nanoTime() - start, false);
             return wrap(raw);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            if (connectionAcquired) {
+                connections.release();
+            } else {
+                requests.release();
+            }
+            throw new SQLTransientConnectionException("Ожидание соединения прервано", e);
         } catch (SQLException | RuntimeException e) {
-            connections.release();
+            if (connectionAcquired) {
+                connections.release();
+            }
             requests.release();
             record("Ожидание соединения", System.nanoTime() - start, true);
             throw e;
@@ -146,16 +157,17 @@ public final class SqlRuntime {
     }
 
     private void record(String sql, long nanos, boolean error) {
-        String key = (!metrics.containsKey(sql) && metrics.size() >= 64) ? "Прочие запросы" : sql;
         synchronized (metrics) {
+            String key = (!metrics.containsKey(sql) && metrics.size() >= 64) ? "Прочие запросы" : sql;
             Samples sample = metrics.computeIfAbsent(key, ignored -> new Samples());
             sample.times[(int) (sample.count++ % sample.times.length)] = nanos;
             if (error) sample.errors++;
         }
     }
-
-    public synchronized void clearSamples() {
-        metrics.clear();
+    public void clearSamples() {
+        synchronized (metrics) {
+            metrics.clear();
+        }
     }
 
     private static final class Samples {

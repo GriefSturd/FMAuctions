@@ -57,15 +57,12 @@ public final class AuctionTransactionService {
     void deliverTakenLot(Player player, TakeResult result, IConfigManager config) {
         AuctionItem item = result.item();
         PendingDelivery delivery = result.pendingDeliveryId() > 0
-                ? new PendingDelivery(result.pendingDeliveryId(), player.getName(), item.type(),
-                        item.itemStack(), item.inventoryContents(), item.createdAt(), item.currency(),
-                        item.type() == AuctionLotType.INVENTORY)
+                ? new PendingDelivery(result.pendingDeliveryId(), player.getName(), item.type(), item.itemStack(), item.inventoryContents(), item.createdAt(), item.currency(), item.type() == AuctionLotType.INVENTORY)
                 : null;
         startDelivery(player, null, config, null, delivery);
     }
 
-    private void startDelivery(Player player, AuctionCurrency currency, IConfigManager config,
-                               Consumer<Player> onComplete, PendingDelivery ready) {
+    private void startDelivery(Player player, AuctionCurrency currency, IConfigManager config, Consumer<Player> onComplete, PendingDelivery ready) {
         if (!player.isOnline()) return;
         UUID uuid = player.getUniqueId();
         synchronized (delivering) {
@@ -191,6 +188,7 @@ public final class AuctionTransactionService {
                     sendMessage(player, session.config, session.config.getConfigValues().messages().inventoryFull());
                     session.blockedByInventory = true;
                     session.index = session.pending.size();
+                    finishDelivery(session);
                     return;
                 }
                 batch.add(candidate);
