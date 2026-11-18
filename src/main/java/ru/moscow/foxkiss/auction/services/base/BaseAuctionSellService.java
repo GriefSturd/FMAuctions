@@ -30,12 +30,16 @@ public abstract class BaseAuctionSellService extends BaseAuctionService {
     }
 
     protected void submitListing(Player player, AuctionCurrency currency, double price, ConfigValues.CommissionRule rule, Map<Integer, ItemStack> reserved, BooleanSupplier limitReached, LongSupplier createLot) {
-        if (!transactionService.beginListing(player)) return;
-
-        scheduler.runAsync(() -> checkLimit(player, currency, price, rule, reserved, limitReached, createLot));
+        submitListing(player, currency, price, rule, reserved, 1, limitReached, createLot);
     }
 
-    private void checkLimit(Player player, AuctionCurrency currency, double price, ConfigValues.CommissionRule rule, Map<Integer, ItemStack> reserved, BooleanSupplier limitReached, LongSupplier createLot) {
+    protected void submitListing(Player player, AuctionCurrency currency, double price, ConfigValues.CommissionRule rule, Map<Integer, ItemStack> reserved, int lotCount, BooleanSupplier limitReached, LongSupplier createLot) {
+        if (!transactionService.beginListing(player)) return;
+
+        scheduler.runAsync(() -> checkLimit(player, currency, price, rule, reserved, lotCount, limitReached, createLot));
+    }
+
+    private void checkLimit(Player player, AuctionCurrency currency, double price, ConfigValues.CommissionRule rule, Map<Integer, ItemStack> reserved, int lotCount, BooleanSupplier limitReached, LongSupplier createLot) {
         final boolean reached;
         try {
             reached = limitReached.getAsBoolean();
@@ -65,7 +69,7 @@ public abstract class BaseAuctionSellService extends BaseAuctionService {
                 return;
             }
             try {
-                chargeAndSubmit(player, currency, price, rule, reserved, createLot);
+                chargeAndSubmit(player, currency, price, rule, reserved, lotCount, createLot);
             } catch (RuntimeException e) {
                 plugin.getLogger().log(Level.SEVERE, "Ошибка синхронного этапа выставления лота", e);
                 transactionService.endListing(player);
@@ -73,7 +77,7 @@ public abstract class BaseAuctionSellService extends BaseAuctionService {
         });
     }
 
-    private void chargeAndSubmit(Player player, AuctionCurrency currency, double price, ConfigValues.CommissionRule rule, Map<Integer, ItemStack> reserved, LongSupplier createLot) {
+    private void chargeAndSubmit(Player player, AuctionCurrency currency, double price, ConfigValues.CommissionRule rule, Map<Integer, ItemStack> reserved, int lotCount, LongSupplier createLot) {
         if (!reservationMatches(player, reserved)) {
             try {
                 if (player.isOnline()) {
@@ -91,7 +95,7 @@ public abstract class BaseAuctionSellService extends BaseAuctionService {
             for (int slot : reserved.keySet()) {
                 inventory.setItem(slot, null);
             }
-            commission = chargeCommission(player, currency, rule, price);
+            commission = chargeCommission(player, rule, price, lotCount);
         } catch (RuntimeException e) {
             plugin.getLogger().log(Level.WARNING, "Не удалось списать комиссию за лот", e);
             try {
@@ -111,10 +115,10 @@ public abstract class BaseAuctionSellService extends BaseAuctionService {
             return;
         }
 
-        scheduler.runAsync(() -> persistListing(player, currency, price, rule, reserved, createLot, commission));
+        scheduler.runAsync(() -> persistListing(player, currency, price, rule, reserved, lotCount, createLot, commission));
     }
 
-    private void persistListing(Player player, AuctionCurrency currency, double price, ConfigValues.CommissionRule rule, Map<Integer, ItemStack> reserved, LongSupplier createLot, double commission) {
+    private void persistListing(Player player, AuctionCurrency currency, double price, ConfigValues.CommissionRule rule, Map<Integer, ItemStack> reserved, int lotCount, LongSupplier createLot, double commission) {
         long result;
         try {
             result = createLot.getAsLong();
@@ -125,10 +129,10 @@ public abstract class BaseAuctionSellService extends BaseAuctionService {
 
         final long lotId = result;
         scheduler.runSync(() -> completeListing(
-                player, currency, price, rule, reserved, commission, lotId));
+                player, currency, price, rule, reserved, lotCount, commission, lotId));
     }
 
-    private void completeListing(Player player, AuctionCurrency currency, double price, ConfigValues.CommissionRule rule, Map<Integer, ItemStack> reserved, double commission, long lotId) {
+    private void completeListing(Player player, AuctionCurrency currency, double price, ConfigValues.CommissionRule rule, Map<Integer, ItemStack> reserved, int lotCount, double commission, long lotId) {
         try {
             if (lotId == AuctionRepository.richi_limit || lotId < 0) {
                 rollback(player, currency, rule, commission, reserved);
@@ -154,13 +158,15 @@ public abstract class BaseAuctionSellService extends BaseAuctionService {
                     sendMessage(player, commissionMessage);
                 }
                 String formatted = PriceFormatter.format(price) + currency.symbol(config);
-                sendMessage(player, messages.sellSuccess()
-                        .replace("{symbol_value}", formatted));
+                String success = lotCount == 1 ? messages.sellSuccess()
+                        : messages.wholesale().success().replace("{lots}", String.valueOf(lotCount));
+                sendMessage(player, success.replace("{symbol_value}", formatted));
             }
         } finally {
             transactionService.endListing(player);
         }
     }
+
 
     protected boolean validateListingPrice(Player player, AuctionCurrency currency, double price, AuctionValidationService validation) {
         ConfigValues values = config();

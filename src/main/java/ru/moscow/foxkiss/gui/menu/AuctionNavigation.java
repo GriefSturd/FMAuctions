@@ -152,7 +152,7 @@ public final class AuctionNavigation {
             return "all";
         }
 
-        int index = current == null ? -1 : categories.indexOf(current.toLowerCase(Locale.ROOT));
+        int index = current == null ? -1 : categories.indexOf(current.toLowerCase());
 
         if (index < 0) {
             return direction > 0 ? categories.getFirst() : categories.getLast();

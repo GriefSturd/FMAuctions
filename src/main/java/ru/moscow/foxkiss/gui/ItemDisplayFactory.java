@@ -156,7 +156,7 @@ public final class ItemDisplayFactory {
         lotDisplayCache.remove(lotId);
     }
 
-    public ItemStack createInventoryDisplay(AuctionItem item) {
+    public ItemStack createInventoryDisplay(AuctionItem item, PlayerProfile profile) {
         ConfigValues config = configManager.getConfigValues();
         ConfigValues.InventorySellingConfig inv = config.inventorySelling();
 
@@ -174,7 +174,11 @@ public final class ItemDisplayFactory {
         ObjectList<String> lore = new ObjectArrayList<>();
 
         for (String line : inv.displayLore()) {
-            lore.add(TextUtils.colorize(line.replace("%player%", item.sellerName()).replace("%price%", symbol + price)));
+            if (profile.discord().isEmpty() && (line.contains("{discord}") || line.contains("%discord%"))) continue;
+            if (profile.storeName().isEmpty() && (line.contains("{store}") || line.contains("%store%"))) continue;
+            lore.add(TextUtils.colorize(line.replace("%player%", item.sellerName()).replace("%price%", symbol + price)
+                    .replace("{discord}", profile.discord()).replace("%discord%", profile.discord())
+                    .replace("{store}", profile.storeName()).replace("%store%", profile.storeName())));
         }
 
         ItemStack box = ItemUtils.named(shulker, name, lore, null);

@@ -1,5 +1,6 @@
 package ru.moscow.foxkiss.auction;
 
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import ru.moscow.foxkiss.FMAuction;
 import ru.moscow.foxkiss.auction.services.AuctionBuyService;
@@ -40,6 +41,10 @@ public record AuctionService(IConfigManager configManager, AuctionSellService se
         sellInventoryService.sellInventory(player, currency, price);
     }
 
+    public void sellWholesale(Player player, AuctionCurrency currency, Material material, double pricePerStack) {
+        sellInventoryService.sellWholesale(player, currency, material, pricePerStack);
+    }
+
     public void buy(Player buyer, long lotId, int amount, Consumer<Boolean> callback) {
         buyService.buy(buyer, lotId, amount, callback);
     }
@@ -56,7 +61,7 @@ public record AuctionService(IConfigManager configManager, AuctionSellService se
         transactionService.deliverPending(player, null, configManager);
     }
 
-    public void processPendingPayouts(Player player) {
+    public void processPendingPayouts() {
         scheduler.runAsync(() -> repository.processPendingPayouts(transactionService.getEconomyProvider()));
     }
 

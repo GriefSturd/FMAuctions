@@ -61,4 +61,8 @@ public final class SchedulerService {
     public void shutdown() {
         dbExecutor.shutdown();
     }
+
+    public ExecutorService executor() {
+        return dbExecutor;
+    }
 }

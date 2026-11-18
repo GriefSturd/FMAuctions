@@ -224,7 +224,7 @@ public final class H2PurchaseStore {
 
                 long deliveryId = 0;
                 try (PreparedStatement ps = conn.prepareStatement(
-                        "INSERT INTO auction_pending_deliveries(player_name, lot_type, item, inventory_data, created_at, currency, allow_overflow) VALUES(?,?,?,?,?,?,FALSE)",
+                        "INSERT INTO auction_pending_deliveries(player_name, lot_type, item, inventory_data, created_at, currency, allow_overflow) VALUES(?,?,?,?,?,?,?)",
                         Statement.RETURN_GENERATED_KEYS)) {
                     ps.setString(1, playerName);
                     ps.setString(2, item.type().name());
@@ -232,6 +232,7 @@ public final class H2PurchaseStore {
                     ps.setString(4, item.type() == AuctionLotType.INVENTORY ? serializeInventory(item.inventoryContents()) : null);
                     ps.setLong(5, System.currentTimeMillis());
                     ps.setString(6, item.currency().name());
+                    ps.setBoolean(7, item.type() == AuctionLotType.INVENTORY);
                     ps.executeUpdate();
                     try (ResultSet keys = ps.getGeneratedKeys()) {
                         if (keys.next()) {

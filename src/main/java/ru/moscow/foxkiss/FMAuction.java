@@ -2,7 +2,6 @@ package ru.moscow.foxkiss;
 
 import org.bstats.bukkit.Metrics;
 import org.bukkit.Bukkit;
-import org.bukkit.command.PluginCommand;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
@@ -92,7 +91,9 @@ public final class FMAuction extends JavaPlugin {
 
     public void initializeManager() {
         configManager = new ConfigManager(this);
-        auctionRepository = new H2AuctionRepository(this);
+        schedulerService = new SchedulerService(this);
+        auctionRepository = new H2AuctionRepository(this, schedulerService.executor(), configManager);
+
         auctionRepository.init();
 
         economyProvider = new PluginEconomyProvider();
@@ -101,7 +102,6 @@ public final class FMAuction extends JavaPlugin {
         limitService = new LimitService(configManager);
         limitService.init();
 
-        schedulerService = new SchedulerService(this);
         ItemDisplayFactory itemDisplayFactory = new ItemDisplayFactory(configManager);
 
         auctionService = AuctionService.create(this, configManager, auctionRepository, economyProvider, limitService, itemDisplayFactory, schedulerService);
@@ -116,7 +116,7 @@ public final class FMAuction extends JavaPlugin {
 
     public void reloadAll() {
         configManager.reload();
-        if (auctionRepository instanceof H2AuctionRepository repository) repository.clearReadCache();
+        if (auctionRepository instanceof H2AuctionRepository repository) repository.clearReadCache(configManager.getConfigValues());
         limitService.init();
 
         if (auctionMenu != null) {
@@ -124,12 +124,6 @@ public final class FMAuction extends JavaPlugin {
         }
         if (auctionMenuListener != null) {
             auctionMenuListener.reloadCategories();
-        }
-        if (auctionCommand != null) {
-            auctionCommand.clearCache();
-        }
-        if (donateAuctionCommand != null) {
-            donateAuctionCommand.clearCache();
         }
         ItemUtils.clearCache();
     }

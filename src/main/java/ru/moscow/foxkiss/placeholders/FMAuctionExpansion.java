@@ -73,7 +73,7 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
     @Override
     @Nullable
     public String onRequest(OfflinePlayer player, @NotNull String params) {
-        String[] parts = params.toLowerCase(Locale.ROOT).split("_");
+        String[] parts = params.toLowerCase().split("_");
 
         if (parts.length == 3 && "my".equals(parts[0]) && "top".equals(parts[1])) {
             if (player == null) return "0";
@@ -202,7 +202,7 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
             }
             Player online = Bukkit.getPlayerExact(name);
             if (online == null) {
-                needed.put(name.toLowerCase(Locale.ROOT), name);
+                needed.put(name.toLowerCase(), name);
             } else {
                 targets.put(name, new PrefixTarget(online, online.getWorld()));
             }
@@ -212,7 +212,7 @@ public final class FMAuctionExpansion extends PlaceholderExpansion {
             for (OfflinePlayer offline : Bukkit.getOfflinePlayers()) {
                 String name = offline.getName();
                 if (name == null) continue;
-                String sellerName = needed.remove(name.toLowerCase(Locale.ROOT));
+                String sellerName = needed.remove(name.toLowerCase());
                 if (sellerName != null) {
                     targets.put(sellerName, new PrefixTarget(offline, null));
                     if (needed.isEmpty()) break;

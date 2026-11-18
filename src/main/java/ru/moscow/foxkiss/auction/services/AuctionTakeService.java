@@ -60,8 +60,7 @@ public final class AuctionTakeService extends BaseAuctionService {
             return;
         }
 
-        boolean fits = item.type() == AuctionLotType.INVENTORY ? AuctionValidationService.canFitAll(player, item.inventoryContents()) : validationService.canFit(player, item.itemStack());
-        if (!fits) {
+        if (item.type() != AuctionLotType.INVENTORY && !validationService.canFit(player, item.itemStack())) {
             cancelTake(lotId, operationId, () -> finishWithMessage(player, configManager.getConfigValues().messages().inventoryFull(), callback));
             return;
         }

@@ -17,6 +17,7 @@ public interface AuctionRepository {
     void init();
 
     long createWithinLimit(String sellerName, AuctionCurrency currency, ItemStack itemStack, double price, int limit, long cutoff);
+    long createBatchWithinLimit(String sellerName, AuctionCurrency currency, List<ItemStack> stacks, double price, int limit, long cutoff);
 
     long createInventoryWithinLimit(String sellerName, AuctionCurrency currency, ItemStack displayItem, List<ItemStack> contents, double price, int limit, long cutoff);
 

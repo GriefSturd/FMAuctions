@@ -4,6 +4,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
+import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.config.ConfigValues;
 import ru.moscow.foxkiss.config.ProfileMenuConfig;
 import ru.moscow.foxkiss.config.SalesHistoryConfig;
@@ -12,7 +13,13 @@ import ru.moscow.foxkiss.config.loaders.*;
 import ru.moscow.foxkiss.utils.ItemUtils;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.util.EnumSet;
 import java.util.Map;
+import java.util.Set;
 
 public final class ConfigManager implements IConfigManager {
     private final JavaPlugin plugin;
@@ -51,6 +58,11 @@ public final class ConfigManager implements IConfigManager {
         String prefix = config.getString("prefix");
 
         FileConfiguration messagesConfig = YamlConfiguration.loadConfiguration(getMenuFile("messages.yml"));
+        try (InputStreamReader defaults = new InputStreamReader(plugin.getResource("messages.yml"), StandardCharsets.UTF_8)) {
+            messagesConfig.setDefaults(YamlConfiguration.loadConfiguration(defaults));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
         MessagesLoader messagesLoader = new MessagesLoader(prefix);
         ConfigValues.ConfigMessages messages = messagesLoader.load(messagesConfig);
 
@@ -94,6 +106,14 @@ public final class ConfigManager implements IConfigManager {
         SalesHistoryConfig a = new SalesHistoryLoader().load(YamlConfiguration.loadConfiguration(getMenuFile("menus/menu_sales_history.yml")));
         ProfileMenuConfig b = new ProfileMenuLoader().load(YamlConfiguration.loadConfiguration(getMenuFile("menus/menu_profile.yml")));
 
+        ConfigurationSection database = config.getConfigurationSection("database");
+        Set<AuctionCurrency> wholesaleEnabled = EnumSet.noneOf(AuctionCurrency.class);
+        if (vaultAuction.getBoolean("sell-opt")) wholesaleEnabled.add(AuctionCurrency.VAULT);
+        if (pointsAuction.getBoolean("sell-opt")) wholesaleEnabled.add(AuctionCurrency.PLAYER_POINTS);
+
+        boolean showAllLots = auctionSection.getBoolean("show-all-lots");
+        boolean databaseSeperate = database.getBoolean("separate-page-count");
+
         this.configValues = new ConfigValues(
                 prefix,
                 vaultGroups,
@@ -113,7 +133,10 @@ public final class ConfigManager implements IConfigManager {
                 commission,
                 a,
                 b,
-                lotAge
+                lotAge,
+                showAllLots,
+                databaseSeperate,
+                Set.copyOf(wholesaleEnabled)
         );
     }
 

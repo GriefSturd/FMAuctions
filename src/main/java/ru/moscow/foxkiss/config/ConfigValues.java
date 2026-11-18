@@ -27,7 +27,10 @@ public record ConfigValues(
         CommissionConfig commission,
         SalesHistoryConfig salesHistory,
         ProfileMenuConfig profileMenu,
-        LotAgeConfig lotAge
+        LotAgeConfig lotAge,
+        boolean showAllLots,
+        boolean separatePageCount,
+        Set<AuctionCurrency> wholesaleEnabled
 ) {
 
     public record LotAgeConfig(
@@ -189,6 +192,15 @@ public record ConfigValues(
             Map<Integer, GlassPane> glassPanes
     ) {}
 
+    public record WholesaleMessages(
+            String disabled,
+            String usage,
+            String itemNotFound,
+            String itemHint,
+            String priceHint,
+            String success
+    ) {}
+
     public record ConfigMessages(
             String reload,
             String unknownSubcommand,
@@ -228,7 +240,10 @@ public record ConfigValues(
             String discordCleared,
             String storeSet,
             String storeCleared,
-            String tooLong
+            String tooLong,
+            String playerOnly,
+            String searchHint,
+            WholesaleMessages wholesale
     ) {}
 
     public record InventorySellingConfig(

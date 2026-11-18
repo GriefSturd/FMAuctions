@@ -27,49 +27,59 @@ public final class H2ListingStore {
     }
 
     public long createWithinLimit(String sellerName, AuctionCurrency currency, ItemStack itemStack, double price, int limit, long cutoff) {
-        return createListing(sellerName, currency, itemStack, null, price, limit, cutoff);
+        return createListing(sellerName, currency, List.of(itemStack), null, price, limit, cutoff);
     }
 
     public long createInventoryWithinLimit(String sellerName, AuctionCurrency currency, ItemStack displayItem, List<ItemStack> contents, double price, int limit, long cutoff) {
-        return createListing(sellerName, currency, displayItem, contents, price, limit, cutoff);
+        return createListing(sellerName, currency, List.of(displayItem), contents, price, limit, cutoff);
     }
 
-    private long createListing(String sellerName, AuctionCurrency currency, ItemStack item, List<ItemStack> contents, double price, Integer limit, long cutoff) {
+    public long createBatchWithinLimit(String sellerName, AuctionCurrency currency, List<ItemStack> stacks, double price, int limit, long cutoff) {
+        if (stacks.isEmpty()) throw new IllegalArgumentException("No stacks to list");
+        return createListing(sellerName, currency, stacks, null, price, limit, cutoff);
+    }
+
+    private long createListing(String sellerName, AuctionCurrency currency, List<ItemStack> stacks, List<ItemStack> contents, double price, int limit, long cutoff) {
         ReentrantLock listingLock = listingLocks[Math.floorMod(Objects.hash(sellerName, currency), listingLocks.length)];
         listingLock.lock();
         try {
-            String serializedItem = serialize(item);
+            List<String> serializedItems = new ArrayList<>(stacks.size());
+            for (ItemStack stack : stacks) serializedItems.add(serialize(stack));
             String serializedInventory = contents == null ? null : serializeInventory(contents);
+            BigDecimal priceBd = BigDecimal.valueOf(price).setScale(2, RoundingMode.HALF_UP);
+            AuctionLotType lotType = contents == null ? AuctionLotType.ITEM : AuctionLotType.INVENTORY;
             try (Connection conn = storage.open()) {
                 conn.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
                 conn.setAutoCommit(false);
                 try {
                     lockSeller(conn, sellerName, currency);
-                    if (limit != null && countActiveBySellerSince(conn, sellerName, currency, cutoff) >= limit) {
+                    if (countActiveBySellerSince(conn, sellerName, currency, cutoff) > limit - stacks.size()) {
                         conn.rollback();
                         return richi_limit;
                     }
-                    long id;
+                    long id = -1L;
                     try (PreparedStatement ps = conn.prepareStatement("INSERT INTO auction_items(seller_name,currency,item,price,created_at,status,material,amount,price_per_item,lot_type,inventory_data,group_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS)) {
-                        int amount = contents == null ? item.getAmount() : Math.max(1, item.getAmount());
-                        BigDecimal priceBd = BigDecimal.valueOf(price).setScale(2, RoundingMode.HALF_UP);
-                        BigDecimal pricePerItemBd = amount > 0 ? priceBd.divide(BigDecimal.valueOf(amount), 2, RoundingMode.HALF_UP) : priceBd;
                         ps.setString(1, sellerName);
                         ps.setString(2, currency.name());
-                        ps.setString(3, serializedItem);
                         ps.setBigDecimal(4, priceBd);
                         ps.setLong(5, System.currentTimeMillis());
                         ps.setInt(6, active);
-                        ps.setString(7, item.getType().name());
-                        ps.setInt(8, amount);
-                        ps.setBigDecimal(9, pricePerItemBd);
-                        ps.setString(10, contents == null ? AuctionLotType.ITEM.name() : AuctionLotType.INVENTORY.name());
+                        ps.setString(10, lotType.name());
                         ps.setString(11, serializedInventory);
-                        ps.setString(12, groupKey(item, contents == null ? AuctionLotType.ITEM : AuctionLotType.INVENTORY, serializedInventory));
-                        ps.executeUpdate();
-                        try (ResultSet keys = ps.getGeneratedKeys()) {
-                            if (!keys.next() || (id = keys.getLong(1)) <= 0) {
-                                throw new SQLException("Отсутствует сгенерированный ID лота аукциона");
+                        for (int i = 0; i < stacks.size(); i++) {
+                            ItemStack item = stacks.get(i);
+                            int amount = contents == null ? item.getAmount() : Math.max(1, item.getAmount());
+                            BigDecimal pricePerItemBd = amount > 0 ? priceBd.divide(BigDecimal.valueOf(amount), 2, RoundingMode.HALF_UP) : priceBd;
+                            ps.setString(3, serializedItems.get(i));
+                            ps.setString(7, item.getType().name());
+                            ps.setInt(8, amount);
+                            ps.setBigDecimal(9, pricePerItemBd);
+                            ps.setString(12, groupKey(item, lotType, serializedInventory));
+                            ps.executeUpdate();
+                            try (ResultSet keys = ps.getGeneratedKeys()) {
+                                if (!keys.next() || (id = keys.getLong(1)) <= 0) {
+                                    throw new SQLException("Отсутствует сгенерированный ID лота аукциона");
+                                }
                             }
                         }
                     }

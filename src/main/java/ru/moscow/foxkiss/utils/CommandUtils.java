@@ -25,13 +25,13 @@ public final class CommandUtils {
         return result;
     }
 
-    public static Double parsePrice(CommandSender sender, String[] args, IConfigManager configManager) {
-        if (args.length < 2) {
+    public static Double parsePrice(CommandSender sender, String argument, IConfigManager configManager) {
+        if (argument == null || argument.isEmpty()) {
             sendMessage(sender, configManager, configManager.getConfigValues().messages().noPrice());
             return null;
         }
         try {
-            return Double.parseDouble(args[1]);
+            return Double.parseDouble(argument);
         } catch (NumberFormatException e) {
             sendMessage(sender, configManager, configManager.getConfigValues().messages().noPrice());
             return null;

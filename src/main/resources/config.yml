@@ -46,11 +46,13 @@ cooldowns:
   enable-cooldown: true
 
 vault-auc:
+  sell-opt: true
   groups:
     default: 1
     developer: 100
 
 playerpoints-auc:
+  sell-opt: true
   groups:
     default: 1
     developer: 100
@@ -59,6 +61,8 @@ prefix: "%frostmine_name_nosub% &7»"
 
 auction:
   max-storage-days: 5
+  # true — сразу все лоты в /ah, false — карточки с переходом к предложениям.
+  show-all-lots: false
 
 # Категории предметов (материалы). Не являются настройкой меню.
 categories:

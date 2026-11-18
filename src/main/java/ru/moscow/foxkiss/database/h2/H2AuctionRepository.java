@@ -1,6 +1,7 @@
 package ru.moscow.foxkiss.database.h2;
 
-import org.bukkit.configuration.ConfigurationSection;
+import ru.moscow.foxkiss.config.ConfigValues;
+import ru.moscow.foxkiss.config.interfaces.IConfigManager;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.economy.EconomyProvider;
@@ -30,14 +31,24 @@ public final class H2AuctionRepository implements AuctionRepository {
     private H2PaymentStore payments;
     private H2PurchaseStore purchases;
 
-    public void clearReadCache() { menus.clearReadCache(); }
+    public void clearReadCache(ConfigValues values) { menus.clearReadCache(values); }
 
-    private final ExecutorService asyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
+    private final ExecutorService asyncExecutor;
 
-    public H2AuctionRepository(JavaPlugin plugin) {
+    private final IConfigManager configManager;
+
+    public H2AuctionRepository(JavaPlugin plugin, ExecutorService asyncExecutor, IConfigManager configManager) {
+        this.configManager = configManager;
         this.plugin = plugin;
-        Path dbPath = plugin.getDataFolder().toPath().resolve("auction").toAbsolutePath();
-        this.jdbcUrl = "jdbc:h2:file:" + dbPath + ";MODE=MySQL;WRITE_DELAY=0";
+        this.asyncExecutor = Objects.requireNonNull(asyncExecutor);
+
+        Path dbPath = plugin.getDataFolder()
+                .toPath()
+                .resolve("auction")
+                .toAbsolutePath();
+
+        this.jdbcUrl = "jdbc:h2:file:" + dbPath
+                + ";MODE=MySQL;WRITE_DELAY=0";
     }
 
     @Override
@@ -53,9 +64,7 @@ public final class H2AuctionRepository implements AuctionRepository {
         deliveries = new H2DeliveryStore(storage);
         payments = new H2PaymentStore(storage, listings);
         purchases = new H2PurchaseStore(storage, sales, payments);
-        ConfigurationSection database = plugin.getConfig().getConfigurationSection("database");
-        boolean separatePageCount = database.getBoolean("separate-page-count");
-        menus = new H2MenuStore(plugin, dataSource, sqlRuntime, separatePageCount);
+        menus = new H2MenuStore(plugin, dataSource, sqlRuntime, configManager.getConfigValues());
 
         try (Connection conn = open()) {
             new H2Schema(plugin).initialize(conn);
@@ -65,6 +74,11 @@ public final class H2AuctionRepository implements AuctionRepository {
         }
     }
 
+
+    @Override
+    public long createBatchWithinLimit(String sellerName, AuctionCurrency currency, List<ItemStack> stacks, double price, int limit, long cutoff) {
+        return listings.createBatchWithinLimit(sellerName, currency, stacks, price, limit, cutoff);
+    }
 
     @Override
     public long createWithinLimit(String sellerName, AuctionCurrency currency, ItemStack itemStack, double price, int limit, long cutoff) {
@@ -214,20 +228,9 @@ public final class H2AuctionRepository implements AuctionRepository {
 
     @Override
     public void close() {
-        asyncExecutor.shutdown();
-        try {
-            if (!asyncExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                asyncExecutor.shutdownNow();
-                if (!asyncExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                    plugin.getLogger().severe("Database tasks did not stop; leaving the pool open to avoid interrupting a commit");
-                    return;
-                }
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return;
+        if (dataSource != null) {
+            dataSource.dispose();
         }
-        if (dataSource != null) dataSource.dispose();
     }
 
     private JdbcConnectionPool createPool() {

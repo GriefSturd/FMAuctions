@@ -3,6 +3,7 @@ package ru.moscow.foxkiss.auction.services;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import ru.moscow.foxkiss.FMAuction;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.AuctionRepository;
@@ -101,10 +102,6 @@ public final class AuctionSellInventoryService extends BaseAuctionSellService {
             return;
         }
 
-        int limit = limitService.getLimit(player, currency);
-        long cutoff = System.currentTimeMillis() - config().maxAuctionStorageDays() * 86_400_000L;
-        String playerName = player.getName();
-
         List<Material> shulkerMaterials = inv.shulkerMaterials();
         Material displayMaterial = shulkerMaterials.isEmpty()
                 ? Material.SHULKER_BOX
@@ -118,7 +115,47 @@ public final class AuctionSellInventoryService extends BaseAuctionSellService {
             if (item != null && !item.getType().isAir()) reserved.put(slot, item);
         }
 
-        submitListing(player, currency, price, config().commission().sellInventory(), reserved, () -> repository.countActiveBySellerSince(playerName, currency, cutoff) >= limit, () -> repository.createInventoryWithinLimit(playerName, currency, displayItem, contents, price, limit, cutoff));
+        submitInventoryListing(player, currency, price, displayItem, contents, reserved,
+                values.commission().sellInventory());
+    }
+
+    public void sellWholesale(Player player, AuctionCurrency currency, Material material, double pricePerStack) {
+        ConfigValues values = config();
+        if (!values.wholesaleEnabled().contains(currency) || !validateListingPrice(player, currency, pricePerStack, validationService)) {
+            return;
+        }
+
+        PlayerInventory inventory = player.getInventory();
+        List<ItemStack> contents = new ArrayList<>();
+        Map<Integer, ItemStack> reserved = new HashMap<>();
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            ItemStack item = inventory.getItem(slot);
+            if (item == null || item.isEmpty() || item.getType() != material) continue;
+            ItemStack snapshot = item.clone();
+            contents.add(snapshot);
+            reserved.put(slot, snapshot);
+        }
+        if (contents.isEmpty()) {
+            sendMessage(player, values.messages().air());
+            return;
+        }
+
+        int lotCount = contents.size();
+        int limit = limitService.getLimit(player, currency);
+        long cutoff = System.currentTimeMillis() - values.maxAuctionStorageDays() * 86_400_000L;
+        String seller = player.getName();
+        submitListing(player, currency, pricePerStack, values.commission().sell(), reserved, lotCount,
+                () -> repository.countActiveBySellerSince(seller, currency, cutoff) > limit - lotCount,
+                () -> repository.createBatchWithinLimit(seller, currency, contents, pricePerStack, limit, cutoff));
+    }
+
+    private void submitInventoryListing(Player player, AuctionCurrency currency, double price, ItemStack displayItem, List<ItemStack> contents, Map<Integer, ItemStack> reserved, ConfigValues.CommissionRule commission) {
+        int limit = limitService.getLimit(player, currency);
+        long cutoff = System.currentTimeMillis() - config().maxAuctionStorageDays() * 86_400_000L;
+        String playerName = player.getName();
+        submitListing(player, currency, price, commission, reserved,
+                () -> repository.countActiveBySellerSince(playerName, currency, cutoff) >= limit,
+                () -> repository.createInventoryWithinLimit(playerName, currency, displayItem, contents, price, limit, cutoff));
     }
 
     private List<ItemStack> collectInventory(Player player) {

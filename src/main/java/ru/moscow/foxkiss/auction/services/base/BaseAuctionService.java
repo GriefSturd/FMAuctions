@@ -46,10 +46,10 @@ public abstract class BaseAuctionService {
         return Math.max(amount, rule.min());
     }
 
-    protected double chargeCommission(Player player, AuctionCurrency ignored, ConfigValues.CommissionRule rule, double price) {
+    protected double chargeCommission(Player player, ConfigValues.CommissionRule rule, double price, int lotCount) {
         ConfigValues.CommissionConfig cfg = config().commission();
         if (!cfg.enabled()) return 0;
-        double commission = computeCommission(rule, price);
+        double commission = computeCommission(rule, price) * lotCount;
         if (commission <= 0) return 0;
         AuctionCurrency currency = rule.currency();
         String symbol = currency.symbol(config());

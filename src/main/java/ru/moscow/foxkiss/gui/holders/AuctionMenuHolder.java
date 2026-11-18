@@ -43,13 +43,13 @@ public abstract class AuctionMenuHolder implements InventoryHolder {
     private int renderedExpiredCount = -1;
     private String renderedCounterPage;
 
-    protected final Int2LongMap lotsBySlot = new Int2LongOpenHashMap();
-    protected final Int2IntMap lotsAmountBySlot = new Int2IntOpenHashMap();
-    protected final Int2BooleanMap inventoryLotBySlot = new Int2BooleanOpenHashMap();
-    protected final Int2ObjectMap<List<Action>> actionsBySlot = new Int2ObjectOpenHashMap<>();
-    protected final Int2ObjectMap<LotSnapshot> lotSnapshots = new Int2ObjectOpenHashMap<>();
     private final Int2ObjectMap<String> materialGroups = new Int2ObjectOpenHashMap<>();
     private final Int2IntMap materialGroupCounts = new Int2IntOpenHashMap();
+    protected final Int2LongMap lotsBySlot = new Int2LongOpenHashMap(54);
+    protected final Int2IntMap lotsAmountBySlot = new Int2IntOpenHashMap(54);
+    protected final Int2BooleanMap inventoryLotBySlot = new Int2BooleanOpenHashMap(54);
+    protected final Int2ObjectMap<List<Action>> actionsBySlot = new Int2ObjectOpenHashMap<>(54);
+    protected final Int2ObjectMap<LotSnapshot> lotSnapshots = new Int2ObjectOpenHashMap<>(54);
     private String renderedMaterialCardName;
     private List<String> renderedMaterialCardLore;
 

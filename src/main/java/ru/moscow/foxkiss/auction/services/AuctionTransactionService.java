@@ -56,7 +56,11 @@ public final class AuctionTransactionService {
 
     void deliverTakenLot(Player player, TakeResult result, IConfigManager config) {
         AuctionItem item = result.item();
-        PendingDelivery delivery = result.pendingDeliveryId() > 0 ? new PendingDelivery(result.pendingDeliveryId(), player.getName(), item.type(), item.itemStack(), item.inventoryContents(), item.createdAt(), item.currency(), false) : null;
+        PendingDelivery delivery = result.pendingDeliveryId() > 0
+                ? new PendingDelivery(result.pendingDeliveryId(), player.getName(), item.type(),
+                        item.itemStack(), item.inventoryContents(), item.createdAt(), item.currency(),
+                        item.type() == AuctionLotType.INVENTORY)
+                : null;
         startDelivery(player, null, config, null, delivery);
     }
 
@@ -121,6 +125,7 @@ public final class AuctionTransactionService {
             session.deliveredAny = false;
             session.rescan = false;
             session.inFlight = true;
+            session.blockedByInventory = false;
         }
         scheduler.runAsync(() -> {
             List<PendingDelivery> pending;
@@ -158,6 +163,11 @@ public final class AuctionTransactionService {
     }
 
     private void deliverNext(DeliverySession session) {
+        if (session.blockedByInventory) {
+            finishDelivery(session);
+            return;
+        }
+
         Player player = session.player;
         if (player == null || !player.isOnline()) { finishDelivery(session); return; }
         List<PendingDelivery> batch = new ArrayList<>(8);
@@ -179,7 +189,9 @@ public final class AuctionTransactionService {
             if (!candidate.allowOverflow()) {
                 if (!AuctionValidationService.canFitAll(player, deliveryContents(candidate))) {
                     sendMessage(player, session.config, session.config.getConfigValues().messages().inventoryFull());
-                    continue;
+                    session.blockedByInventory = true;
+                    session.index = session.pending.size();
+                    return;
                 }
                 batch.add(candidate);
                 break;
@@ -193,13 +205,16 @@ public final class AuctionTransactionService {
         }
         boolean more;
         synchronized (delivering) { more = session.rescan || !session.claims.isEmpty(); }
-        if (more) loadDeliveries(session);
-        else {
+        if (more) {
+            loadDeliveries(session);
+        } else {
             try {
                 if (session.commandBatch && !session.deliveredAny) {
                     sendMessage(player, session.config, session.config.getConfigValues().messages().pendingItemsEmpty());
                 }
-            } finally { finishDelivery(session); }
+            } finally {
+                finishDelivery(session);
+            }
         }
     }
 
@@ -312,7 +327,6 @@ public final class AuctionTransactionService {
         }
         return null;
     }
-
 
     private Receipt parseReceipt(String raw) {
         if (raw == null) return null;

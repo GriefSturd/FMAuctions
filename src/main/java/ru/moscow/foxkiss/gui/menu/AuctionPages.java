@@ -76,6 +76,7 @@ public final class AuctionPages {
         BukkitTask task = Bukkit.getScheduler().runTaskLater(plugin, () -> {
             takeRefreshes.remove(uuid);
             if (!player.isOnline() || player.getOpenInventory().getTopInventory().getHolder() != holder) return;
+            if (player.getInventory().firstEmpty() == -1) return;
             refreshInventory(player, holder);
         }, 4L);
         takeRefreshes.put(uuid, new TakeRefresh(holder, task));

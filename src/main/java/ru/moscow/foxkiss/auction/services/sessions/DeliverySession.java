@@ -1,9 +1,9 @@
 package ru.moscow.foxkiss.auction.services.sessions;
 
 import lombok.Getter;
+import lombok.Setter;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
-import lombok.Setter;
 import org.bukkit.entity.Player;
 import ru.moscow.foxkiss.auction.AuctionCurrency;
 import ru.moscow.foxkiss.auction.PendingDelivery;
@@ -34,6 +34,8 @@ public final class DeliverySession {
     public List<PendingDelivery> pending = List.of();
     public int index;
     public boolean receiptPending;
+    public boolean blockedByInventory = false;
+
     public DeliverySession(UUID uuid, String name, Player player, IConfigManager config, AuctionTransactionService.Receipt receipt) {
         this.uuid = uuid; this.name = name; this.player = player; this.config = config; this.receipt = receipt;
     }

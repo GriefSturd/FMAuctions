@@ -14,7 +14,7 @@ public final class PriceFormatter {
     private static final ThreadLocal<DecimalFormat> INTEGERS = ThreadLocal.withInitial(() -> createFormat("#,##0"));
 
     private static DecimalFormat createFormat(String pattern) {
-        DecimalFormatSymbols symbols = DecimalFormatSymbols.getInstance(Locale.ROOT);
+        DecimalFormatSymbols symbols = DecimalFormatSymbols.getInstance();
 
         symbols.setGroupingSeparator('.');
         symbols.setDecimalSeparator(',');

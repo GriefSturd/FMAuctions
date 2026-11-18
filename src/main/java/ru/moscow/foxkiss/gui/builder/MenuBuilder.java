@@ -1,7 +1,6 @@
     package ru.moscow.foxkiss.gui.builder;
 
     import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-    import it.unimi.dsi.fastutil.longs.Long2ObjectMaps;
     import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
     import it.unimi.dsi.fastutil.objects.ObjectArrayList;
     import it.unimi.dsi.fastutil.objects.ObjectList;
@@ -34,6 +33,7 @@
     import ru.moscow.foxkiss.utils.TextUtils;
 
     import java.util.*;
+    import java.util.function.Supplier;
 
     public final class MenuBuilder {
         private final IConfigManager configManager;
@@ -88,26 +88,31 @@
 
             int totalPages = Math.max(1, (int) Math.ceil((double) totalCount / pageSize));
             holder.setTotalPages(totalPages);
-            if (viewType == AuctionViewType.MAIN && currency == AuctionCurrency.VAULT && !TextUtils.isNotBlank(holder.getSearchFilter())) {
-                refreshMaterialCards(inventory, holder, filtered, slots, materialLots, itemGroups);
-                return;
+            boolean grouped = !itemGroups.isEmpty();
+            ConfigValues config = configManager.getConfigValues();
+            boolean changedTemplate = false;
+            if (grouped) {
+                ConfigValues.AuctionGuiConfig gui = config.moneyGui();
+                changedTemplate = !Objects.equals(gui.materialCardName(), holder.getRenderedMaterialCardName())
+                        || !Objects.equals(gui.materialCardLore(), holder.getRenderedMaterialCardLore());
+                holder.setRenderedMaterialCardName(gui.materialCardName());
+                holder.setRenderedMaterialCardLore(gui.materialCardLore());
             }
-            holder.getMaterialGroups().clear();
-            holder.getMaterialGroupCounts().clear();
             int count = Math.min(filtered.size(), slots.size());
             Map<Integer, LotSnapshot> snapshots = holder.getLotSnapshots();
 
             long now = System.currentTimeMillis();
-            ConfigValues config = configManager.getConfigValues();
             int maxStorageDays = config.maxAuctionStorageDays();
 
             for (int i = 0; i < slots.size(); i++) {
                 int slot = slots.get(i);
 
                 if (i >= count) {
+                    boolean hadGroup = holder.getMaterialGroups().remove(slot) != null;
+                    holder.getMaterialGroupCounts().remove(slot);
                     boolean hadSnapshot = snapshots.remove(slot) != null;
 
-                    if (hadSnapshot || holder.getLotsBySlot().containsKey(slot)) {
+                    if (hadGroup || hadSnapshot || holder.getLotsBySlot().containsKey(slot)) {
                         inventory.setItem(slot, null);
                     }
 
@@ -119,6 +124,25 @@
 
                 AuctionItem item = filtered.get(i);
                 boolean inventoryLot = item.type() == AuctionLotType.INVENTORY;
+                String group = grouped ? itemGroups.get(item.id()) : null;
+                if (group != null && !inventoryLot) {
+                    String selector = "group:" + group;
+                    int lots = materialLots.getOrDefault(group, 1);
+                    if (!changedTemplate && selector.equals(holder.getMaterialGroups().get(slot))
+                            && holder.getMaterialGroupCounts().get(slot) == lots) continue;
+
+                    snapshots.remove(slot);
+                    holder.getLotsBySlot().remove(slot);
+                    holder.getLotsAmountBySlot().remove(slot);
+                    holder.getInventoryLotBySlot().remove(slot);
+                    inventory.setItem(slot, itemFactory.createMaterialCard(item.itemStack(), group, lots));
+                    holder.getMaterialGroups().put(slot, selector);
+                    holder.getMaterialGroupCounts().put(slot, lots);
+                    continue;
+                }
+
+                holder.getMaterialGroups().remove(slot);
+                holder.getMaterialGroupCounts().remove(slot);
 
                 PlayerProfile profile = profiles.get(item.sellerName());
 
@@ -135,7 +159,8 @@
                     continue;
                 }
 
-                ItemStack display = inventoryLot ? itemFactory.createInventoryDisplay(item) : itemFactory.createLotDisplay(item, profile, ageBucket, daysLeft);
+                ItemStack display = inventoryLot ? itemFactory.createInventoryDisplay(item, profile)
+                        : itemFactory.createLotDisplay(item, profile, ageBucket, daysLeft);
 
                 inventory.setItem(slot, display);
                 holder.addLot(slot, item.id(), item.amount(), inventoryLot);
@@ -143,69 +168,6 @@
                 snapshots.put(slot, new LotSnapshot(item.id(), item.amount(), item.price(), item.createdAt(), item.type(), item.status(), item.sellerName(), profile.discord(), profile.storeName(), profile.sales(), ageBucket, daysLeft));
             }
         }
-
-        private void refreshMaterialCards(Inventory inventory, AuctionMenuHolder holder, List<AuctionItem> items, List<Integer> slots, Map<String, Integer> materialLots, Long2ObjectMap<String> itemGroups) {
-            ConfigValues.AuctionGuiConfig gui = configManager.getConfigValues().moneyGui();
-
-            boolean changedTemplate = !Objects.equals(gui.materialCardName(), holder.getRenderedMaterialCardName()) || !Objects.equals(gui.materialCardLore(), holder.getRenderedMaterialCardLore());
-
-            holder.setRenderedMaterialCardName(gui.materialCardName());
-            holder.setRenderedMaterialCardLore(gui.materialCardLore());
-
-
-            holder.getLotsBySlot().clear();
-            holder.getLotsAmountBySlot().clear();
-            holder.getInventoryLotBySlot().clear();
-            holder.getLotSnapshots().clear();
-
-            int count = Math.min(items.size(), slots.size());
-
-            for (int i = 0, size = slots.size(); i < size; i++) {
-                int slot = slots.get(i);
-
-                if (i >= count) {
-                    String previousGroup =
-                            holder.getMaterialGroups().remove(slot);
-
-                    boolean hadCount =
-                            holder.getMaterialGroupCounts().containsKey(slot);
-
-                    holder.getMaterialGroupCounts().remove(slot);
-
-                    if (previousGroup != null || hadCount) {
-                        inventory.setItem(slot, null);
-                    }
-
-                    continue;
-                }
-
-                AuctionItem item = items.get(i);
-
-                String group = itemGroups.get(item.id());
-
-                String id = group == null ? item.itemStack().getType().name() : group;
-
-                String selector = group == null ? id : "group:" + group;
-
-                int lots = materialLots.getOrDefault(id, 1);
-
-                String previousSelector = holder.getMaterialGroups().get(slot);
-
-                int previousCount = holder.getMaterialGroupCounts().get(slot);
-
-                if (!changedTemplate && selector.equals(previousSelector) && previousCount == lots) {
-                    continue;
-                }
-
-                ItemStack display = itemFactory.createMaterialCard(item.itemStack(), id, lots);
-
-                inventory.setItem(slot, display);
-
-                holder.getMaterialGroups().put(slot, selector);
-                holder.getMaterialGroupCounts().put(slot, lots);
-            }
-        }
-
 
         public void refreshNavigationButtons(Inventory inventory, AuctionMenuHolder holder) {
             ConfigValues.NavigationConfig nav = configManager.getConfigValues().gui(holder.getCurrency()).navigation();
@@ -362,16 +324,28 @@
             ConfigValues.ButtonConfig replaced = getButtonConfig(pageDisplay, exit);
 
             String key = "exit_" + viewType.name() + "_" + pageDisplay;
-            ItemStack button = buttonCache.get(key);
-            if (button == null) {
-                button = itemFactory.createButton(replaced);
-                buttonCache.put(key, button.clone());
-            }
+            ItemStack button = getOrCreateButton(key, () -> itemFactory.createButton(replaced));
 
             for (int slot : replaced.slots()) {
                 inv.setItem(slot, button.clone());
                 holder.addActions(slot, replaced.actions());
             }
+        }
+
+        private ItemStack getOrCreateButton(String key, Supplier<ItemStack> creator) {
+            ItemStack cached = buttonCache.get(key);
+            if (cached != null) return cached.clone();
+
+            ItemStack created = creator.get();
+            if (buttonCache.size() >= 128) {
+                Iterator<String> it = buttonCache.keySet().iterator();
+                if (it.hasNext()) {
+                    it.next();
+                    it.remove();
+                }
+            }
+            buttonCache.put(key, created.clone());
+            return created;
         }
 
         private static ConfigValues.@NotNull ButtonConfig getButtonConfig(String pageDisplay, ConfigValues.ButtonConfig exit) {

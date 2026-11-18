@@ -8,7 +8,7 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
 import org.bukkit.Material;
-import org.bukkit.configuration.ConfigurationSection;
+import ru.moscow.foxkiss.config.ConfigValues;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.moscow.foxkiss.gui.AuctionViewType;
@@ -32,13 +32,15 @@ public final class H2MenuStore {
     private final SqlRuntime sqlRuntime;
     private final boolean separatePageCount;
     private volatile Map<String, List<String>> categoryMaterials;
+    private volatile boolean showAllLots;
 
-    public H2MenuStore(JavaPlugin plugin, DataSource dataSource, SqlRuntime sqlRuntime, boolean separatePageCount) {
+    public H2MenuStore(JavaPlugin plugin, DataSource dataSource, SqlRuntime sqlRuntime, ConfigValues values) {
         this.plugin = plugin;
         this.dataSource = dataSource;
         this.sqlRuntime = sqlRuntime;
-        this.separatePageCount = separatePageCount;
-        this.categoryMaterials = readCategoryMaterials();
+        this.separatePageCount = values.separatePageCount();
+        this.categoryMaterials = materialNames(values.categories());
+        this.showAllLots = values.showAllLots();
     }
 
     private final Map<PageKey, CachedPage> pages = new HashMap<>();
@@ -49,9 +51,11 @@ public final class H2MenuStore {
     private record PageKey(AuctionCurrency currency, String player, int days, int page, int size, AuctionSort sort, String category, String seller, String search, AuctionViewType view, long revision, Object translations) {}
     private record CachedPage(MenuData data, long expiresAt) {}
 
-    public void clearReadCache() {
-        categoryMaterials = readCategoryMaterials();
+    public void clearReadCache(ConfigValues values) {
+        Map<String, List<String>> categories = materialNames(values.categories());
         synchronized (pages) {
+            categoryMaterials = categories;
+            showAllLots = values.showAllLots();
             sqlRuntime.invalidateCache();
             pages.clear(); rowPages.clear();
         }
@@ -342,18 +346,19 @@ public final class H2MenuStore {
                 params.add("%" + sellerFilter + "%");
             }
             if (TextUtils.isNotBlank(searchFilter)) {
-                String pattern = "%" + searchFilter + "%";
-
+                List<String> materials = ItemUtils.getSearchIndex().findMaterials(searchFilter);
+                String query = searchFilter.toLowerCase();
                 baseWhere.append(" AND (");
-                baseWhere.append("material LIKE ? OR ");
-                baseWhere.append("seller_name LIKE ? OR ");
-                baseWhere.append("seller_name IN (SELECT player_name FROM auction_player_profiles WHERE discord_plain LIKE ? OR store_name_plain LIKE ?)");
-                baseWhere.append(")");
-
-                params.add(pattern);
-                params.add(pattern);
-                params.add(pattern);
-                params.add(pattern);
+                if (!materials.isEmpty()) {
+                    baseWhere.append("material IN (?").append(",?".repeat(materials.size() - 1)).append(") OR ");
+                    params.addAll(materials);
+                }
+                baseWhere.append("LOCATE(?,LOWER(seller_name))>0 OR seller_name IN (")
+                        .append("SELECT player_name FROM auction_player_profiles ")
+                        .append("WHERE LOCATE(?,LOWER(discord_plain))>0 OR LOCATE(?,LOWER(store_name_plain))>0))");
+                params.add(query);
+                params.add(query);
+                params.add(query);
             }
         } else if (viewType == AuctionViewType.SELLING) {
             baseWhere.append(" AND seller_name = ?");
@@ -365,7 +370,7 @@ public final class H2MenuStore {
             params.add(cutoff);
         }
 
-        if (currency == AuctionCurrency.VAULT && viewType == AuctionViewType.MAIN && !TextUtils.isNotBlank(searchFilter)) {
+        if (!showAllLots && currency == AuctionCurrency.VAULT && viewType == AuctionViewType.MAIN && !TextUtils.isNotBlank(searchFilter)) {
             return findMaterialGroups(conn, baseWhere.toString(), params, sort, page, pageSize);
         }
 
@@ -450,12 +455,19 @@ public final class H2MenuStore {
             case NEWEST, EXPENSIVE, EXPENSIVE_PER_ITEM -> "DESC";
             default -> "ASC";
         };
+        String materialGroup = "CASE WHEN lot_type='INVENTORY' THEN NULL ELSE group_key END";
+        String inventoryId = "CASE WHEN lot_type='INVENTORY' THEN id ELSE NULL END";
+        String grouping = where + " GROUP BY " + materialGroup + "," + inventoryId;
         int total;
-        try (PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM (SELECT group_key " + where + " GROUP BY group_key) groups")) {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM (SELECT MIN(id) " + grouping + ") groups")) {
             for (int i = 0; i < params.size(); i++) ps.setObject(i + 1, params.get(i));
             try (ResultSet rs = ps.executeQuery()) { rs.next(); total = rs.getInt(1); }
         }
-        String sql = "SELECT a.id,a.seller_name,a.currency,a.item,a.price,a.created_at,a.status,a.material,a.amount,a.price_per_item," + "a.lot_type,a.operation_id,a.processing_started_at,NULL AS inventory_data,g.group_key,g.lots FROM auction_items a JOIN " + "(SELECT group_key,MIN(id) representative_id,COUNT(*) lots," + aggregate + " sort_value " + where + " GROUP BY group_key) g ON a.id=g.representative_id ORDER BY g.sort_value " + direction + ",g.group_key ASC LIMIT ? OFFSET ?";
+        String sql = "SELECT a.id,a.seller_name,a.currency,a.item,a.price,a.created_at,a.status,a.material,a.amount,a.price_per_item,"
+                + "a.lot_type,a.operation_id,a.processing_started_at,NULL AS inventory_data,g.group_key,g.lots FROM auction_items a JOIN "
+                + "(SELECT " + materialGroup + " AS group_key,MIN(id) representative_id,COUNT(*) lots,"
+                + aggregate + " sort_value " + grouping + ") g ON a.id=g.representative_id ORDER BY g.sort_value "
+                + direction + ",g.group_key ASC,g.representative_id ASC LIMIT ? OFFSET ?";
         List<AuctionItem> items = new ArrayList<>();
         Map<String, Integer> lots = new HashMap<>();
         Long2ObjectMap<String> itemGroups = new Long2ObjectOpenHashMap<>();
@@ -469,8 +481,10 @@ public final class H2MenuStore {
                 while (rs.next()) {
                     items.add(readItem(rs));
                     String group = rs.getString("group_key");
-                    lots.put(group, rs.getInt("lots"));
-                    itemGroups.put(rs.getLong("id"), group);
+                    if (group != null) {
+                        lots.put(group, rs.getInt("lots"));
+                        itemGroups.put(rs.getLong("id"), group);
+                    }
                 }
             }
         } catch (SQLException e) { throw e; }
@@ -480,18 +494,14 @@ public final class H2MenuStore {
 
     private Connection open() throws SQLException { return sqlRuntime.open(dataSource); }
 
-    private Map<String, List<String>> readCategoryMaterials() {
-        ConfigurationSection section = plugin.getConfig().getConfigurationSection("categories");
-        if (section == null) return Map.of();
-        Map<String, List<String>> categories = new HashMap<>();
-        for (String category : section.getKeys(false)) {
-            List<String> materials = new ArrayList<>();
-            for (String name : section.getStringList(category)) {
-                Material material = Material.matchMaterial(name.trim());
-                if (material != null) materials.add(material.name());
-            }
-            categories.put(category.toLowerCase(Locale.ENGLISH), List.copyOf(materials));
+    private static Map<String, List<String>> materialNames(Map<String, Set<Material>> categories) {
+        Map<String, List<String>> names = new HashMap<>();
+        for (Map.Entry<String, Set<Material>> category : categories.entrySet()) {
+            List<String> materials = new ArrayList<>(category.getValue().size());
+            for (Material material : category.getValue()) materials.add(material.name());
+            materials.sort(Comparator.naturalOrder());
+            names.put(category.getKey(), List.copyOf(materials));
         }
-        return Map.copyOf(categories);
+        return Map.copyOf(names);
     }
 }

@@ -22,6 +22,15 @@ public record MessagesLoader(String prefix) {
         ConfigurationSection search = config.getConfigurationSection("search");
         ConfigurationSection profile = messages.getConfigurationSection("profile");
 
+        ConfigurationSection wholesale = commands.getConfigurationSection("sell-opt");
+        ConfigValues.WholesaleMessages wholesaleMessages = new ConfigValues.WholesaleMessages(
+                msg(wholesale.getString("disabled")),
+                msg(wholesale.getString("usage")),
+                msg(wholesale.getString("item-not-found")),
+                wholesale.getString("item-hint"),
+                wholesale.getString("price-hint"),
+                msg(wholesale.getString("success"))
+        );
         return new ConfigValues.ConfigMessages(
                 msg(admin.getString("reload")),
                 msg(admin.getString("unknown-subcommand")),
@@ -61,7 +70,10 @@ public record MessagesLoader(String prefix) {
                 msg(profile.getString("discord-cleared")),
                 msg(profile.getString("store-set")),
                 msg(profile.getString("store-cleared")),
-                msg(profile.getString("too-long"))
+                msg(profile.getString("too-long")),
+                msg(commands.getString("player-only")),
+                search.getString("hint"),
+                wholesaleMessages
         );
     }
 

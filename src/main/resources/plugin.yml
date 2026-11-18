@@ -1,6 +1,9 @@
 name: FMAuction
-version: '1.0.5'
+version: '1.0.6'
 main: ru.moscow.foxkiss.FMAuction
+author: FOXKISS
+description: Высокопроизводительный плагин, который может с лёгкостью удерживать 5+ тысяч лотов.
+website: https://github.com/GriefSturd/FMAuctions/
 api-version: '1.21'
 libraries:
   - com.h2database:h2:2.2.224

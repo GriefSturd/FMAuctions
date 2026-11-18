@@ -180,7 +180,7 @@ public final class AuctionMenuListener implements Listener {
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         auctionService.processPendingDeliveries(event.getPlayer());
-        auctionService.processPendingPayouts(event.getPlayer());
+        auctionService.processPendingPayouts();
     }
 
     private boolean tryUseCooldown(Player player, Object2LongOpenHashMap<UUID> cooldowns, double seconds) {
